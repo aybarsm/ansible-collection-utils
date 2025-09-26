@@ -1,0 +1,9 @@
+namespace: aybarsm
+name: utils
+version: 1.0.0
+readme: README.md
+authors:
+  - Murat Aybars <murat.aybars@blrm.co>
+description: Custom Utils Collection
+tags: [tools, infrastructure]
+repository: https://github.com/aybarsm/ansible-collection-utils
