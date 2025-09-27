@@ -4,6 +4,6 @@ version: 1.0.0
 readme: README.md
 authors:
   - Murat Aybars <murat.aybars@blrm.co>
-description: Custom Utils Collection
+description: An opinionated custom Ansible utility collection
 tags: [tools, infrastructure]
 repository: https://github.com/aybarsm/ansible-collection-utils
