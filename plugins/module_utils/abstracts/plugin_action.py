@@ -1,6 +1,12 @@
 from abc import ABC, abstractmethod
 from ansible.errors import AnsibleActionFail
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Validate, Data, Helper, Str, Validator
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Aggregator as ToolsAggregator
+
+tools = ToolsAggregator
+Validate = tools.validate
+Data = tools.data
+Str = tools.str
+Helper = tools.helper
 
 class PluginAction(ABC):
     def __init__(self, action, vars):

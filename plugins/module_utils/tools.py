@@ -1,5 +1,5 @@
 from __future__ import annotations
-import typing, os, pathlib, re, json, yaml,inspect, io, datetime, string, random, math, uuid, tempfile, importlib, urllib, urllib.parse, hashlib
+import types, typing, os, pathlib, re, json, yaml,inspect, io, datetime, string, random, math, uuid, tempfile, importlib, urllib, urllib.parse, hashlib
 import jinja2, pydash, cerberus, rich, rich.pretty
 from collections.abc import Sequence, MutableSequence, Mapping, MutableMapping
 
@@ -726,6 +726,11 @@ class DataQuery:
         return self._data
 
 class Helper:
+    @staticmethod
+    def path_rglob(path: pathlib.Path | str):
+        path = pathlib.Path(path)
+        return path.rglob("*")
+    
     @staticmethod
     def callable_signature(callback):
         return inspect.signature(callback)
@@ -1717,3 +1722,12 @@ class Validator(cerberus.Validator):
             self._error(field, f"Must be an [{value}] existing directory") #type: ignore
         elif constraint is False and Validate.dir_exists(value):
             self._error(field, f"Must be a [{value}] missing directory") #type: ignore
+
+class Aggregator:
+    validate = Validate
+    helper = Helper
+    str = Str
+    data = Data
+    validator = Validator
+    dataQuery = DataQuery
+    jinja = Jinja
