@@ -78,10 +78,8 @@ DEFAULTS_TOOLS = {
             "AnsibleUtilsFilterToXml": {"path": "ansible_collections.ansible.utils.plugins.filter.to_xml", "class": "FilterModule"},
             "AnsibleUtilsFilterUsableRange": {"path": "ansible_collections.ansible.utils.plugins.filter.usable_range", "class": "FilterModule"},
             "AnsibleUtilsFilterValidate": {"path": "ansible_collections.ansible.utils.plugins.filter.validate", "class": "FilterModule"},
-            "AybarsmAllFilterData": {"path": "ansible_collections.aybarsm.all.plugins.filter.data", "class": "FilterModule"},
-            "AybarsmAllFilterStr": {"path": "ansible_collections.aybarsm.all.plugins.filter.str", "class": "FilterModule"},
-            "AybarsmAllFilterHelper": {"path": "ansible_collections.aybarsm.all.plugins.filter.helper", "class": "FilterModule"},
-            "AybarsmAllTestValidate": {"path": "ansible_collections.aybarsm.all.plugins.test.validate", "class": "TestModule"},
+            "AybarsmUtilsFilters": {"path": "ansible_collections.aybarsm.utils.plugins.filter.filters", "class": "FilterModule"},
+            "AybarsmUtilsTests": {"path": "ansible_collections.aybarsm.utils.plugins.test.tests", "class": "TestModule"},
         }
     }
 }
