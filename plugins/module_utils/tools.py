@@ -872,6 +872,8 @@ class Helper:
             return str(ts.strftime("%Y-%m-%dT%H:%M:%S") + f".{ts.microsecond * 1000:09d}Z")
         elif mod == 'long_safe':
             return str(ts.strftime("%Y%m%dT%H%M%S") + f".{ts.microsecond * 1000:09d}Z")
+        elif mod == 'timestamp':
+            return int(ts.timestamp())
         else:
             return ts
     

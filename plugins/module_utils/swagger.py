@@ -1,4 +1,4 @@
-from ansible_collections.aybarsm.all.plugins import Aggregator as PrimaryAggregator
+from ansible_collections.aybarsm.utils.plugins import Aggregator as PrimaryAggregator
 from ansible.module_utils.urls import open_url, fetch_url
 from ansible.module_utils.basic import env_fallback
 
@@ -17,15 +17,22 @@ CONFIG = PrimaryAggregator.config
 class Swagger:
     def __init__(self, cfg: dict = {}):
         base_config = CONFIG.copy()
-        self._meta = {'cfg': Data.combine(Data.get(base_config, 'defaults.swagger', {}), cfg, recursive = True)}
+        defaults = Data.get(base_config, 'defaults.swagger', {})
+        cfg = Data.combine(defaults, cfg, recursive = True)
+        self._meta = {'cfg': Data.combine(defaults, cfg, recursive = True), '_': {'old': {}}}
         if 'defaults' in base_config:
             del base_config['defaults']
         self._set_meta('_', base_config.copy())
         self._set_meta('_.path.file.cache', self._get_path_file_cache())
-        self._handle_cfg_changes()
+        self._handle_config_changes()
         
         self._swagger = {}
         # self.docs_extract(swagger, self.cfg('extraction', {}))
+    
+    def get_ansible_module_kwargs(self, path: str, method: str) -> dict:
+        validation = self.get_validation_schema(path, method)
+
+        return validation
     
     def get_validation_schema(self, path: str, method: str, remap: bool = True) -> dict:
         docs = self.swagger(f'paths.{path}.{method.lower()}')
@@ -38,7 +45,7 @@ class Swagger:
         if remap:
             ret = self._resolve_validation_schema_remapping(ret)
 
-        return ret
+        return ret    
     
     def _resolve_validation_schema_parameters(self, ret: dict, docs: dict) -> dict:
         if Validate.blank(docs.get('parameters', {})):
@@ -117,7 +124,7 @@ class Swagger:
         if Validate.blank(remap['validation']):
             return ret
         
-        cleanup = []
+        segments = []
         for source, target in remap['validation'].items(): #type: ignore
             if not Data.has(ret, source):
                 if ignore_missing:
@@ -131,13 +138,35 @@ class Swagger:
             Data.set(ret, target, Data.get(ret, source))
             Data.forget(ret, source)
 
+            segments.append(source)
+
+        return self._cleanup_validation_schema_segments(ret, segments)
+
+
+    # def _resolve_validation_schema_ignores(self, ret: dict[str, str]) -> dict:
+    #     ignore = self.cfg('ignore', [])
+    #     if Validate.blank(ignore):
+    #         return ret
+    
+    def _cleanup_validation_schema_segments(self, ret: dict[str, str], segments: list[str]) -> dict:
+        if Validate.blank(segments):
+            return ret
+        
+        cleanup = []
+        for source in segments:
+            if '.' not in source:
+                cleanup.append(source)
+                continue
+            
             source_segments = source.split('.')
+
             if Validate.is_int_odd(len(source_segments)):
                 source_segments = source_segments[:-1]
-
+            
             cleanup.extend(map('.'.join, itertools.accumulate(itertools.batched(source_segments, n=2), lambda x, y: x + y)))
-        
+
         cleanup = Data.dot_sort_keys(list(set(cleanup)), asc = False)
+        
         for dest in cleanup:
             dest_master = Str.before_last(dest, '.')
             if Data.has(ret, dest) and Validate.blank(Data.get(ret, dest, {})):
@@ -145,9 +174,11 @@ class Swagger:
                     Data.forget(ret, dest_master)
                 else:
                     Data.forget(ret, dest)
-                    Data.set(ret, f'{dest_master}.required', False)
-                    Data.set(ret, f'{dest_master}.default', {})
-
+                    if Data.has(ret, f'{dest_master}.required'):
+                        Data.set(ret, f'{dest_master}.required', False)
+                    if Data.has(ret, f'{dest_master}.default'):
+                        Data.set(ret, f'{dest_master}.default', {})
+        
         return ret
     
     def get_normalised_nested_key(self, key: str, only_base: bool = False) -> str:
@@ -158,12 +189,6 @@ class Swagger:
         ret = re.sub('\\.+', '.', key).replace(f'.{nest_key}', '')
         
         return ret if only_base else ret.replace('.', f'.{nest_key}.')
-
-    def get_ansible_module_kwargs(self, path: str, method: str) -> dict:
-        validation = self.get_validation_schema(path, method)
-        nest_key = 'schema' if self.is_validation_cerberus() else 'options'
-
-        return validation
     
     def prepare_validation_schema(self) -> dict:
         if self.is_validation_ansible():
@@ -236,17 +261,11 @@ class Swagger:
 
     def _get_value(self, container, key = '', default = None) -> Any:   
         return Data.get(container, key, default) if Validate.filled(key) else container
-
-    def meta(self, key: str  = '', default: Any = None) -> Any:
-        return self._get_value(self._meta, key, default)
-    
-    def cfg(self, key: str  = '', default: Any = None) -> Any:
-        return self._get_value(self._meta.get('cfg', {}), key, default)
     
     def params(self, key: str  = '', default: Any = None) -> Any:
         new_key = None
         if Validate.filled(key):
-            param_key = Str.start(key, 'params.')
+            param_key = Str.start(key, '_.params.')
             if not Data.has(self._meta, param_key):
                 remap = self.remappings()
                 target = self.get_normalised_nested_key(key, True)
@@ -262,7 +281,7 @@ class Swagger:
         if new_key:
             key = new_key
 
-        return self._get_value(self._meta.get('params', {}), key, default)
+        return self._get_value(self._meta['_'].get('params', {}), key, default)
 
     def remappings(self) -> dict:
         remap = self.cfg('remap', {})
@@ -285,29 +304,60 @@ class Swagger:
         ret['params_flipped'] = Data.flip(ret['params'].copy())
 
         return ret
+    
+    def meta(self, key: str  = '', default: Any = None) -> Any:
+        return self._get_value(self._meta, key, default)
+    
+    def cfg(self, key: str  = '', default: Any = None) -> Any:
+        return self._get_value(self._meta['cfg'], key, default)
 
     def set_cfg(self, key: str, value: Any) -> None:
+        Data.set(self._meta['_'], Str.start(key, 'old.cfg.'), self.cfg(key))
         Data.set(self._meta['cfg'], key, value)
-        self._handle_cfg_changes()
+        self._handle_config_changes()
     
-    def _handle_cfg_changes(self) -> None:
+    def set_params(self, params: Mapping) -> None:
+        self._meta['_']['old']['params'] = self._meta['_'].get('params', {})
+        self._meta['_']['params'] = dict(params).copy()
+        self._handle_parameter_changes()
+    
+    # def _resolve_swagger(self, cache: Mapping = {}) -> None:
+    #     cache = dict(cache)
+    #     url_base = self.params('url_base')
+    #     url_base_hash = Str.to_md5(url_base) if Validate.filled(url_base) else None
+        
+    #     if Validate.filled(url_base_hash):
+            
+    #     docs_source = self.params('docs_source')
+    #     # self._set_meta('_.cache', {'meta': {}, 'docs': {}})
+    #     and Validate.filled()
+    #     swagger_hash = self.meta('_.swagger_hash', '')
+    #     swagger_ts = self.meta('_.swagger_timestamp')
+
+    #     docs_source
+    
+    def _handle_parameter_changes(self) -> None:
+        
+        path_file_cache = self.meta('_.path.file.cache')
+        if Validate.file_exists(path_file_cache):
+            cache = json.loads((lambda f: f.read())(open(path_file_cache)))
+        else:
+            cache = {'meta': {}, 'docs': {}}
+        
+
+        return
+    
+    def _handle_config_changes(self) -> None:
         from ansible.module_utils.basic import _load_params
         ansible_load_params = self.cfg('ansible.load_params', False)
         if  ansible_load_params == True and not self.has_meta('_.params'):
-            self._set_meta('_.params', dict(_load_params()))
-        
-        path_file_cache = self.meta('_.path.file.cache')
-        if Validate.filled(path_file_cache) and not self.has_meta('_.cache'):
-            if Validate.file_exists(path_file_cache):
-                self._set_meta('_.cache', json.loads((lambda f: f.read())(open(path_file_cache))))
-            else:
-                self._set_meta('_.cache', {'meta': {}, 'docs': {}})
+            self.set_params(_load_params())
     
-    def _save_cache(self):
+    def _save_cache(self, cache: Mapping):
         path_file_cache = self.meta('_.path.file.cache')
         if Validate.filled(path_file_cache):
             with open(path_file_cache, "w", encoding="utf-8") as f:
-                json.dump(self.meta('_.cache'), f, ensure_ascii=False)
+                json.dump(dict(cache), f, ensure_ascii=False)
 
     def swagger(self, key: str = '', default: Any = None) -> Any:
         return self._get_value(self._swagger, key, default)
@@ -455,4 +505,8 @@ class Swagger:
         else:
             raise ValueError('Unable to identify swagger source type to load')
         
+        self._set_meta('_.swagger_source', Str.to_md5(json.dumps(swagger)))
+        self._set_meta('_.swagger_hash', Str.to_md5(json.dumps(swagger)))
+        self._set_meta('_.swagger_timestamp', Helper.ts(mod = 'timestamp'))
+
         self._swagger = self.docs_extract(swagger, self.cfg('extraction', {}))
