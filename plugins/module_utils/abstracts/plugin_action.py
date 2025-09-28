@@ -1,12 +1,12 @@
-from abc import ABC, abstractmethod
-from ansible.errors import AnsibleActionFail
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Aggregator as ToolsAggregator
+from ansible_collections.aybarsm.utils.plugins import Aggregator as PrimaryAggregator
 
-tools = ToolsAggregator
-Validate = tools.validate
-Data = tools.data
-Str = tools.str
-Helper = tools.helper
+Validate = PrimaryAggregator.tools.validate
+Data = PrimaryAggregator.tools.data
+Str = PrimaryAggregator.tools.str
+Helper = PrimaryAggregator.tools.helper
+ABC = PrimaryAggregator.tools.abc.ABC
+AnsibleActionFail = PrimaryAggregator.tools.ansible_errors.AnsibleActionFail
+abstractmethod = PrimaryAggregator.tools.abc.abstractmethod
 
 class PluginAction(ABC):
     def __init__(self, action, vars):

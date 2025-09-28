@@ -1,9 +1,27 @@
 from __future__ import annotations
-import types, typing, os, pathlib, re, json, yaml,inspect, io, datetime, string, random, math, uuid, tempfile, importlib, urllib, urllib.parse, hashlib
-import jinja2, pydash, cerberus, rich, rich.pretty
+import sys, abc, types, itertools, typing, os, pathlib, re, json, yaml, inspect, io, datetime, string, random, math, uuid, tempfile, importlib, urllib, urllib.parse, hashlib
+import jinja2, pydash, cerberus, rich.pretty, rich.console, ansible.errors
 from collections.abc import Sequence, MutableSequence, Mapping, MutableMapping
 
 DEFAULTS_TOOLS = {
+    "ansible": {
+        "entrypoints":
+            [
+                "ansible.cli.adhoc",
+                "ansible_builder.cli",
+                "ansible_collections.ansible_community",
+                "ansible.cli.config",
+                "ansible.cli.console",
+                "ansible.cli.doc",
+                "ansible.cli.galaxy",
+                "ansible.cli.inventory",
+                "ansiblelint.__main__",
+                "ansible.cli.playbook",
+                "ansible.cli.pull",
+                "ansible_test._util.target.cli.ansible_test_cli_stub",
+                "ansible.cli.vault",
+            ]
+    },
     "jinja": {
         "prefixes": {
             "a.b.": "ansible.builtin.",
@@ -169,6 +187,30 @@ class Data:
     @staticmethod
     def pluck(data, key):
         return Data.pydash.pluck(data, key)
+    
+    @staticmethod
+    def invert(data):
+        return Data.pydash.invert(data)
+    
+    @staticmethod
+    def flip(data):
+        return Data.invert(data)
+    
+    @staticmethod
+    def dot_sort_keys(data: Mapping | Sequence, **kwargs) -> dict | list:
+        if not Validate.is_sequence(data) and not Validate.is_mapping(data):
+            raise ValueError('Invalid data type to sort')
+        
+        asc = kwargs.pop('asc', True)
+        if Validate.is_mapping(data):
+            ret = sorted(dict(data).items(), key=lambda item: item[0].count('.'))
+        else:
+            ret = sorted([item for item in data], key=lambda s: s.count('.'))
+
+        if not asc:
+            ret = reversed(ret)
+            
+        return dict(ret) if Validate.is_mapping(data) else list(ret)
 
     @staticmethod
     def iterate(data, callback, *args, **kwargs) -> dict | list[dict]:
@@ -815,7 +857,7 @@ class Helper:
             display.display(buffer.getvalue())
         else:
             for arg in args:
-                rich.pretty.Pretty(arg, **kwargs)
+                rich.pretty.pprint(arg, **kwargs)
     
     @staticmethod
     def ts(**kwargs):
@@ -1189,11 +1231,16 @@ class Str:
 
 class Validate:
     @staticmethod
+    def is_int_even(data: int) -> bool:
+        return data % 2 == 0
+    
+    @staticmethod
+    def is_int_odd(data: int) -> bool:
+        return not Validate.is_int_even(data)
+    
+    @staticmethod
     def is_env_ansible():
-        return any(
-            key in os.environ
-            for key in ["ANSIBLE_MODULE_ARGS", "ANSIBLE_CONFIG", "ANSIBLE_CACHE_PLUGIN_CONNECTION"]
-        )
+        return any(mod in sys.modules for mod in DEFAULTS_TOOLS['ansible']['entrypoints'])
 
     @staticmethod
     def is_string(data):
@@ -1612,6 +1659,44 @@ class Validate:
     @staticmethod
     def str_is_numeric(data: str) -> bool:
         return re.match(r"^[+-]?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+)$", data) != None
+    
+    @staticmethod
+    def str_is_url(data: str) -> bool:
+        try:
+            result = urllib.parse.urlparse(data)
+            return all([result.scheme, result.netloc])
+        except ValueError:
+            return False
+    
+    @staticmethod
+    def str_is_json(data, type='any'):
+        if not Validate.is_string(data):
+            return False
+
+        try:
+            parsedData = json.loads(data)
+            if type == 'object':
+                return Validate.is_mapping(parsedData)
+            elif type == 'array':
+                return Validate.is_sequence(parsedData)
+            return True
+        except (Exception):
+            return False
+    
+    @staticmethod
+    def str_is_yaml(data, type='any'):
+        if not Validate.is_string(data):
+            return False
+
+        try:
+            parsedData = yaml.safe_load(data)
+            if type == 'object':
+                return Validate.is_mapping(parsedData)
+            elif type == 'array':
+                return Validate.is_sequence(parsedData)
+            return Validate.is_mapping(parsedData) or Validate.is_sequence(parsedData)
+        except (Exception):
+            return False
 
 class Jinja:
     _instance = None
@@ -1731,3 +1816,11 @@ class Aggregator:
     validator = Validator
     dataQuery = DataQuery
     jinja = Jinja
+    typing = typing
+    json = json
+    yaml = yaml
+    re = re
+    pathlib = pathlib
+    abc = abc
+    ansible_errors = ansible.errors
+    itertools = itertools
