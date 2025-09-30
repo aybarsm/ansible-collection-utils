@@ -1,4 +1,4 @@
-from plugins.module_utils import Aggregator as PrimaryAggregator
+from ansible_collections.aybarsm.utils.plugins.module_utils import Aggregator as PrimaryAggregator
 
 Validate = PrimaryAggregator.tools.validate
 Data = PrimaryAggregator.tools.data

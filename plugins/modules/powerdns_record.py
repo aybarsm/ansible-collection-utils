@@ -1,8 +1,9 @@
-from ansible.module_utils.basic import AnsibleModule
-from ansible_collections.aybarsm.utils.plugins.module_utils.swagger import PrimaryAggregator, Swagger
-from ansible.module_utils.basic import env_fallback
+from __future__ import annotations
+from ansible.module_utils.basic import AnsibleModule, env_fallback
+from ansible_collections.aybarsm.utils.plugins.module_utils.swagger import Swagger, Aggregator
 
-Helper = PrimaryAggregator.tools.helper
+Helper = Aggregator.tools.helper
+Validate = Aggregator.tools.validate
 
 _swagger_config = {
     'settings': {
@@ -10,6 +11,9 @@ _swagger_config = {
             'validation': True,
             'load_params': True,
         },
+        'remap': {
+            'ignore_missing': True,
+        }
     },
     'defaults': {
         'url_base': {'_validation': {'fallback': (env_fallback, ['PDNS_API_URL_BASE'])}},
@@ -40,11 +44,28 @@ _swagger_config = {
 }
 
 def main():
-    api = Swagger(_swagger_config)
-    module_arguments = api.get_ansible_module_arguments('/servers/{server_id}/zones/{zone_id}', 'patch')
+    swagger = Swagger(_swagger_config)
+    docs_source = swagger.params('docs_source', '')
+    if Validate.blank(docs_source):
+        module_arguments = {
+            'argument_spec': swagger.prepare_validation_schema()
+        }
+    else:
+        swagger.load_swagger(docs_source)
+        module_arguments = swagger.get_ansible_module_arguments('/servers/{server_id}/zones/{zone_id}', 'patch')
+
+    # module = AnsibleModule(**module_arguments)
+    # module_arguments = {
+    #     'argument_spec': {
+    #         'test_me': {
+    #             'type': 'str',
+    #             'required': True,
+    #         }
+    #     }
+    # }
     module = AnsibleModule(**module_arguments)
     
-    module.exit_json(**{'response': {'ok': 'ok'}})
+    module.exit_json(**{'response': {'params': swagger.params()}})
 
 if __name__ == '__main__':
     main()

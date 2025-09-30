@@ -1,15 +1,10 @@
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Aggregator as ToolsAggregator
+import sys, abc, types, itertools, typing, os, pathlib, re, json, yaml, inspect, io, datetime, requests
+import string, random, math, uuid, tempfile, importlib, urllib, urllib.parse, hashlib
+import jinja2, pydash, cerberus, rich.pretty, rich.console
+# import jinja2, ansible.errors
+from collections.abc import Sequence, MutableSequence, Mapping, MutableMapping
 
 _DEFAULTS_SWAGGER = {
-    # '_': {
-    #     'defaults': {
-    #         'path': {'type': 'object', 'required': False, 'default': {}},
-    #         'query': {'type': 'object', 'required': False, 'default': {}},
-    #         'header': {'type': 'object', 'required': False, 'default': {}},
-    #         'body': {'type': 'object', 'required': False, 'default': {}},
-    #         'form': {'type': 'object', 'required': False, 'default': {}},
-    #     },
-    # },
     'settings': {
         'extraction': {
             'ref_pattern': '.*\\.\\$ref.*$',
@@ -39,15 +34,32 @@ _DEFAULTS_SWAGGER = {
                 'add_file_common_args': False,
                 'supports_check_mode': False,
             },
+            'fetch_url': {
+                'kwargs': {
+                    'data': None,
+                    'headers': None,
+                    'method': None,
+                    'use_proxy': None,
+                    'force': False,
+                    'last_mod_time': None,
+                    'timeout': 10,
+                    'use_gssapi': False,
+                    
+                =None, force=False, last_mod_time=None, timeout=10,
+              use_gssapi=False, unix_socket=None, ca_path=None, cookies=None, unredirected_headers=None,
+              decompress=True, ciphers=None, use_netrc=True
+                }
+            }
         },
     },
     'defaults': {
         'url_base': {'type': 'string', 'required': True},
         'docs_source': {'type': 'string', 'required': True},
         'docs_validate_certs': {'type': 'boolean', 'required': False, 'default': True},
-        'docs_cache_expires': {'type': 'integer', 'required': False, 'default': 0},
-        'url_username': {'type': 'string', 'required': True},
-        'url_password': {'type': 'string', 'required': True},
+        'docs_cache_expires': {'type': 'integer', 'required': False},
+        # 'docs_cache_expires': {'type': 'integer', 'required': False, 'default': 0},
+        'url_username': {'type': 'string', 'required': False},
+        'url_password': {'type': 'string', 'required': False, '_ansible': {'no_log': True}},
         'validate_certs': {'type': 'boolean', 'required': False, 'default': True},
         'use_proxy': {'type': 'boolean', 'required': False, 'default': False},
         'http_agent': {'type': 'string', 'required': False, 'default': ''},
@@ -57,7 +69,8 @@ _DEFAULTS_SWAGGER = {
         'ca_path': {'type': 'string', 'required': False, 'default': None},
         'use_gssapi': {'type': 'boolean', 'required': False, 'default': False},
         'force': {'type': 'boolean', 'required': False, 'default': False},
-        'timeout': {'type': 'integer', 'required': False, 'default': 10},
+        # 'timeout': {'type': 'integer', 'required': False, 'default': 10},
+        'timeout': {'type': 'integer', 'required': False},
         'unix_socket': {'type': 'string', 'required': False, 'default': None},
         'unredirected_headers': {'type': 'array', 'required': False, 'default': None, 'items': {'type': 'string'}},
         'use_netrc': {'type': 'boolean', 'required': False, 'default': True},
@@ -66,34 +79,7 @@ _DEFAULTS_SWAGGER = {
     },
 }
 
-def _collection_config() -> dict:
-    path_root = ToolsAggregator.pathlib.Path(__file__).parent.parent
-    return {
-        'path': {
-            'dir': {
-                'root': str(path_root),
-                'tmp' : str(path_root.joinpath('.tmp')),
-            }
-        },
-        'defaults': {
-            'swagger': _DEFAULTS_SWAGGER
-        }
-    }
-
-class Aggregator:
-    tools = ToolsAggregator
-    config = _collection_config()
-
-
-
-
-from __future__ import annotations
-import sys, abc, types, itertools, typing, os, pathlib, re, json, yaml, inspect, io, datetime, requests
-import string, random, math, uuid, tempfile, importlib, urllib, urllib.parse, hashlib
-import jinja2, pydash, cerberus, rich.pretty, rich.console, ansible.errors
-from collections.abc import Sequence, MutableSequence, Mapping, MutableMapping
-
-DEFAULTS_TOOLS = {
+_DEFAULTS_TOOLS = {
     "ansible": {
         "entrypoints":
             [
@@ -357,6 +343,7 @@ class Data:
         meta = Data.get(kwargs, 'meta', False)
         meta_fix = Data.get(kwargs, 'meta_fix', False)
         no_dot = Data.get(kwargs, 'no_dot', False)
+        filled = Data.get(kwargs, 'filled', False)
         if Validate.blank(args) and not meta:
             return data
         
@@ -374,6 +361,10 @@ class Data:
             for key in keys:
                 key_exists = (no_dot and key in item) or (not no_dot and Data.has(item, key))
                 if not key_exists:
+                    continue
+                
+                is_filled = not filled or ((no_dot and Validate.filled(item[key])) or (not no_dot and Validate.filled(Data.get(item, key))))
+                if not is_filled:
                     continue
 
                 is_meta = meta and str(key).startswith('_')
@@ -869,38 +860,42 @@ class Helper:
     
     @staticmethod
     def positional_argument_count(callback):
-        sig = inspect.signature(callback)
         return int(sum(
-            1 for param in sig.parameters.values()
+            1 for param in Helper.callable_signature(callback).parameters.values()
             if param.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
         ))
     
     @staticmethod
     def required_positional_argument_count(callback):
-        sig = inspect.signature(callback)
         return int(sum(
-            1 for param in sig.parameters.values()
+            1 for param in Helper.callable_signature(callback).parameters.values()
             if param.default == inspect.Parameter.empty and
             param.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
         ))
         
     @staticmethod
-    def callable_args_name(data):
-        sig = inspect.signature(data)
-        for name, param in sig.parameters.items():
+    def callable_args_name(callback):
+        for name, param in Helper.callable_signature(callback).parameters.items():
             if param.kind == inspect.Parameter.VAR_POSITIONAL:
                 return name
         
         return None
 
     @staticmethod
-    def callable_kwargs_name(data):
-        sig = inspect.signature(data)
-        for name, param in sig.parameters.items():
+    def callable_kwargs_name(callback):
+        for name, param in Helper.callable_signature(callback).parameters.items():
             if param.kind == inspect.Parameter.VAR_KEYWORD:
                 return name
         
         return None
+    
+    @staticmethod
+    def callable_kwargs_defaults(callback):        
+        return {
+            k: v.default
+            for k, v in Helper.callable_signature(callback).parameters.items()
+            if v.default is not inspect.Parameter.empty
+        }
     
     @staticmethod
     def callback(callback, *args, **kwargs):
@@ -1332,7 +1327,7 @@ class Validate:
     
     @staticmethod
     def is_env_ansible():
-        return any(mod in sys.modules for mod in DEFAULTS_TOOLS['ansible']['entrypoints'])
+        return any(mod in sys.modules for mod in _DEFAULTS_TOOLS['ansible']['entrypoints'])
 
     @staticmethod
     def is_string(data):
@@ -1811,9 +1806,9 @@ class Jinja:
         modules = {}
         self._errors = []
         self._loaded = {'filters': {}, 'tests': {}}
-        self._prefixes = '(' + ('|'.join(map(lambda op: re.escape(op), list(DEFAULTS_TOOLS['jinja']['prefixes'].keys())))) + ')'
+        self._prefixes = '(' + ('|'.join(map(lambda op: re.escape(op), list(_DEFAULTS_TOOLS['jinja']['prefixes'].keys())))) + ')'
 
-        for alias, info in DEFAULTS_TOOLS['jinja']['module_map'].items():
+        for alias, info in _DEFAULTS_TOOLS['jinja']['module_map'].items():
             try:
                 module = importlib.import_module(info["path"])
                 modules[alias] = getattr(module, info["class"])
@@ -1824,8 +1819,8 @@ class Jinja:
         self.e = jinja2.Environment()
         
         for alias in modules.keys():
-            is_test = DEFAULTS_TOOLS['jinja']['module_map'][alias]['class'] == 'TestModule'
-            segments = str(DEFAULTS_TOOLS['jinja']['module_map'][alias]['path']).split('.')
+            is_test = _DEFAULTS_TOOLS['jinja']['module_map'][alias]['class'] == 'TestModule'
+            segments = str(_DEFAULTS_TOOLS['jinja']['module_map'][alias]['path']).split('.')
             
             if segments[0] == 'ansible_collections':
                 prefix = f'{segments[1]}.{segments[2]}'
@@ -1854,7 +1849,7 @@ class Jinja:
         return filter in self.e.filters
     
     def resolve_op_name(self, op_name):
-        return re.compile(f'^{self._prefixes}').sub(lambda match: DEFAULTS_TOOLS['jinja']['prefixes'][match.group(0)], op_name)
+        return re.compile(f'^{self._prefixes}').sub(lambda match: _DEFAULTS_TOOLS['jinja']['prefixes'][match.group(0)], op_name)
     
     def test(self, op_name, *args, **kwargs):
         op_name = self.resolve_op_name(op_name)
@@ -1904,20 +1899,36 @@ class Validator(cerberus.Validator):
         elif constraint is False and Validate.dir_exists(value):
             self._error(field, f"Must be a [{value}] missing directory") #type: ignore
 
+def _collection_config() -> dict:
+    path_root = pathlib.Path(__file__).parent.parent
+    return {
+        'path': {
+            'dir': {
+                'root': str(path_root),
+                'tmp' : str(path_root.joinpath('.tmp')),
+            }
+        },
+        'defaults': {
+            'swagger': _DEFAULTS_SWAGGER
+        }
+    }
+
 class Aggregator:
-    validate = Validate
-    helper = Helper
-    str = Str
-    data = Data
-    validator = Validator
-    dataQuery = DataQuery
-    jinja = Jinja
-    typing = typing
-    json = json
-    yaml = yaml
-    re = re
-    pathlib = pathlib
-    abc = abc
-    ansible_errors = ansible.errors
-    itertools = itertools
-    requests = requests
+    class tools:
+        validate = Validate
+        helper = Helper
+        str = Str
+        data = Data
+        validator = Validator
+        dataQuery = DataQuery
+        jinja = Jinja
+        typing = typing
+        json = json
+        yaml = yaml
+        re = re
+        pathlib = pathlib
+        abc = abc
+        # ansible_errors = ansible.errors
+        itertools = itertools
+        requests = requests
+    config = _collection_config()

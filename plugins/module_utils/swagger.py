@@ -1,17 +1,17 @@
-from .. import Aggregator as PrimaryAggregator
+from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Aggregator
 
-PrimaryAggregator = PrimaryAggregator
-Validate = PrimaryAggregator.tools.validate
-Data = PrimaryAggregator.tools.data
-Str = PrimaryAggregator.tools.str
-Helper = PrimaryAggregator.tools.helper
-json = PrimaryAggregator.tools.json
-yaml = PrimaryAggregator.tools.yaml
-re = PrimaryAggregator.tools.re
-itertools = PrimaryAggregator.tools.itertools
-Any = PrimaryAggregator.tools.typing.Any
-Mapping = PrimaryAggregator.tools.typing.Mapping
-CONFIG = PrimaryAggregator.config
+Aggregator = Aggregator
+Validate = Aggregator.tools.validate
+Data = Aggregator.tools.data
+Str = Aggregator.tools.str
+Helper = Aggregator.tools.helper
+json = Aggregator.tools.json
+yaml = Aggregator.tools.yaml
+re = Aggregator.tools.re
+itertools = Aggregator.tools.itertools
+Any = Aggregator.tools.typing.Any
+Mapping = Aggregator.tools.typing.Mapping
+CONFIG = Aggregator.config
 
 class Swagger:
     def __init__(self, cfg: dict = {}):
@@ -25,6 +25,14 @@ class Swagger:
         
         self._meta = {'cfg': cfg}
         self._swagger = {}
+
+        self._handle_config_changes()
+    
+    def _handle_config_changes(self) -> None:
+        from ansible.module_utils.basic import _load_params
+        ansible_load_params = self.cfg('settings.ansible.load_params', False)
+        if  ansible_load_params == True and not self.meta_has('params'):
+            self.params_set(_load_params())
     
     def get_ansible_module_arguments(self, path: str, method: str, remap: bool = True, ignore: bool = True, merge_defaults: bool = True) -> dict:
         is_ansible = self.is_validation_ansible()
@@ -53,14 +61,25 @@ class Swagger:
             combine_args = self.cfg('settings.combine.ansible.kwargs', {})
             ret = Data.combine(self.cfg('settings.ansible.kwargs', {}), ret, **combine_args)
         
+        self._cfg_set('settings.ansible.validation', is_ansible)
+        
         return ret
+    
+    def get_ansible_fetch_url_arguments(self, path: str, method: str, params: dict = {}) -> dict:
+        v = self.get_validation_schema(path, method, False, False, True)
+        
+        if Validate.blank(params):
+            params = self.params().copy()
+        
+        
+
     
     def get_validation_schema(self, path: str, method: str, remap: bool = True, ignore: bool = True, keep_meta: bool = False) -> dict:
         docs = self.swagger(f'paths.{path}.{method.lower()}')
         if Validate.blank(docs):
             raise ValueError(f'Path entry not found for {path} - {method.lower()} in docs')
         
-        ret = self._prepare_validation_schema()
+        ret = self.prepare_validation_schema()
         ret = self._resolve_validation_schema_parameters(ret, docs)
         ret = self._resolve_validation_schema_security_definitions(ret, docs)
         ret = self._resolve_validation_schema_real_key_paths(ret)
@@ -105,7 +124,6 @@ class Swagger:
         sec_defs = self.swagger(f'securityDefinitions', {})
         secs = docs.get('security', self.swagger('security', []))
         secs = list(set([list(sec.keys())[0] for sec in secs if list(sec.keys())[0] in sec_defs]))
-        secs.append('basicAuth')
         
         if Validate.blank(secs):
             return ret
@@ -220,20 +238,17 @@ class Swagger:
         if Validate.blank(remap):
             return ret
         
-        overwrite = self.cfg('remap_overwrite', False)
-        ignore_missing = self.cfg('remap_ignore_missing', False)
+        overwrite = self.cfg('settings.remap.overwrite', False)
+        ignore_missing = self.cfg('settings.remap.ignore_missing', False)
         
         for source, target in remap.items(): #type: ignore
             if source not in ret['_']['key_map']:
-                raise ValueError(f'Remapping source key [{source}] could not be found in real key mappings')
-            
-            source = ret['_']['key_map'][source]
-            
-            if not Data.has(ret, source):
                 if ignore_missing:
                     continue
                 else:
                     raise ValueError(f'Remapping source key [{source}] does not exist')
+            
+            source = ret['_']['key_map'][source]
             
             if not overwrite and Data.has(ret, target):
                 raise ValueError(f'Remapping target key [{target}] already exists')
@@ -277,28 +292,9 @@ class Swagger:
                 Data.set(ret, f'{item_master_key}.required', False)
                 Data.set(ret, f'{item_master_key}.default', {})
         
-        if self.is_validation_ansible():
-            return ret
-        
-        # remap = self.remappings()
-        # for req_together in Data.get(ret, '_.required_together'):
-        #     req_together = Helper.to_iterable(req_together)
-        #     for req_key in req_together:
-        #         deps = Data.get(ret, f'req_key.dependencies', [])
-        #         deps.extend(req_together)
-        #         Data.set(ret, f'req_key.dependencies', list(set(req_key) - set(deps)))
-
-        # deps = Data.get(meta, '_.schema.url_username.dependencies', [])
-        # deps.append('url_password')
-        # Data.set(meta, '_.schema.url_username.dependencies', deps)
-        # deps = Data.get(meta, '_.schema.url_password.dependencies', [])
-        # deps.append('url_username')
-        # Data.set(meta, '_.schema.url_password.dependencies', deps)
-
-        
         return ret
     
-    def _prepare_validation_schema(self) -> dict:
+    def prepare_validation_schema(self, cleanup: bool = False) -> dict:
         ret = {}
         
         for default_key, default_item in (self.cfg('defaults', {})).items():
@@ -309,6 +305,9 @@ class Swagger:
         
         for segment in ['path', 'query', 'header', 'body', 'form']:
             ret[segment] = self._build_component_validation_schema({'type': 'object', 'required': False, 'default': {}}, require_props = False)
+        
+        if cleanup:
+            ret = self._cleanup_validation_schema(ret)
 
         return ret
     
@@ -320,6 +319,11 @@ class Swagger:
             'type': item.get('type', ''),
             'required': item.get('required', False),
         }
+
+        if self.is_validation_ansible() and Validate.filled(item.get('_ansible', {})):
+            ret = Data.combine(ret, item.get('_ansible', {}), recursive = True)
+        elif self.is_validation_ansible() and Validate.filled(item.get('_cerberus', {})):
+            ret = Data.combine(ret, item.get('_cerberus', {}), recursive = True)
 
         if Validate.filled(item.get('_validation', {})):
             ret = Data.combine(ret, item.get('_validation', {}), recursive = True)
@@ -466,7 +470,7 @@ class Swagger:
     @staticmethod
     def get_ansible_type(type_: str) -> str:
         match type_:
-            case 'int' | 'integer':
+            case 'integer' | 'int':
                 return 'integer'
             case 'bool' | 'boolean':
                 return 'bool'
@@ -536,6 +540,9 @@ class Swagger:
         return ret
     
     def load_swagger(self, source: Mapping | str, **kwargs) -> None:
+        if Validate.blank(source):
+            raise ValueError('Blank swagger source')
+        
         if Validate.is_mapping(source):
             swagger = dict(source) #type: ignore
         elif Validate.str_is_url(str(source)):
@@ -545,7 +552,7 @@ class Swagger:
                 swagger = json.loads(open_url(str(source), **kwargs).read().decode('utf-8'))
             else:
                 params = kwargs.pop('params', None)
-                response = PrimaryAggregator.tools.requests.get(str(source), params, **kwargs)
+                response = Aggregator.tools.requests.get(str(source), params, **kwargs)
                 response.raise_for_status()
                 swagger = response.json().copy()
         elif Validate.file_exists(source):
