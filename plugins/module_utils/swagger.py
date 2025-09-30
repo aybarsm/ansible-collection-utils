@@ -27,11 +27,6 @@ class Swagger:
         self._swagger = {}
         # self.docs_extract(swagger, self.cfg('extraction', {}))
     
-    def get_ansible_module_kwargs(self, path: str, method: str) -> dict:
-        validation = self.get_validation_schema(path, method)
-
-        return validation
-    
     def get_validation_schema(self, path: str, method: str, remap: bool = True) -> dict:
         docs = self.swagger(f'paths.{path}.{method.lower()}')
         if Validate.blank(docs):
@@ -40,13 +35,15 @@ class Swagger:
         ret = self._prepare_validation_schema()
         ret = self._resolve_validation_schema_parameters(ret, docs)
         ret = self._resolve_validation_schema_security_definitions(ret, docs)
+        ret = self._resolve_validation_schema_real_key_paths(ret)
+
         if remap:
             ret = self._resolve_validation_schema_remapping(ret)
         
-        ret = self._resolve_validation_schema_ignores(ret)
-        ret = self._cleanup_validation_schema_segments(ret, Data.get(ret, '_.cleanup', []))
+        # ret = self._resolve_validation_schema_ignores(ret)
+        ret = self._finalise_validation_schema(ret)
         
-        Data.forget(ret, '_')
+        # Data.forget(ret, '_')
         return ret    
     
     def _resolve_validation_schema_parameters(self, ret: dict, docs: dict) -> dict:
@@ -83,6 +80,12 @@ class Swagger:
         
         nest_key = self.get_validation_nest_key()
 
+        meta = {
+            'mutually_exclusive': [],
+            'required_one_of': [],
+            'required_together': [],
+        }
+        
         for sec_def_name in secs:
             sec_def = sec_defs[sec_def_name].copy()
             if Validate.blank(sec_def):
@@ -98,8 +101,14 @@ class Swagger:
                 sec_def['type'] = 'string'
                 for name_ in ['url_username', 'url_password']:
                     ret[name_] = self._build_component_validation_schema(sec_def)
+                
                 if self.is_validation_ansible():
                     ret['url_password']['no_log'] = True
+
+                meta['required_together'].append(['url_username', 'url_password'])
+                if len(secs) > 1:
+                    meta['mutually_exclusive'].append('url_username')
+                    meta['required_one_of'].append('url_username')
             else:
                 in_ = sec_def.get('in', '')
                 name_ = sec_def.get('name', '')
@@ -111,22 +120,67 @@ class Swagger:
                 if self.is_validation_ansible():
                     ret[in_][nest_key][name_]['no_log'] = True
 
+                if len(secs) > 1:
+                    meta['mutually_exclusive'].append(f'{in_}.{name_}')
+                    meta['required_one_of'].append(f'{in_}.{name_}')
+
                 if ret[in_][nest_key][name_]['required'] == True and ret[in_]['required'] == False:
                     ret[in_]['required'] = True
                 
                 if 'default' in ret[in_]:
                     del ret[in_]['default']
-        
+
+        for meta_key, meta_val in meta.items():
+            if Validate.blank(meta_val):
+                continue
+
+            current_val = Data.get(ret, f'_.{meta_key}', [])
+            current_val.append(meta_val.copy())
+            Data.set(ret, f'_.{meta_key}', current_val)
+
         return ret
     
-    def _resolve_validation_schema_remapping(self, ret: dict[str, str]) -> dict:
-        remap = self.remappings()
+    def _resolve_validation_schema_real_key_paths(self, ret: dict) -> dict:
+        remap = self.cfg('remap', {})
+        ret_dot = dict(Data.dot_sort_keys(Data.dot(ret), asc=False))
+        
+        for map_src, map_trg in remap.items(): #type: ignore
+            source = re.sub('\\.+', '.', map_src)
+            
+
+        ignore = self.cfg('ignore', {})
+
+        # ret = {'raw': remap.copy(), 'validation': {}, 'validation_flipped': {}, 'params': {}, 'params_flipped': {}}
+        
+        # if Validate.blank(remap):
+        #     return ret
+        
+        # for map_src, map_trg in remap.items(): #type: ignore
+        #     validation_source = self.get_normalised_nested_key(map_src)
+        #     validation_target = self.get_normalised_nested_key(map_trg)
+        #     ret['validation'][validation_source] = validation_target
+        #     param_source = self.get_normalised_nested_key(map_src, True)
+        #     param_target = self.get_normalised_nested_key(map_trg, True)
+        #     ret['params'][param_source] = param_target
+        
+        # ret['validation'] = dict(Data.dot_sort_keys(ret['validation'], asc = False))
+        # ret['validation_flipped'] = Data.flip(ret['validation'].copy())
+        # ret['params'] = dict(Data.dot_sort_keys(ret['params'], asc = False))
+        # ret['params_flipped'] = Data.flip(ret['params'].copy())
+
+        return ret
+    
+    def _resolve_validation_schema_remapping(self, ret: dict) -> dict:
+        remap = self.cfg('remap', {})
+        meta = {}
+        
+
+
         overwrite = self.cfg('remap_overwrite', False)
         ignore_missing = self.cfg('remap_ignore_missing', False)
         if Validate.blank(remap['validation']):
             return ret
         
-        cleanup = Data.get(ret, '_.cleanup', [])
         for source, target in remap['validation'].items(): #type: ignore
             if not Data.has(ret, source):
                 if ignore_missing:
@@ -142,73 +196,112 @@ class Swagger:
             Data.set(ret, target, component)
             Data.forget(ret, source)
 
-            cleanup.append(source)
-        
-        Data.set(ret, '_.cleanup', cleanup)
-
         return ret
     
-    def _resolve_validation_schema_ignores(self, ret: dict[str, str]) -> dict:
-        cleanup = Data.get(ret, '_.cleanup', [])
+    # def _resolve_validation_schema_ignores(self, ret: dict) -> dict:
+    #     for ignore in self.ignored():
+    #         Data.forget(ret, ignore)
         
-        for ignore in self.ignored():
-            Data.forget(ret, ignore)
-            cleanup.append(ignore)
-        
-        Data.set(ret, '_.cleanup', cleanup)
-        
-        return ret
+    #     return ret
     
-    def _cleanup_validation_schema_segments(self, ret: dict[str, str], segments: list[str]) -> dict:
-        if Validate.blank(segments):
-            return ret
-        
+    def _finalise_validation_schema(self, ret: dict) -> dict:
         nest_key = self.get_validation_nest_key()
-        cleanup = []
-        for source in segments:
-            if '.' not in source:
-                cleanup.append(source)
+        
+        # Cleanup:
+        for key, value in (dict(Data.dot_sort_keys(Data.dot(ret), asc=False))).items():
+            if str(key).startswith('_') or not str(key).endswith('.type') or value != 'dict':
                 continue
             
-            source_segments = source.split('.')
+            item_master_key = Str.chop_end(key, '.type')
+            item_is_sub = f'.{nest_key}.' in item_master_key
+            item_nest_key = f'{item_master_key}.{nest_key}'
+            is_item_nest_blank = Validate.blank(Data.get(ret, item_nest_key, {}))
+            if not is_item_nest_blank:
+                continue
+            if item_is_sub:
+                Data.forget(ret, item_master_key)
+            else:
+                Data.forget(ret, item_nest_key)
+                Data.set(ret, f'{item_master_key}.required', False)
+                Data.set(ret, f'{item_master_key}.default', {})
+        
+        if self.is_validation_ansible():
+            return ret
+        
+        # remap = self.remappings()
+        # for req_together in Data.get(ret, '_.required_together'):
+        #     req_together = Helper.to_iterable(req_together)
+        #     for req_key in req_together:
+        #         deps = Data.get(ret, f'req_key.dependencies', [])
+        #         deps.extend(req_together)
+        #         Data.set(ret, f'req_key.dependencies', list(set(req_key) - set(deps)))
 
-            if Validate.is_int_odd(len(source_segments)):
-                source_segments = source_segments[:-1]
-            
-            cleanup.extend(map('.'.join, itertools.accumulate(itertools.batched(source_segments, n=2), lambda x, y: x + y)))
+        # deps = Data.get(meta, '_.schema.url_username.dependencies', [])
+        # deps.append('url_password')
+        # Data.set(meta, '_.schema.url_username.dependencies', deps)
+        # deps = Data.get(meta, '_.schema.url_password.dependencies', [])
+        # deps.append('url_username')
+        # Data.set(meta, '_.schema.url_password.dependencies', deps)
 
-        cleanup = Data.dot_sort_keys(list(set(cleanup)), asc = False)
-
-        for dest in cleanup:
-            dest_master = Str.before_last(dest, '.')
-            if Data.has(ret, dest) and Validate.blank(Data.get(ret, dest, {})):
-                if dest.count('.') > 1:
-                    Data.forget(ret, dest_master)
-                else:
-                    Data.forget(ret, dest)
-                    if Data.has(ret, f'{dest_master}.required'):
-                        Data.set(ret, f'{dest_master}.required', False)
-                    if Data.has(ret, f'{dest_master}.default'):
-                        Data.set(ret, f'{dest_master}.default', {})
-                    if Data.has(ret, f'{dest_master}.options'):
-                        Data.set(ret, f'{dest_master}.options', {})
         
         return ret
     
-    def get_normalised_nested_key(self, key: str, only_base: bool = False) -> str:
+    # def _cleanup_validation_schema_segments(self, ret: dict[str, str], segments: list[str]) -> dict:
+    #     if Validate.blank(segments):
+    #         return ret
+        
+    #     nest_key = self.get_validation_nest_key()
+    #     cleanup = []
+    #     for source in segments:
+    #         if '.' not in source:
+    #             cleanup.append(source)
+    #             continue
+            
+    #         source_segments = source.split('.')
+
+    #         if Validate.is_int_odd(len(source_segments)):
+    #             source_segments = source_segments[:-1]
+            
+    #         cleanup.extend(map('.'.join, itertools.accumulate(itertools.batched(source_segments, n=2), lambda x, y: x + y)))
+
+    #     cleanup = Data.dot_sort_keys(list(set(cleanup)), asc = False)
+
+    #     for dest in cleanup:
+    #         dest_master = Str.before_last(dest, '.')
+    #         if Data.has(ret, dest) and Validate.blank(Data.get(ret, dest, {})):
+    #             if dest.count('.') > 1:
+    #                 Data.forget(ret, dest_master)
+    #             else:
+    #                 Data.forget(ret, dest)
+    #                 if Data.has(ret, f'{dest_master}.required'):
+    #                     Data.set(ret, f'{dest_master}.required', False)
+    #                 if Data.has(ret, f'{dest_master}.default'):
+    #                     Data.set(ret, f'{dest_master}.default', {})
+    #                 if Data.has(ret, f'{dest_master}.options'):
+    #                     Data.set(ret, f'{dest_master}.options', {})
+        
+    #     return ret
+    
+    def get_normalised_nested_key(self, key: str, ret: dict, only_base: bool = False) -> str:
         if '.' not in key:
             return key
         
         nest_key = self.get_validation_nest_key()
-        ret = re.sub('\\.+', '.', key).replace(f'.{nest_key}', '')
+        ret = re.sub('\\.+', '.', key)
         
-        return ret if only_base else ret.replace('.', f'.{nest_key}.')
+        # if only_base:
+        #     return ret
+        # elif self.is_validation_ansible():
+        #     return ret.replace('.', f'.{nest_key}.')
+
+        # return ret if only_base else 
+        return ret
     
     def _prepare_validation_schema(self) -> dict:
         ret = {}
         
         for default_key, default_item in (self.cfg('defaults', {})).items():
-            if default_key in self.remappings()['validation_flipped']:
+            if default_key in (self.cfg('remap', {})).values():
                 continue
 
             ret[default_key] = self._build_component_validation_schema(default_item)
@@ -285,50 +378,7 @@ class Swagger:
         return Data.get(container, key, default) if Validate.filled(key) else container
     
     def params(self, key: str  = '', default: Any = None) -> Any:
-        new_key = None
-        if Validate.filled(key):
-            param_key = Str.start(key, '_.params.')
-            if not Data.has(self._meta, param_key):
-                remap = self.remappings()
-                target = self.get_normalised_nested_key(key, True)
-                for dest in [key, target]:
-                    for src in ['params', 'params_flipped']:
-                        if dest in remap[src]:
-                            new_key = remap[src][dest]
-                            break
-                    
-                    if new_key:
-                        break
-        
-        if new_key:
-            key = new_key
-
-        return self._get_value(self._meta['_'].get('params', {}), key, default)
-
-    def remappings(self) -> dict:
-        remap = self.cfg('remap', {})
-        ret = {'validation': {}, 'validation_flipped': {}, 'params': {}, 'params_flipped': {}}
-        
-        if Validate.blank(remap):
-            return ret
-        
-        for map_src, map_trg in remap.items(): #type: ignore
-            validation_source = self.get_normalised_nested_key(map_src)
-            validation_target = self.get_normalised_nested_key(map_trg)
-            ret['validation'][validation_source] = validation_target
-            param_source = self.get_normalised_nested_key(map_src, True)
-            param_target = self.get_normalised_nested_key(map_trg, True)
-            ret['params'][param_source] = param_target
-        
-        ret['validation'] = dict(Data.dot_sort_keys(ret['validation'], asc = False))
-        ret['validation_flipped'] = Data.flip(ret['validation'].copy())
-        ret['params'] = dict(Data.dot_sort_keys(ret['params'], asc = False))
-        ret['params_flipped'] = Data.flip(ret['params'].copy())
-
-        return ret
-    
-    def ignored(self) -> list:
-        return [self.get_normalised_nested_key(item) for item in self.cfg('ignore', [])]
+        return self._get_value(self._meta.get('params', {}), key, default)
     
     def meta(self, key: str  = '', default: Any = None) -> Any:
         return self._get_value(self._meta, key, default)
@@ -342,21 +392,6 @@ class Swagger:
     def params_set(self, params: Mapping) -> None:
         self._meta['params'] = dict(params).copy()
     
-    # def _resolve_swagger(self, cache: Mapping = {}) -> None:
-    #     cache = dict(cache)
-    #     url_base = self.params('url_base')
-    #     url_base_hash = Str.to_md5(url_base) if Validate.filled(url_base) else None
-        
-    #     if Validate.filled(url_base_hash):
-            
-    #     docs_source = self.params('docs_source')
-    #     # self._meta_set('_.cache', {'meta': {}, 'docs': {}})
-    #     and Validate.filled()
-    #     swagger_hash = self.meta('_.swagger_hash', '')
-    #     swagger_ts = self.meta('_.swagger_timestamp')
-
-    #     docs_source
-    
     def _handle_parameter_changes(self) -> None:
         
         path_file_cache = self.meta('_.path.file.cache')
@@ -364,7 +399,6 @@ class Swagger:
             cache = json.loads((lambda f: f.read())(open(path_file_cache)))
         else:
             cache = {'meta': {}, 'docs': {}}
-        
 
         return
     

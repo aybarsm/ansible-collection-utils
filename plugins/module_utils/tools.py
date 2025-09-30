@@ -958,7 +958,7 @@ class Helper:
                 raise ValueError(f"Undefined to_ansible_type: {data}")
     
     @staticmethod
-    def to_iterable(data):
+    def to_iterable(data) -> list:
         return list(data) if Validate.is_sequence(data) else [data]
     
     @staticmethod
