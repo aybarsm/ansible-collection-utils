@@ -1,6 +1,6 @@
-from ansible_collections.aybarsm.utils.plugins import Aggregator as PrimaryAggregator
-from ansible.module_utils.urls import open_url, fetch_url
+from .. import Aggregator as PrimaryAggregator
 
+PrimaryAggregator = PrimaryAggregator
 Validate = PrimaryAggregator.tools.validate
 Data = PrimaryAggregator.tools.data
 Str = PrimaryAggregator.tools.str
@@ -25,9 +25,37 @@ class Swagger:
         
         self._meta = {'cfg': cfg}
         self._swagger = {}
-        # self.docs_extract(swagger, self.cfg('extraction', {}))
     
-    def get_validation_schema(self, path: str, method: str, remap: bool = True) -> dict:
+    def get_ansible_module_arguments(self, path: str, method: str, remap: bool = True, ignore: bool = True, merge_defaults: bool = True) -> dict:
+        is_ansible = self.is_validation_ansible()
+        self._cfg_set('settings.ansible.validation', True)
+
+        ret = {}
+        exception = None
+        try:
+            ret['argument_spec'] = self.get_validation_schema(path, method, remap, ignore, True)
+        except Exception as e:
+            exception = e
+
+        if exception:
+            self._cfg_set('settings.ansible.validation', is_ansible)
+            raise exception
+        
+        meta = {}
+        if '_' in ret['argument_spec']:
+            meta = ret['argument_spec']['_'].copy()
+            del ret['argument_spec']['_']
+
+        if Data.has(meta, 'ansible.kwargs'):
+            ret = Data.combine(Data.get(meta, 'ansible.kwargs', {}), ret, recursive=True)
+        
+        if merge_defaults:
+            combine_args = self.cfg('settings.combine.ansible.kwargs', {})
+            ret = Data.combine(self.cfg('settings.ansible.kwargs', {}), ret, **combine_args)
+        
+        return ret
+    
+    def get_validation_schema(self, path: str, method: str, remap: bool = True, ignore: bool = True, keep_meta: bool = False) -> dict:
         docs = self.swagger(f'paths.{path}.{method.lower()}')
         if Validate.blank(docs):
             raise ValueError(f'Path entry not found for {path} - {method.lower()} in docs')
@@ -40,11 +68,15 @@ class Swagger:
         if remap:
             ret = self._resolve_validation_schema_remapping(ret)
         
-        # ret = self._resolve_validation_schema_ignores(ret)
-        ret = self._finalise_validation_schema(ret)
+        if ignore:
+            ret = self._resolve_validation_schema_ignores(ret)
         
-        # Data.forget(ret, '_')
-        return ret    
+        ret = self._cleanup_validation_schema(ret)
+
+        if not keep_meta and '_' in ret:
+            del ret['_']
+        
+        return ret
     
     def _resolve_validation_schema_parameters(self, ret: dict, docs: dict) -> dict:
         if Validate.blank(docs.get('parameters', {})):
@@ -133,55 +165,70 @@ class Swagger:
         for meta_key, meta_val in meta.items():
             if Validate.blank(meta_val):
                 continue
-
-            current_val = Data.get(ret, f'_.{meta_key}', [])
-            current_val.append(meta_val.copy())
-            Data.set(ret, f'_.{meta_key}', current_val)
+            
+            meta_key = Str.start(meta_key, '_.ansible.kwargs.')
+            current_val = Data.get(ret, meta_key, [])
+            
+            if Validate.is_iterable_of_iterables(meta_val):
+                current_val.extend(meta_val.copy())
+            else:
+                current_val.append(meta_val.copy())
+            
+            Data.set(ret, meta_key, current_val)
 
         return ret
     
     def _resolve_validation_schema_real_key_paths(self, ret: dict) -> dict:
-        remap = self.cfg('remap', {})
-        ret_dot = dict(Data.dot_sort_keys(Data.dot(ret), asc=False))
+        ret_dot = dict(Data.dot_sort_keys(Data.dot(ret)))
+
+        Data.set(ret, '_.key_map', {})
         
-        for map_src, map_trg in remap.items(): #type: ignore
-            source = re.sub('\\.+', '.', map_src)
+        nested = []
+        nest_key = self.get_validation_nest_key()
+        for key, value in ret_dot.items():
+            if not str(key).endswith('.type') or str(key).startswith('_'):
+                continue
             
+            target_key = Str.before_last(key, '.type')
+            
+            if value in ['list', 'dict']:
+                nested.append(f'{target_key}.{nest_key}')
 
-        ignore = self.cfg('ignore', {})
+            if key.count('.') == 1:
+                ret['_']['key_map'][target_key] = target_key
+                continue
+            
+            real_key = [Str.after_last(target_key, '.')]
+            current_key = target_key
+            for i in range(0, key.count('.')):
+                current_key = Str.before_last(current_key, '.')
+                if '.' not in current_key:
+                    real_key.append(current_key)
+                    break
 
-        # ret = {'raw': remap.copy(), 'validation': {}, 'validation_flipped': {}, 'params': {}, 'params_flipped': {}}
-        
-        # if Validate.blank(remap):
-        #     return ret
-        
-        # for map_src, map_trg in remap.items(): #type: ignore
-        #     validation_source = self.get_normalised_nested_key(map_src)
-        #     validation_target = self.get_normalised_nested_key(map_trg)
-        #     ret['validation'][validation_source] = validation_target
-        #     param_source = self.get_normalised_nested_key(map_src, True)
-        #     param_target = self.get_normalised_nested_key(map_trg, True)
-        #     ret['params'][param_source] = param_target
-        
-        # ret['validation'] = dict(Data.dot_sort_keys(ret['validation'], asc = False))
-        # ret['validation_flipped'] = Data.flip(ret['validation'].copy())
-        # ret['params'] = dict(Data.dot_sort_keys(ret['params'], asc = False))
-        # ret['params_flipped'] = Data.flip(ret['params'].copy())
+                if current_key not in nested:
+                    real_key.append(Str.after_last(current_key, '.'))
+            
+            real_key = '.'.join(list(reversed(real_key)))
+            ret['_']['key_map'][real_key] = target_key
 
         return ret
     
     def _resolve_validation_schema_remapping(self, ret: dict) -> dict:
         remap = self.cfg('remap', {})
-        meta = {}
         
-
-
-        overwrite = self.cfg('remap_overwrite', False)
-        ignore_missing = self.cfg('remap_ignore_missing', False)
-        if Validate.blank(remap['validation']):
+        if Validate.blank(remap):
             return ret
         
-        for source, target in remap['validation'].items(): #type: ignore
+        overwrite = self.cfg('remap_overwrite', False)
+        ignore_missing = self.cfg('remap_ignore_missing', False)
+        
+        for source, target in remap.items(): #type: ignore
+            if source not in ret['_']['key_map']:
+                raise ValueError(f'Remapping source key [{source}] could not be found in real key mappings')
+            
+            source = ret['_']['key_map'][source]
+            
             if not Data.has(ret, source):
                 if ignore_missing:
                     continue
@@ -198,13 +245,18 @@ class Swagger:
 
         return ret
     
-    # def _resolve_validation_schema_ignores(self, ret: dict) -> dict:
-    #     for ignore in self.ignored():
-    #         Data.forget(ret, ignore)
+    def _resolve_validation_schema_ignores(self, ret: dict) -> dict:
+        ignore = self.cfg('ignore', {})
         
-    #     return ret
+        for ignore in ignore:
+            if ignore not in ret['_']['key_map']:
+                raise ValueError(f'Ignore source key [{ignore}] could not be found in real key mappings')
+            
+            Data.forget(ret, ret['_']['key_map'][ignore])
+        
+        return ret
     
-    def _finalise_validation_schema(self, ret: dict) -> dict:
+    def _cleanup_validation_schema(self, ret: dict) -> dict:
         nest_key = self.get_validation_nest_key()
         
         # Cleanup:
@@ -244,57 +296,6 @@ class Swagger:
         # Data.set(meta, '_.schema.url_password.dependencies', deps)
 
         
-        return ret
-    
-    # def _cleanup_validation_schema_segments(self, ret: dict[str, str], segments: list[str]) -> dict:
-    #     if Validate.blank(segments):
-    #         return ret
-        
-    #     nest_key = self.get_validation_nest_key()
-    #     cleanup = []
-    #     for source in segments:
-    #         if '.' not in source:
-    #             cleanup.append(source)
-    #             continue
-            
-    #         source_segments = source.split('.')
-
-    #         if Validate.is_int_odd(len(source_segments)):
-    #             source_segments = source_segments[:-1]
-            
-    #         cleanup.extend(map('.'.join, itertools.accumulate(itertools.batched(source_segments, n=2), lambda x, y: x + y)))
-
-    #     cleanup = Data.dot_sort_keys(list(set(cleanup)), asc = False)
-
-    #     for dest in cleanup:
-    #         dest_master = Str.before_last(dest, '.')
-    #         if Data.has(ret, dest) and Validate.blank(Data.get(ret, dest, {})):
-    #             if dest.count('.') > 1:
-    #                 Data.forget(ret, dest_master)
-    #             else:
-    #                 Data.forget(ret, dest)
-    #                 if Data.has(ret, f'{dest_master}.required'):
-    #                     Data.set(ret, f'{dest_master}.required', False)
-    #                 if Data.has(ret, f'{dest_master}.default'):
-    #                     Data.set(ret, f'{dest_master}.default', {})
-    #                 if Data.has(ret, f'{dest_master}.options'):
-    #                     Data.set(ret, f'{dest_master}.options', {})
-        
-    #     return ret
-    
-    def get_normalised_nested_key(self, key: str, ret: dict, only_base: bool = False) -> str:
-        if '.' not in key:
-            return key
-        
-        nest_key = self.get_validation_nest_key()
-        ret = re.sub('\\.+', '.', key)
-        
-        # if only_base:
-        #     return ret
-        # elif self.is_validation_ansible():
-        #     return ret.replace('.', f'.{nest_key}.')
-
-        # return ret if only_base else 
         return ret
     
     def _prepare_validation_schema(self) -> dict:
@@ -383,30 +384,26 @@ class Swagger:
     def meta(self, key: str  = '', default: Any = None) -> Any:
         return self._get_value(self._meta, key, default)
     
+    def _meta_set(self, key: str, value: Any) -> None:
+        Data.set(self._meta, key, value)
+    
+    def _meta_forget(self, key: str) -> None:        
+        Data.forget(self._meta, key)
+    
+    def meta_has(self, key: str) -> bool:
+        return Data.has(self._meta, key)
+    
     def cfg(self, key: str  = '', default: Any = None) -> Any:
         return self._get_value(self._meta['cfg'], key, default)
+    
+    def _cfg_set(self, key: str, value: Any) -> None:
+        Data.set(self._meta['cfg'], key, value)
 
     def cfg_has(self, key: str) -> bool:
         return Data.has(self._meta['cfg'], key)
     
     def params_set(self, params: Mapping) -> None:
         self._meta['params'] = dict(params).copy()
-    
-    def _handle_parameter_changes(self) -> None:
-        
-        path_file_cache = self.meta('_.path.file.cache')
-        if Validate.file_exists(path_file_cache):
-            cache = json.loads((lambda f: f.read())(open(path_file_cache)))
-        else:
-            cache = {'meta': {}, 'docs': {}}
-
-        return
-    
-    def _handle_config_changes(self) -> None:
-        from ansible.module_utils.basic import _load_params
-        ansible_load_params = self.cfg('settings.ansible.load_params', False)
-        if  ansible_load_params == True and not self.meta_has('_.params'):
-            self.params_set(_load_params())
     
     def _save_cache(self, cache: Mapping):
         path_file_cache = self.meta('_.path.file.cache')
@@ -416,15 +413,6 @@ class Swagger:
 
     def swagger(self, key: str = '', default: Any = None) -> Any:
         return self._get_value(self._swagger, key, default)
-    
-    def _meta_set(self, key: str, value: Any) -> None:
-        Data.set(self._meta, key, value)
-    
-    def _meta_forget(self, key: str) -> None:        
-        Data.forget(self._meta, key)
-    
-    def meta_has(self, key: str) -> bool:
-        return Data.has(self._meta, key)
     
     def is_validation_ansible(self):
         return self.cfg('settings.ansible.validation', False) == True
@@ -523,7 +511,6 @@ class Swagger:
         dotted_keys = [item for item in dotted.keys() if pattern.match(item)]
         ref_keys = Data.dot_sort_keys(dotted_keys, asc = False)
         ref_map = Data.dot_sort_keys(Data.only_with(dotted, *ref_keys, no_dot = True), asc = False) #type: ignore
-        # ref_map = dict(reversed(sorted(dict(Data.only_with(dotted, *ref_keys, no_dot = True)).items(), key=lambda item: item[0].count('.')))) #type: ignore
         ref_sources_keys = [Swagger.resolve_ref_key(ref_source_key) for ref_source_key in set(ref_map.values())] #type: ignore
         ref_sources_dotted = Data.dot(Data.only_with(swagger, *ref_sources_keys))
         ref_sources_dotted_keys = [item for item in ref_sources_dotted.keys() if pattern.match(item)]
@@ -552,9 +539,15 @@ class Swagger:
         if Validate.is_mapping(source):
             swagger = dict(source) #type: ignore
         elif Validate.str_is_url(str(source)):
-            kwargs = dict(kwargs)
-            kwargs['url'] = str(source)
-            swagger = json.loads(open_url(**kwargs).read().decode('utf-8'))
+            kwargs.pop('url', None)
+            if self.is_validation_ansible():
+                from ansible.module_utils.urls import open_url
+                swagger = json.loads(open_url(str(source), **kwargs).read().decode('utf-8'))
+            else:
+                params = kwargs.pop('params', None)
+                response = PrimaryAggregator.tools.requests.get(str(source), params, **kwargs)
+                response.raise_for_status()
+                swagger = response.json().copy()
         elif Validate.file_exists(source):
             swagger = json.loads((lambda f: f.read())(open(str(source))))
         elif Validate.str_is_json(str(source)):
