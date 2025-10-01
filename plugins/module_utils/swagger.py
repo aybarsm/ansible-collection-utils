@@ -1,6 +1,6 @@
 from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Aggregator
 
-Aggregator = Aggregator
+BaseAggregator = Aggregator
 Validate = Aggregator.tools.validate
 Data = Aggregator.tools.data
 Str = Aggregator.tools.str
@@ -99,9 +99,7 @@ class Swagger:
         
         return ret
     
-    def prepare_execution(self, path: str, method: str, params: dict = {}) -> dict:
-        v = self.get_validation_schema(path, method, False, False, True)
-        
+    def prepare_execution(self, path: str, method: str, params: dict = {}, before_finalise: Aggregator.tools.typing.Callable | None = None) -> dict:
         if Validate.blank(params):
             params = self.params().copy()
         
@@ -120,7 +118,6 @@ class Swagger:
                 Data.set(params, target, Data.get(params, source))
                 Data.forget(params, source)
         
-
         url_path = path
         for arg, val in params.get('path', {}).items():
             url_path = url_path.replace(f'{{{arg}}}', str(val))
@@ -148,6 +145,12 @@ class Swagger:
         for source, target in {'header': 'headers', 'body': 'data'}.items():
             if Validate.filled(Data.get(params, source)):
                 ret[target] = params[source].copy()
+        
+        if before_finalise:
+            ret = before_finalise(ret)
+
+        if 'application/json' in ret['headers']['Content-Type'] and Validate.filled(ret['data']) and not Validate.is_string(ret['data']):
+            ret['data'] = json.dumps(ret['data']).encode("utf-8")
 
         return ret
     
@@ -237,7 +240,7 @@ class Swagger:
                 
                 if self.is_validation_ansible():
                     ret['url_password']['no_log'] = True
-
+                # TODO: Implement
                 # req_together = ['url_username', 'url_password']
                 # Data.append(ret, '_.ansible.required_together', req_together, ioi_extend = True)
 

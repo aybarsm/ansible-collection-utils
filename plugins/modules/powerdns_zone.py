@@ -1,6 +1,6 @@
 from __future__ import annotations
 from ansible.module_utils.basic import AnsibleModule, env_fallback
-from ansible_collections.aybarsm.utils.plugins.module_utils.swagger import Swagger, Aggregator
+from ansible_collections.aybarsm.utils.plugins.module_utils.swagger import Swagger, BaseAggregator as Aggregator
 from ansible.module_utils.urls import fetch_url
 
 Helper = Aggregator.tools.helper
@@ -12,22 +12,18 @@ json = Aggregator.tools.json
 _swagger_config = {
     'settings': {
         'ansible': {
-            'validation': True,
             'load_params': True,
         },
-        'remap': {
-            'ignore_missing': True,
-        }
     },
     'defaults': {
-        # 'url_base': {'_validation': {'fallback': (env_fallback, ['PDNS_API_URL_BASE'])}},
-        # 'docs_source': {'_validation': {'fallback': (env_fallback, ['PDNS_API_DOCS_SOURCE'])}},
-        # 'docs_validate_certs': {'_validation': {'fallback': (env_fallback, ['PDNS_API_DOCS_VALIDATE_CERTS'])}},
-        # 'docs_cache_expires': {'_validation': {'fallback': (env_fallback, ['PDNS_API_DOCS_CACHE_EXPIRES'])}},
-        # 'validate_certs': {'_validation': {'fallback': (env_fallback, ['PDNS_API_VALIDATE_CERTS'])}},
-        # 'api_key': {'_validation': {'fallback': (env_fallback, ['PDNS_API_API_KEY'])}},
-        # 'url_username': {'_validation': {'fallback': (env_fallback, ['PDNS_API_USERNAME'])}},
-        # 'url_password': {'_validation': {'fallback': (env_fallback, ['PDNS_API_PASSWORD'])}},
+        'url_base': {'_validation': {'fallback': (env_fallback, ['PDNS_API_URL_BASE'])}},
+        'docs_source': {'_validation': {'fallback': (env_fallback, ['PDNS_API_DOCS_SOURCE'])}},
+        'docs_validate_certs': {'_validation': {'fallback': (env_fallback, ['PDNS_API_DOCS_VALIDATE_CERTS'])}},
+        'docs_cache_expires': {'_validation': {'fallback': (env_fallback, ['PDNS_API_DOCS_CACHE_EXPIRES'])}},
+        'validate_certs': {'_validation': {'fallback': (env_fallback, ['PDNS_API_VALIDATE_CERTS'])}},
+        'api_key': {'_validation': {'fallback': (env_fallback, ['PDNS_API_API_KEY'])}},
+        'url_username': {'_validation': {'fallback': (env_fallback, ['PDNS_API_USERNAME'])}},
+        'url_password': {'_validation': {'fallback': (env_fallback, ['PDNS_API_PASSWORD'])}},
         'state': {'type': 'string', 'required': True, 'enum': ['list', 'retrieve', 'update', 'present', 'absent', 'rrsets']},
     },
     'remap': {
@@ -36,6 +32,12 @@ _swagger_config = {
         'header.X-API-Key': 'api_key',
     },
 }
+
+def _prepare_rrsets(ret: dict)-> dict:
+    Data.set(ret, 'data.rrsets', Data.get(ret, 'data.zone_struct.rrsets'))
+    Data.forget(ret, 'data.zone_struct')
+    
+    return ret
 
 def main():
     swagger = Swagger(_swagger_config)
@@ -87,48 +89,33 @@ def main():
     
     swagger.params_combine(v.normalized(swagger.document()), recursive=True)
 
-    # save_json = {
-    #     'module_kwargs': module_kwargs,
-    #     'primary_key_types': {}
-    # }
+    module = AnsibleModule(**module_kwargs)
     
-    # for primary_key in module_kwargs['argument_spec'].keys():
-    #     dest = f'argument_spec.{primary_key}'
-    #     type_ = Data.get(module_kwargs, f'{dest}.type', '')
-    #     has_options = Data.has(module_kwargs, f'{dest}.options')
-    #     if type_ not in ['dict', 'list'] or not has_options:
-    #         continue
-        
-    #     Data.set(save_json, f'{dest}.options', type_)
-    #     Data.forget(module_kwargs, f'{dest}.options')
-        # if type_ in ['dict', 'list'] and 'options' in module_kwargs['argument_spec'][primary_key]:
-            # Data.set(save_json, f'primary_key_types.{primary_key}', type_)
-            # Data.set(save_json, f'primary_key_types.{primary_key}', type_)
-            # module_kwargs = Data.all_except(module_kwargs, f'primary_key_types.{primary_key}.options')
-            # del module_kwargs['argument_spec'][primary_key]['options']
-        # Data.set(save_json, f'primary_key_types.{primary_key}', module_kwargs['argument_spec'][primary_key]['type'])
+    callback = None
+    if state == 'rrsets':
+        callback = _prepare_rrsets
 
+    fetch_kwargs = swagger.prepare_execution(path, method, before_finalise = callback)
+    url = fetch_kwargs.pop('url', '')
+    
+    # fetch_kwargs['type_data'] = type(fetch_kwargs['data']).__name__
     # path_debug = '/Users/aybarsm/PersonalSync/Coding/ansible/blrm/dev/debug_module.json'
-    # Helper.save_as_json(save_json, path_debug, overwrite = True, indent=2, ensure_ascii=False)
-
-    # module = AnsibleModule(**module_kwargs)
-    # fetch_kwargs = swagger.prepare_execution(path, method)
-
-    # url = fetch_kwargs.pop('url', '')
-    # resp, info = fetch_url(module, url, **fetch_kwargs)
-    # res = Helper.fetch_url_to_module_result(resp, info)
+    # Helper.save_as_json(fetch_kwargs, path_debug, overwrite=True, indent=2, ensure_ascii=False)
 
     
-    # if res['fail']:
-    #     module.fail_json(*res['args'], **res['kwargs'])
-    #     return
+    resp, info = fetch_url(module, url, **fetch_kwargs)
+    res = Helper.fetch_url_to_module_result(resp, info)
+    
+    if res['failed']:
+        module.fail_json(res['msg'], **res['kwargs'])
+        return
 
-    # ret = {
-    #     'changed': fetch_kwargs['method'] not in ['GET', 'HEAD', 'OPTIONS'],
-    #     'result': res['content'],
-    # }
+    ret = {
+        'changed': fetch_kwargs['method'] not in ['GET', 'HEAD', 'OPTIONS'],
+        'result': res['content'],
+    }
 
-    module.exit_json(**{'response': 'ok'})
+    module.exit_json(**ret)
 
 if __name__ == '__main__':
     main()

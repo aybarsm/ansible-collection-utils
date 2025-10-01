@@ -1,7 +1,6 @@
 import sys, abc, types, itertools, typing, os, pathlib, re, json, yaml, inspect, io, datetime, requests
 import string, random, math, uuid, tempfile, importlib, urllib, urllib.parse, urllib.error, hashlib
 import jinja2, pydash, cerberus, rich.pretty, rich.console
-# import jinja2, ansible.errors
 from collections.abc import Sequence, MutableSequence, Mapping, MutableMapping
 
 _DEFAULTS_SWAGGER = {
@@ -712,11 +711,8 @@ class DataQuery:
                 tokens[token_key] = {'cond': None, 'tests': []}
                 if len(stack) > 1:
                     tokens[token_key]['parent'] = '.'.join(str(n['idx']) for n in stack[:-1])
-                    # tokens[token_key]['master'] = str(stack[0]['idx'])
                 else:
                     tokens[token_key]['parent'] = '0'
-                    # tokens[token_key]['parent'] = str(stack[0]['idx'])
-                    # tokens[token_key]['master'] = '0'
             
             if segment == '?':
                 batch.append(self._bindings_pos[b_pos])
@@ -738,8 +734,6 @@ class DataQuery:
                 tokens[token_key]['tests'].append(self._prepare_test_element(*batch))
 
         return tokens
-        # return dict(reversed(dict(sorted(tokens.items(), key=lambda item: item[1]["parent"])).items()))
-        # return dict(sorted(tokens.items(), reverse=True))
     
     def _prepare_test_element(self, *args):
         args = Helper.to_iterable(args)
@@ -885,9 +879,9 @@ class Helper:
             return
         
         if Validate.is_mapping(content):
-            content = json.dumps(dict(content), **kwargs)
+            content = json.dumps(Helper.to_safe_json(dict(content)), **kwargs)
         elif Validate.is_sequence(content):
-            content = json.dumps(list(content), **kwargs)
+            content = json.dumps(Helper.to_safe_json(list(content)), **kwargs)
         
         with open(path, "w", encoding="utf-8") as f:
             f.write(str(content))
@@ -1146,9 +1140,15 @@ class Helper:
     
     @staticmethod
     def to_safe_json(data):
-        if isinstance(data, (str, int, float, bool)) or data is None:
+        
+        if Validate.is_bytes(data):
+            return Helper.to_safe_json(Helper.to_native(data))
+        elif Validate.is_string(data) and Validate.str_is_json(data):
+            return Helper.to_safe_json(json.loads(data))
+        elif Validate.is_string(data) and Validate.str_is_yaml(data):
+            return Helper.to_safe_json(yaml.safe_load(data))
+        elif isinstance(data, (str, int, float, bool)) or data is None:
             return data
-
         elif Validate.is_hostvars(data):
             return Helper.hostvars_to_dict(data)
         elif Validate.is_hostvarsvars(data):
@@ -1218,7 +1218,12 @@ class Helper:
         status = int(info.get('status', -1))
 
         if status == -1:
-            ret = {'fail': True, 'args': [info.get('msg')], 'kwargs': {}}
+            msg = info.get('msg')
+            exception = info.get('exception', '')
+            if Validate.filled(exception):
+                msg = f'Message: {msg} | Exception: {exception}'
+            
+            ret = {'failed': True, 'msg': msg, 'kwargs': {}}
         elif not (200 <= status < 300):
             err_kwargs = {
                 'status': status,
@@ -1233,9 +1238,9 @@ class Helper:
             if Validate.filled(err_body):
                 err_kwargs['body'] = err_body
 
-            ret = {'fail': True, 'args': [info.get('msg')], 'kwargs': err_kwargs}
+            ret = {'failed': True, 'msg': info.get('msg'), 'kwargs': err_kwargs}
         else:
-            ret = {'fail': False}
+            ret = {'failed': False}
             ret['content'] = Helper.to_native(resp.read())
             
             if Validate.str_is_json(ret['content']):
@@ -2012,7 +2017,6 @@ class Aggregator:
         re = re
         pathlib = pathlib
         abc = abc
-        # ansible_errors = ansible.errors
         itertools = itertools
         requests = requests
     config = _collection_config()
