@@ -1,5 +1,5 @@
 import sys, abc, types, itertools, typing, os, pathlib, re, json, yaml, inspect, io, datetime, requests
-import string, random, math, uuid, tempfile, importlib, urllib, urllib.parse, hashlib
+import string, random, math, uuid, tempfile, importlib, urllib, urllib.parse, urllib.error, hashlib
 import jinja2, pydash, cerberus, rich.pretty, rich.console
 # import jinja2, ansible.errors
 from collections.abc import Sequence, MutableSequence, Mapping, MutableMapping
@@ -35,21 +35,14 @@ _DEFAULTS_SWAGGER = {
                 'supports_check_mode': False,
             },
             'fetch_url': {
-                'kwargs': {
-                    'data': None,
-                    'headers': None,
-                    'method': None,
-                    'use_proxy': None,
-                    'force': False,
-                    'last_mod_time': None,
-                    'timeout': 10,
-                    'use_gssapi': False,
-                    
-                =None, force=False, last_mod_time=None, timeout=10,
-              use_gssapi=False, unix_socket=None, ca_path=None, cookies=None, unredirected_headers=None,
-              decompress=True, ciphers=None, use_netrc=True
-                }
+                'kwargs': []
             }
+        },
+        'defaults': {
+            'header': {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
         },
     },
     'defaults': {
@@ -57,25 +50,23 @@ _DEFAULTS_SWAGGER = {
         'docs_source': {'type': 'string', 'required': True},
         'docs_validate_certs': {'type': 'boolean', 'required': False, 'default': True},
         'docs_cache_expires': {'type': 'integer', 'required': False},
-        # 'docs_cache_expires': {'type': 'integer', 'required': False, 'default': 0},
         'url_username': {'type': 'string', 'required': False},
         'url_password': {'type': 'string', 'required': False, '_ansible': {'no_log': True}},
-        'validate_certs': {'type': 'boolean', 'required': False, 'default': True},
-        'use_proxy': {'type': 'boolean', 'required': False, 'default': False},
-        'http_agent': {'type': 'string', 'required': False, 'default': ''},
-        'force_basic_auth': {'type': 'string', 'required': False, 'default': ''},
-        'client_cert': {'type': 'string', 'required': False, 'default': None},
-        'client_key': {'type': 'string', 'required': False, 'default': None},
-        'ca_path': {'type': 'string', 'required': False, 'default': None},
-        'use_gssapi': {'type': 'boolean', 'required': False, 'default': False},
-        'force': {'type': 'boolean', 'required': False, 'default': False},
-        # 'timeout': {'type': 'integer', 'required': False, 'default': 10},
+        'validate_certs': {'type': 'boolean', 'required': False},
+        'use_proxy': {'type': 'boolean', 'required': False},
+        'http_agent': {'type': 'string', 'required': False},
+        'force_basic_auth': {'type': 'string', 'required': False},
+        'client_cert': {'type': 'string', 'required': False},
+        'client_key': {'type': 'string', 'required': False},
+        'ca_path': {'type': 'string', 'required': False},
+        'use_gssapi': {'type': 'boolean', 'required': False},
+        'force': {'type': 'boolean', 'required': False},
         'timeout': {'type': 'integer', 'required': False},
-        'unix_socket': {'type': 'string', 'required': False, 'default': None},
-        'unredirected_headers': {'type': 'array', 'required': False, 'default': None, 'items': {'type': 'string'}},
-        'use_netrc': {'type': 'boolean', 'required': False, 'default': True},
-        'decompress': {'type': 'boolean', 'required': False, 'default': True},
-        'ciphers': {'type': 'array', 'required': False, 'default': None, 'items': {'type': 'string'}},
+        'unix_socket': {'type': 'string', 'required': False},
+        'unredirected_headers': {'type': 'array', 'required': False, 'items': {'type': 'string'}},
+        'use_netrc': {'type': 'boolean', 'required': False},
+        'ciphers': {'type': 'array', 'required': False, 'items': {'type': 'string'}},
+        'decompress': {'type': 'boolean', 'required': False},
     },
 }
 
@@ -544,6 +535,43 @@ class Data:
 
         return Data.combine(*ret, **kwargs)
 
+    @staticmethod
+    def difference(a: Sequence, b: Sequence, *args: Sequence) -> list:
+        if not Validate.is_sequence(a) or not Validate.is_sequence(b):
+            raise ValueError('Invalid sequence type')
+        
+        ret = set(a) - set(b)
+
+        for seq in args:
+            if not Validate.is_sequence(seq):
+                raise ValueError('Invalid sequence type')
+            
+            ret = set(ret) - set(seq)
+        
+        return list(ret)
+    
+    @staticmethod
+    def append(data, key: str, value, **kwargs) -> None:
+        is_ioi_extend = kwargs.pop('ioi_extend', False)
+        exclude = kwargs.pop('exclude', [])
+        is_unique = kwargs.pop('unique', False)
+
+        current = list(Data.get(data, key, []))
+        if is_ioi_extend and Validate.is_iterable_of_iterables(value):
+            current.extend(value)
+        else:
+            current.append(value)
+        
+        if Validate.filled(exclude):
+            for exc in exclude:
+                exc = Helper.to_iterable(exc)
+                current = Data.difference(current, exc)
+        
+        if is_unique:
+            current = list(set(current))
+
+        Data.set(data, key, current.copy())
+
 class DataQuery:
     _op_and = ['&&']
     _op_or = ['||']
@@ -849,6 +877,21 @@ class DataQuery:
         return self._data
 
 class Helper:
+    @staticmethod
+    def save_as_json(content: Mapping | Sequence | str, path: str, **kwargs) -> None:
+        overwrite = kwargs.pop('overwrite', False)
+
+        if Validate.file_exists(path) and not overwrite:
+            return
+        
+        if Validate.is_mapping(content):
+            content = json.dumps(dict(content), **kwargs)
+        elif Validate.is_sequence(content):
+            content = json.dumps(list(content), **kwargs)
+        
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(str(content))
+
     @staticmethod
     def path_rglob(path: pathlib.Path | str):
         path = pathlib.Path(path)
@@ -1170,6 +1213,36 @@ class Helper:
         from ansible.module_utils.common.text.converters import to_native
         return to_native(*args, **kwargs)
 
+    @staticmethod
+    def fetch_url_to_module_result(resp, info):
+        status = int(info.get('status', -1))
+
+        if status == -1:
+            ret = {'fail': True, 'args': [info.get('msg')], 'kwargs': {}}
+        elif not (200 <= status < 300):
+            err_kwargs = {
+                'status': status,
+            }
+            
+            err_body = None
+            if Validate.is_http_error(resp):
+                err_body = Helper.to_native(info.get('body', ''))
+            else:
+                err_body = Helper.to_native(resp.read())
+
+            if Validate.filled(err_body):
+                err_kwargs['body'] = err_body
+
+            ret = {'fail': True, 'args': [info.get('msg')], 'kwargs': err_kwargs}
+        else:
+            ret = {'fail': False}
+            ret['content'] = Helper.to_native(resp.read())
+            
+            if Validate.str_is_json(ret['content']):
+                ret['content'] = json.loads(ret['content'])
+        
+        return ret
+
 class Str:
     @staticmethod
     def to_str(data) -> str | list[str]:
@@ -1317,6 +1390,10 @@ class Str:
         return data
 
 class Validate:
+    @staticmethod
+    def is_http_error(data):
+        return Validate.is_object(data) and isinstance(data, urllib.error.HTTPError)
+    
     @staticmethod
     def is_int_even(data: int) -> bool:
         return data % 2 == 0
@@ -1898,6 +1975,13 @@ class Validator(cerberus.Validator):
             self._error(field, f"Must be an [{value}] existing directory") #type: ignore
         elif constraint is False and Validate.dir_exists(value):
             self._error(field, f"Must be a [{value}] missing directory") #type: ignore
+
+    def error_message(self) -> str:
+        parts = []
+        for key_name, error in (Data.dot(self.errors)).items():
+            parts.append(f'{key_name}: {error}')
+        
+        return ' | '.join(parts)
 
 def _collection_config() -> dict:
     path_root = pathlib.Path(__file__).parent.parent

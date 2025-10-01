@@ -34,7 +34,34 @@ class Swagger:
         if  ansible_load_params == True and not self.meta_has('params'):
             self.params_set(_load_params())
     
-    def get_ansible_module_arguments(self, path: str, method: str, remap: bool = True, ignore: bool = True, merge_defaults: bool = True) -> dict:
+    def get_cerberus_validation_schema(self, path: str, method: str, remap: bool = True, ignore: bool = True) -> dict:
+        is_ansible = self.is_validation_ansible()
+        self._cfg_set('settings.ansible.validation', False)
+
+        ret = {}
+        exception = None
+        try:
+            ret = self.get_validation_schema(path, method, remap, ignore, True)
+        except Exception as e:
+            exception = e
+
+        if exception:
+            self._cfg_set('settings.ansible.validation', is_ansible)
+            raise exception
+        
+        self._cfg_set('settings.ansible.validation', is_ansible)
+
+        if '_' in ret:
+            del ret['_']
+        
+        return ret
+    
+    def get_ansible_module_arguments(self, path: str, method: str, **kwargs) -> dict:
+        remap = kwargs.pop('remap', True)
+        ignore = kwargs.pop('ignore', True)
+        merge_defaults = kwargs.pop('merge_defaults', True)
+        only_primary = kwargs.pop('only_primary', False)
+
         is_ansible = self.is_validation_ansible()
         self._cfg_set('settings.ansible.validation', True)
 
@@ -61,23 +88,75 @@ class Swagger:
             combine_args = self.cfg('settings.combine.ansible.kwargs', {})
             ret = Data.combine(self.cfg('settings.ansible.kwargs', {}), ret, **combine_args)
         
+        if only_primary:
+            primary_keys = list(ret['argument_spec'].keys())
+            for primary_key in primary_keys:
+                type_ = Data.get(ret, f'argument_spec.{primary_key}.type', '')
+                if type_ in ['dict', 'list']:
+                    Data.forget(ret, f'argument_spec.{primary_key}.options')
+        
         self._cfg_set('settings.ansible.validation', is_ansible)
         
         return ret
     
-    def get_ansible_fetch_url_arguments(self, path: str, method: str, params: dict = {}) -> dict:
+    def prepare_execution(self, path: str, method: str, params: dict = {}) -> dict:
         v = self.get_validation_schema(path, method, False, False, True)
         
         if Validate.blank(params):
             params = self.params().copy()
         
+        remap = self.cfg('remap', {})
+        
+        if Validate.filled(remap):
+            ignore_missing = self.cfg('settings.remap.ignore_missing', False)
+
+            for target, source in remap.items():
+                if not Data.has(params, source):
+                    if ignore_missing:
+                        continue
+                    else:
+                        raise ValueError(f'Parameters source key [{source}] does not exist')
+
+                Data.set(params, target, Data.get(params, source))
+                Data.forget(params, source)
         
 
+        url_path = path
+        for arg, val in params.get('path', {}).items():
+            url_path = url_path.replace(f'{{{arg}}}', str(val))
+        
+        url_query = ''
+        if Validate.filled(params.get('query', {})):
+            url_query = '?' + Str.urlencode(params.get('query', {}))
+
+        for header, target in {'Content-Type': 'consumes', 'Accept': 'produces'}.items():
+            if Validate.filled(Data.get(params, f'header.{header}')):
+                continue
+
+            if 'application/json' in self.swagger(target, []) or Validate.blank(self.swagger(target, [])):
+                header_val = self.cfg(f'settings.defaults.header.{header}', 'application/json')
+            else:
+                header_val = self.swagger(target, [])[0]
+            
+            Data.set(params, f'header.{header}', header_val)
+            
+        ret = {
+            'url': params.get('url_base', '').rstrip('/') + url_path + url_query,
+            'method': method.upper(),
+        }
+
+        for source, target in {'header': 'headers', 'body': 'data'}.items():
+            if Validate.filled(Data.get(params, source)):
+                ret[target] = params[source].copy()
+
+        return ret
     
     def get_validation_schema(self, path: str, method: str, remap: bool = True, ignore: bool = True, keep_meta: bool = False) -> dict:
         docs = self.swagger(f'paths.{path}.{method.lower()}')
+        # docs = self._swagger.get('paths', {}).get(path, {}).get(method.lower(), {})
         if Validate.blank(docs):
-            raise ValueError(f'Path entry not found for {path} - {method.lower()} in docs')
+            avail = ', '.join(self.swagger('paths', {}).keys())
+            raise ValueError(f'Path entry not found for {path} - {method.lower()} in docs. Available: {avail}')
         
         ret = self.prepare_validation_schema()
         ret = self._resolve_validation_schema_parameters(ret, docs)
@@ -91,7 +170,7 @@ class Swagger:
             ret = self._resolve_validation_schema_ignores(ret)
         
         ret = self._cleanup_validation_schema(ret)
-
+    
         if not keep_meta and '_' in ret:
             del ret['_']
         
@@ -124,6 +203,7 @@ class Swagger:
         sec_defs = self.swagger(f'securityDefinitions', {})
         secs = docs.get('security', self.swagger('security', []))
         secs = list(set([list(sec.keys())[0] for sec in secs if list(sec.keys())[0] in sec_defs]))
+        # secs.append('basicAuth')
         
         if Validate.blank(secs):
             return ret
@@ -131,9 +211,12 @@ class Swagger:
         nest_key = self.get_validation_nest_key()
 
         meta = {
-            'mutually_exclusive': [],
-            'required_one_of': [],
-            'required_together': [],
+            'ansible': {
+                'mutually_exclusive': [],
+                'required_one_of': [],
+                'required_together': [],
+            },
+            'cerberus': {}
         }
         
         for sec_def_name in secs:
@@ -155,10 +238,15 @@ class Swagger:
                 if self.is_validation_ansible():
                     ret['url_password']['no_log'] = True
 
-                meta['required_together'].append(['url_username', 'url_password'])
-                if len(secs) > 1:
-                    meta['mutually_exclusive'].append('url_username')
-                    meta['required_one_of'].append('url_username')
+                # req_together = ['url_username', 'url_password']
+                # Data.append(ret, '_.ansible.required_together', req_together, ioi_extend = True)
+
+                # for key in req_together:
+                #     Data.append(ret, f'cerberus.{key}.dependencies', req_together, exclude = key, unique = True)
+
+                # if len(secs) > 1:
+                #     meta['ansible']['mutually_exclusive'].append('url_username')
+                #     meta['ansible']['required_one_of'].append('url_username')
             else:
                 in_ = sec_def.get('in', '')
                 name_ = sec_def.get('name', '')
@@ -170,9 +258,9 @@ class Swagger:
                 if self.is_validation_ansible():
                     ret[in_][nest_key][name_]['no_log'] = True
 
-                if len(secs) > 1:
-                    meta['mutually_exclusive'].append(f'{in_}.{name_}')
-                    meta['required_one_of'].append(f'{in_}.{name_}')
+                # if len(secs) > 1:
+                #     meta['ansible']['mutually_exclusive'].append(f'{in_}.{name_}')
+                #     meta['ansible']['required_one_of'].append(f'{in_}.{name_}')
 
                 if ret[in_][nest_key][name_]['required'] == True and ret[in_]['required'] == False:
                     ret[in_]['required'] = True
@@ -180,19 +268,19 @@ class Swagger:
                 if 'default' in ret[in_]:
                     del ret[in_]['default']
 
-        for meta_key, meta_val in meta.items():
-            if Validate.blank(meta_val):
-                continue
+        # for meta_key, meta_val in meta['ansible'].items():
+        #     if Validate.blank(meta_val):
+        #         continue
             
-            meta_key = Str.start(meta_key, '_.ansible.kwargs.')
-            current_val = Data.get(ret, meta_key, [])
+        #     meta_key = Str.start(meta_key, '_.ansible.kwargs.')
+        #     current_val = Data.get(ret, meta_key, [])
             
-            if Validate.is_iterable_of_iterables(meta_val):
-                current_val.extend(meta_val.copy())
-            else:
-                current_val.append(meta_val.copy())
+        #     if Validate.is_iterable_of_iterables(meta_val):
+        #         current_val.extend(meta_val.copy())
+        #     else:
+        #         current_val.append(meta_val.copy())
             
-            Data.set(ret, meta_key, current_val)
+        #     Data.set(ret, meta_key, current_val)
 
         return ret
     
@@ -330,7 +418,8 @@ class Swagger:
 
         props_ = Data.get(item, 'properties', Data.get(item, 'schema.properties', {}))
         items_ = Data.get(item, 'items', {})
-        if Validate.filled(item.get('default', '')):
+
+        if self.is_validation_cerberus() and Validate.filled(item.get('default', '')):
             ret['default'] = item.get('default', '')
 
         if Validate.blank(ret['type']):
@@ -385,6 +474,9 @@ class Swagger:
     def params(self, key: str  = '', default: Any = None) -> Any:
         return self._get_value(self._meta.get('params', {}), key, default)
     
+    def document(self) -> dict:
+        return dict(Data.all_except(self.params(), meta=True))
+    
     def meta(self, key: str  = '', default: Any = None) -> Any:
         return self._get_value(self._meta, key, default)
     
@@ -405,9 +497,41 @@ class Swagger:
 
     def cfg_has(self, key: str) -> bool:
         return Data.has(self._meta['cfg'], key)
+
+    def remap(self, key: str  = '', default: Any = None) -> Any:
+        remap = self.cfg('remap', {})
+        return remap[key] if Validate.filled(key) and key in remap else default
+    
+    def remap_set(self, source: str, target: str) -> None:
+        remap = self.cfg('remap', {})
+        remap[source] = target
+        self._meta['cfg']['remap'] = remap.copy()
+    
+    def remap_forget(self, source: str) -> None:
+        remap = self.cfg('remap', {})
+        if source in remap:
+            del remap[source]
+            self._meta['cfg']['remap'] = remap.copy()
+        
+    def ignore(self) -> list:
+        return self.cfg('ignore', [])
+
+    def ignore_add(self, *keys: str) -> None:
+        ignore = self.ignore()
+        ignore.extend(keys)
+        return self._cfg_set('ignore', list(set(ignore)))
+
+    def ignore_forget(self, *keys: str) -> None:
+        ignore = [item for item in self.ignore() if item not in keys]
+        return self._cfg_set('ignore', list(set(ignore)))
     
     def params_set(self, params: Mapping) -> None:
         self._meta['params'] = dict(params).copy()
+    
+    def params_combine(self, *args, **kwargs) -> None:
+        args = list(args)
+        args.insert(0, self._meta['params'])
+        Data.combine(*args, **kwargs)
     
     def _save_cache(self, cache: Mapping):
         path_file_cache = self.meta('_.path.file.cache')
