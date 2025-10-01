@@ -156,7 +156,7 @@ class Swagger:
     
     def get_validation_schema(self, path: str, method: str, remap: bool = True, ignore: bool = True, keep_meta: bool = False) -> dict:
         docs = self.swagger(f'paths.{path}.{method.lower()}')
-        # docs = self._swagger.get('paths', {}).get(path, {}).get(method.lower(), {})
+        
         if Validate.blank(docs):
             avail = ', '.join(self.swagger('paths', {}).keys())
             raise ValueError(f'Path entry not found for {path} - {method.lower()} in docs. Available: {avail}')
