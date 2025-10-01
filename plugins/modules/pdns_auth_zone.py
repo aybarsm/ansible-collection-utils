@@ -1,7 +1,7 @@
 from __future__ import annotations
 from ansible.module_utils.basic import AnsibleModule, env_fallback
-from ansible_collections.aybarsm.utils.plugins.module_utils.swagger import Swagger, BaseAggregator as Aggregator
 from ansible.module_utils.urls import fetch_url
+from ansible_collections.aybarsm.utils.plugins.module_utils.swagger import Swagger, PassThroughAggregator as Aggregator
 
 Helper = Aggregator.tools.helper
 Validate = Aggregator.tools.validate
@@ -87,7 +87,7 @@ def main():
     if v.validate(swagger.document()) != True: # type: ignore
         module.fail_json(msg=v.error_message()) # type: ignore
     
-    swagger.params_combine(v.normalized(swagger.document()), recursive=True)
+    swagger.params_combine(v.normalized(swagger.document()), recursive=True) # type: ignore
 
     module = AnsibleModule(**module_kwargs)
     
@@ -98,16 +98,11 @@ def main():
     fetch_kwargs = swagger.prepare_execution(path, method, before_finalise = callback)
     url = fetch_kwargs.pop('url', '')
     
-    # fetch_kwargs['type_data'] = type(fetch_kwargs['data']).__name__
-    # path_debug = '/Users/aybarsm/PersonalSync/Coding/ansible/blrm/dev/debug_module.json'
-    # Helper.save_as_json(fetch_kwargs, path_debug, overwrite=True, indent=2, ensure_ascii=False)
-
-    
     resp, info = fetch_url(module, url, **fetch_kwargs)
     res = Helper.fetch_url_to_module_result(resp, info)
     
     if res['failed']:
-        module.fail_json(res['msg'], **res['kwargs'])
+        module.fail_json(res['msg'], **res['kwargs']) # type: ignore
         return
 
     ret = {

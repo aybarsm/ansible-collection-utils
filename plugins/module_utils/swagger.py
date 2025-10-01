@@ -1,6 +1,6 @@
 from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Aggregator
 
-BaseAggregator = Aggregator
+PassThroughAggregator = Aggregator
 Validate = Aggregator.tools.validate
 Data = Aggregator.tools.data
 Str = Aggregator.tools.str
