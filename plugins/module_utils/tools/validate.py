@@ -1,8 +1,11 @@
 from __future__ import annotations
 import sys, pathlib, os, json, yaml, re, urllib.parse
-from collections.abc import Mapping, MutableMapping, Sequence, MutableSequence
+from collections.abc import Mapping, MutableMapping, Sequence
 from typing import Union
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Helper, Jinja, Str
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import tool_helper, tool_str
+
+Helper = tool_helper()
+Str = tool_str()
 
 _DEFAULTS = {
     "ansible": {
@@ -364,11 +367,6 @@ class Validate:
             raise ValueError(', '.join(msg))
         
         return False
-    
-    @staticmethod
-    def ansible(op_name, *args, **kwargs):
-        jinja = Jinja()
-        return jinja.test(op_name, *args, *kwargs)
 
     @staticmethod
     def is_file(path):

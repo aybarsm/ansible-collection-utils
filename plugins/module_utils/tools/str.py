@@ -1,6 +1,10 @@
 from __future__ import annotations
 import re, hashlib, urllib.parse
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Helper, Validate, Data
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import tool_data, tool_helper, tool_validate
+
+Data = tool_data()
+Helper = tool_helper()
+Validate = tool_validate()
 
 class Str:
     @staticmethod

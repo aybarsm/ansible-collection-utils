@@ -1,8 +1,11 @@
 from __future__ import annotations
 import re
 from collections.abc import Mapping
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Helper, Jinja, Data, Validate
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import tool_data, tool_helper, tool_jinja, tool_validate
 
+Helper = tool_helper()
+Data = tool_data()
+Validate = tool_validate()
 
 class DataQuery:
     _op_and = ['&&']
@@ -21,7 +24,7 @@ class DataQuery:
         self._query = ''
         self._data = []
         self._tokens = {}
-        self._jinja = Jinja()
+        self._jinja = tool_jinja()
         self._results = None
         
         self.prepare(query, args, Data.all_except(kwargs, meta = True))

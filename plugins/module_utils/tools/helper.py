@@ -2,7 +2,11 @@ from __future__ import annotations
 import json, yaml, inspect, pathlib, os, io, datetime, random, uuid, string, tempfile, rich.pretty, rich.console
 from collections.abc import Mapping, Sequence
 from typing import Union
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Data, Validate, Str
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import tool_data, tool_str, tool_validate
+
+Data = tool_data()
+Str = tool_str()
+Validate = tool_validate()
 
 class Helper:
     @staticmethod

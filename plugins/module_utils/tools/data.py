@@ -1,7 +1,11 @@
 from __future__ import annotations
 import re
 from collections.abc import Mapping, MutableMapping, Sequence, MutableSequence
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Helper, Validate, Str
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import tool_helper, tool_str, tool_validate
+
+Helper = tool_helper()
+Str = tool_str()
+Validate = tool_validate()
 
 class Data:
     @staticmethod
