@@ -1,10 +1,6 @@
 from __future__ import annotations
 import re, hashlib, urllib.parse
-from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Aggregator
-
-Helper = Aggregator.Tools.helper()
-Data = Aggregator.Tools.data()
-Validate = Aggregator.Tools.validate()
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Helper, Data, Validate
 
 class Str:
     @staticmethod
@@ -151,5 +147,3 @@ class Str:
             data = data.replace(find[idx], replace[idx], counts[idx]) #type: ignore
         
         return data
-
-Aggregator.register_tool(Str)

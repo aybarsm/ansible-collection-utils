@@ -1,12 +1,7 @@
 from __future__ import annotations
 import re
 from collections.abc import Mapping
-from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Aggregator
-
-Helper = Aggregator.Tools.helper()
-Jinja = Aggregator.Tools.jinja()
-Data = Aggregator.Tools.data()
-Validate = Aggregator.Tools.validate()
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Helper, Jinja, Data, Validate
 
 class DataQuery:
     _op_and = ['&&']
@@ -306,5 +301,3 @@ class DataQuery:
     
     def data(self):
         return self._data
-
-Aggregator.register_tool(DataQuery)

@@ -2,12 +2,7 @@ from __future__ import annotations
 import json, yaml, inspect, pathlib, os, io, datetime, random, uuid, string, tempfile, rich.pretty, rich.console
 from collections.abc import Mapping, Sequence
 from typing import Union
-from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Aggregator
-
-Jinja = Aggregator.Tools.jinja()
-Str = Aggregator.Tools.str()
-Data = Aggregator.Tools.data()
-Validate = Aggregator.Tools.validate()
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Str, Data, Validate
 
 class Helper:
     @staticmethod
@@ -287,11 +282,6 @@ class Helper:
         return char_join.join(result).strip(char_join)
     
     @staticmethod
-    def ansible(filter_name, *args, **kwargs):
-        jinja = Jinja()
-        return jinja.filter(filter_name, *args, **kwargs)
-    
-    @staticmethod
     def hostvars_to_dict(obj):
         result = {}
         for host in obj:
@@ -494,5 +484,3 @@ class Helper:
             ret = Str.before_last(']', ret) + '}'
 
         return ret
-
-Aggregator.register_tool(Helper)

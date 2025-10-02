@@ -1,12 +1,29 @@
 from __future__ import annotations
-from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Aggregator
 import sys, pathlib, os, json, yaml, re, urllib.parse
 from collections.abc import Mapping, MutableMapping, Sequence, MutableSequence
 from typing import Union
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Helper, Jinja, Str
 
-Helper = Aggregator.Tools.helper()
-Jinja = Aggregator.Tools.jinja()
-Str = Aggregator.Tools.str()
+_DEFAULTS = {
+    "ansible": {
+        "entrypoints":
+            [
+                "ansible.cli.adhoc",
+                "ansible_builder.cli",
+                "ansible_collections.ansible_community",
+                "ansible.cli.config",
+                "ansible.cli.console",
+                "ansible.cli.doc",
+                "ansible.cli.galaxy",
+                "ansible.cli.inventory",
+                "ansiblelint.__main__",
+                "ansible.cli.playbook",
+                "ansible.cli.pull",
+                "ansible_test._util.target.cli.ansible_test_cli_stub",
+                "ansible.cli.vault",
+            ]
+    },
+}
 
 class Validate:
     @staticmethod
@@ -87,7 +104,7 @@ class Validate:
     
     @staticmethod
     def is_env_ansible():
-        return any(mod in sys.modules for mod in _DEFAULTS_TOOLS['ansible']['entrypoints'])
+        return any(mod in sys.modules for mod in _DEFAULTS['ansible']['entrypoints'])
 
     @staticmethod
     def is_string(data):
@@ -549,5 +566,3 @@ class Validate:
             return Validate.is_mapping(parsedData) or Validate.is_sequence(parsedData)
         except (Exception):
             return False
-
-Aggregator.register_tool(Validate)

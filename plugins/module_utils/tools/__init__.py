@@ -1,4 +1,4 @@
-class ToolAgggregator:
+class Tools:
     @staticmethod
     def helper():
         from ansible_collections.aybarsm.utils.plugins.module_utils.tools.helper import Helper
@@ -34,12 +34,10 @@ class ToolAgggregator:
         from ansible_collections.aybarsm.utils.plugins.module_utils.tools.validator import Validator
         return Validator
 
-class Registry:
-    class Tools:
-        Helper = ToolAgggregator.helper()
-        Jinja = ToolAgggregator.jinja()
-        Str = ToolAgggregator.str()
-        Validate = ToolAgggregator.validate()
-        Data = ToolAgggregator.data()
-        DataQuery = ToolAgggregator.data_query()
-        Validator = ToolAgggregator.validator()
+Helper = Tools.helper()
+Jinja = Tools.jinja()
+Str = Tools.str()
+Validate = Tools.validate()
+Data = Tools.data()
+DataQuery = Tools.data_query()
+Validator = Tools.validator()

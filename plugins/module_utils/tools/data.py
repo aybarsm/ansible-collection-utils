@@ -1,14 +1,7 @@
 from __future__ import annotations
 import re, pydash
 from collections.abc import Mapping, MutableMapping, Sequence, MutableSequence
-from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Aggregator
-
-Helper = Aggregator.Tools.helper()
-Jinja = Aggregator.Tools.jinja()
-Str = Aggregator.Tools.str()
-Data = Aggregator.Tools.data()
-Validate = Aggregator.Tools.validate()
-DataQuery = Aggregator.Tools.data_query()
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Helper, Str, Validate
 
 class Data:
     pydash = pydash
@@ -256,6 +249,7 @@ class Data:
 
     @staticmethod
     def query(data, query, *args, **kwargs):
+        from ansible_collections.aybarsm.utils.plugins.module_utils.tools.data_query import DataQuery
         dq = DataQuery(query, data, *args, **kwargs)
 
         return dq.results()
@@ -412,5 +406,3 @@ class Data:
             current = list(set(current))
 
         Data.set(data, key, current.copy())
-
-Aggregator.register_tool(Data)

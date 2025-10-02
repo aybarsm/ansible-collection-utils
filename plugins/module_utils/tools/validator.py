@@ -1,8 +1,6 @@
 from __future__ import annotations
 import cerberus
-from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Aggregator
-
-Validate = Aggregator.Tools.validate()
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Validate
 
 class Validator(cerberus.Validator):    
     def _validate_path_exists(self, constraint, field, value):
@@ -54,5 +52,3 @@ class Validator(cerberus.Validator):
             parts.append(f'{key_name}: {error}')
         
         return ' | '.join(parts)
-
-Aggregator.register_tool(Validator)
