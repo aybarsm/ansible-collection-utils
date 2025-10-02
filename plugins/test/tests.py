@@ -18,4 +18,7 @@ class TestModule(object):
             'str_regex': Validate.str_is_regex,
             'str_match': Validate.str_is_match,
             'omitted': Validate.is_omitted,
+            'type_name': Validate.is_type_name,
+            'truthy': Validate.is_truthy,
+            'falsy': Validate.is_falsy,
         }

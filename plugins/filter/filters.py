@@ -1,6 +1,5 @@
 from __future__ import annotations
 from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Aggregator
-
 Data = Aggregator.tools.data
 Str = Aggregator.tools.str
 Helper = Aggregator.tools.helper
@@ -23,4 +22,12 @@ class FilterModule(object):
             'str_cli': Str.to_cli,
             'str_tokenize': Str.to_tokens,
             'str_wrap': Str.wrap,
+            'str_finish': Str.finish,
+            'str_start': Str.start,
+            'ip_as_addr': Helper.ip_as_addr,
+            'subnets_collapse': Helper.subnets_collapse,
+            'type_name': Helper.to_type_name,
+            'to_native': Helper.to_native,
+            'to_string': Helper.to_string,
+            'mapping_to_lua': Helper.mapping_to_lua,
         }

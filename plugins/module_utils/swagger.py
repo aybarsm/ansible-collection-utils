@@ -384,7 +384,8 @@ class Swagger:
         
         return ret
     
-    def prepare_validation_schema(self, cleanup: bool = False) -> dict:
+    def prepare_validation_schema(self, **kwargs) -> dict:
+        cleanup = kwargs.pop('cleanup', False)
         ret = {}
         
         for default_key, default_item in (self.cfg('defaults', {})).items():

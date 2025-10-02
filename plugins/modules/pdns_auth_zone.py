@@ -16,19 +16,19 @@ _swagger_config = {
         },
     },
     'defaults': {
-        'url_base': {'_validation': {'fallback': (env_fallback, ['PDNS_API_URL_BASE'])}},
-        'docs_source': {'_validation': {'fallback': (env_fallback, ['PDNS_API_DOCS_SOURCE'])}},
-        'docs_validate_certs': {'_validation': {'fallback': (env_fallback, ['PDNS_API_DOCS_VALIDATE_CERTS'])}},
-        'docs_cache_expires': {'_validation': {'fallback': (env_fallback, ['PDNS_API_DOCS_CACHE_EXPIRES'])}},
-        'validate_certs': {'_validation': {'fallback': (env_fallback, ['PDNS_API_VALIDATE_CERTS'])}},
-        'api_key': {'_validation': {'fallback': (env_fallback, ['PDNS_API_API_KEY'])}},
-        'url_username': {'_validation': {'fallback': (env_fallback, ['PDNS_API_USERNAME'])}},
-        'url_password': {'_validation': {'fallback': (env_fallback, ['PDNS_API_PASSWORD'])}},
+        'url_base': {'_ansible': {'fallback': (env_fallback, ['PDNS_AUTH_API_URL_BASE'])}},
+        'docs_source': {'_ansible': {'fallback': (env_fallback, ['PDNS_AUTH_API_DOCS_SOURCE'])}},
+        'docs_validate_certs': {'_ansible': {'fallback': (env_fallback, ['PDNS_AUTH_API_DOCS_VALIDATE_CERTS'])}},
+        'docs_cache_expires': {'_ansible': {'fallback': (env_fallback, ['PDNS_AUTH_API_DOCS_CACHE_EXPIRES'])}},
+        'validate_certs': {'_ansible': {'fallback': (env_fallback, ['PDNS_AUTH_API_VALIDATE_CERTS'])}},
+        'api_key': {'_ansible': {'fallback': (env_fallback, ['PDNS_AUTH_API_API_KEY'])}},
+        'url_username': {'_ansible': {'fallback': (env_fallback, ['PDNS_AUTH_API_USERNAME'])}},
+        'url_password': {'_ansible': {'fallback': (env_fallback, ['PDNS_AUTH_API_PASSWORD'])}},
+        'server_id': {'_ansible': {'fallback': (env_fallback, ['PDNS_AUTH_API_SERVER_ID'])}},
         'state': {'type': 'string', 'required': True, 'enum': ['list', 'retrieve', 'update', 'present', 'absent', 'rrsets']},
     },
     'remap': {
         'path.server_id': 'server_id',
-        'path.zone_id': 'zone_id',
         'header.X-API-Key': 'api_key',
     },
 }
@@ -44,43 +44,45 @@ def main():
     docs_source = swagger.params('docs_source', '')
 
     if Validate.blank(docs_source):
-        module_arguments = {
-            'argument_spec': swagger.prepare_validation_schema(True)
-        }
-        module = AnsibleModule(**module_arguments)
+        module = AnsibleModule(argument_spec=swagger.prepare_validation_schema(cleanup=True))
         return
     
     swagger.load_swagger(docs_source)
     state = swagger.params('state', '')
     
-    path = '/servers/{server_id}/zones/{zone_id}'
-
-    if state == 'absent':
-        method = 'delete'
-    elif state == 'present':
-        path = '/servers/{server_id}/zones'
-        method = 'post'
-        swagger.remap_set('body.zone_struct', 'zone')
-    elif state == 'update':
-        method = 'put'
-        swagger.remap_set('body.zone_struct', 'zone')
-    elif state == 'list':
-        path = '/servers/{server_id}/zones'
-        method = 'get'
-    elif state == 'rrsets':
-        method = 'patch'
-        swagger.remap_set('body.zone_struct.rrsets', 'rrsets')
-        swagger.ignore_add('body.zone_struct')
-    else:
-        method = 'get'
+    path = '/servers/{server_id}/zones'
+    before_finalise_callback = None
+    
+    if state not in ['present', 'list']:
+        path += '/{zone_id}'
+        swagger.remap_set('path.zone_id', 'zone_id')
+    
+    match state:
+        case 'present':
+            method = 'post'
+            swagger.remap_set('body.zone_struct', 'zone_struct')
+        case 'update':
+            method = 'put'
+            swagger.remap_set('body.zone_struct', 'zone_struct')
+        case 'rrsets':
+            method = 'post'
+            swagger.remap_set('body.zone_struct.rrsets', 'rrsets')
+            swagger.ignore_add('body.zone_struct')
+            before_finalise_callback = _prepare_rrsets
+        case 'absent':
+            method = 'delete'
+        case _:
+            method = 'get'
 
     module_kwargs = swagger.get_ansible_module_arguments(path, method, only_primary = True)
 
     if state == 'rrsets':
         Data.set(module_kwargs, 'argument_spec.rrsets.required', True)
     
+    # The Ansible modules validator is highly unreliable:
+    # Especially entries with default values and nested schemas.
+    # So we provide primary entries only and then validate all parameters with Cerberus.
     module = AnsibleModule(**module_kwargs)
-
     schema = swagger.get_cerberus_validation_schema(path, method)
     
     v = Validator(schema, allow_unknown = True) # type: ignore
@@ -90,19 +92,14 @@ def main():
     swagger.params_combine(v.normalized(swagger.document()), recursive=True) # type: ignore
 
     module = AnsibleModule(**module_kwargs)
-    
-    callback = None
-    if state == 'rrsets':
-        callback = _prepare_rrsets
 
-    fetch_kwargs = swagger.prepare_execution(path, method, before_finalise = callback)
+    fetch_kwargs = swagger.prepare_execution(path, method, before_finalise = before_finalise_callback)
     url = fetch_kwargs.pop('url', '')
     
-    resp, info = fetch_url(module, url, **fetch_kwargs)
-    res = Helper.fetch_url_to_module_result(resp, info)
+    res = Helper.fetch_url_to_module_result(*fetch_url(module, url, **fetch_kwargs))
     
     if res['failed']:
-        module.fail_json(res['msg'], **res['kwargs']) # type: ignore
+        module.fail_json(res['msg'], **res['kwargs'])
         return
 
     ret = {

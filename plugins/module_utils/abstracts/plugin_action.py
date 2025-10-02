@@ -1,12 +1,13 @@
-from ansible_collections.aybarsm.utils.plugins.module_utils import Aggregator as PrimaryAggregator
+from ansible.errors import AnsibleActionFail
+from abc import ABC, abstractmethod
+from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Aggregator
 
-Validate = PrimaryAggregator.tools.validate
-Data = PrimaryAggregator.tools.data
-Str = PrimaryAggregator.tools.str
-Helper = PrimaryAggregator.tools.helper
-ABC = PrimaryAggregator.tools.abc.ABC
-AnsibleActionFail = PrimaryAggregator.tools.ansible_errors.AnsibleActionFail
-abstractmethod = PrimaryAggregator.tools.abc.abstractmethod
+PassThroughAggregator = Aggregator
+Validate = Aggregator.tools.validate
+Data = Aggregator.tools.data
+Str = Aggregator.tools.str
+Helper = Aggregator.tools.helper
+Validator = Aggregator.tools.validator
 
 class PluginAction(ABC):
     def __init__(self, action, vars):
@@ -114,7 +115,7 @@ class PluginAction(ABC):
         if Validate.filled(schema):
             v = Validator(schema, allow_unknown = True) # type: ignore
             if v.validate(args) != True: # type: ignore
-                raise AnsibleActionFail(v.errors) # type: ignore
+                raise AnsibleActionFail(v.error_message()) # type: ignore
             self._args = v.normalized(args) # type: ignore
         else:
             self._args = args
