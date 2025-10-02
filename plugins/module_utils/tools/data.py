@@ -1,5 +1,5 @@
 from __future__ import annotations
-import re, pydash
+import re
 from collections.abc import Mapping, MutableMapping, Sequence, MutableSequence
 from ansible_collections.aybarsm.utils.plugins.module_utils.tools.helper import Helper
 from ansible_collections.aybarsm.utils.plugins.module_utils.tools.data import Data
@@ -7,8 +7,6 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.tools.validate impor
 from ansible_collections.aybarsm.utils.plugins.module_utils.tools.str import Str
 
 class Data:
-    pydash = pydash
-    
     @staticmethod
     def dot(data, prepend='') -> dict:
         ret = {}
@@ -65,36 +63,41 @@ class Data:
         return ret
     
     @staticmethod
+    def pydash():
+        import pydash
+        return pydash
+
+    @staticmethod
     def collection():
         return Data.collections()
     
     @staticmethod
     def collections():
-        return Data.pydash.collections
+        return Data.pydash().collections
     
     @staticmethod
     def get(data, key, default = None):
-        return Data.pydash.get(data, key, default)
+        return Data.pydash().get(data, key, default)
     
     @staticmethod
     def set(data, key, value):
-        return Data.pydash.set_(data, key, value)
+        return Data.pydash().set_(data, key, value)
     
     @staticmethod
     def has(data, key):
-        return Data.pydash.has(data, key)
+        return Data.pydash().has(data, key)
 
     @staticmethod
     def forget(data, key):
-        return Data.pydash.unset(data, key)
+        return Data.pydash().unset(data, key)
 
     @staticmethod
     def pluck(data, key):
-        return Data.pydash.pluck(data, key)
+        return Data.pydash().pluck(data, key)
     
     @staticmethod
     def invert(data):
-        return Data.pydash.invert(data)
+        return Data.pydash().invert(data)
     
     @staticmethod
     def flip(data):
