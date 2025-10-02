@@ -34,7 +34,38 @@ class ToolAgggregator:
         from ansible_collections.aybarsm.utils.plugins.module_utils.tools.validator import Validator
         return Validator
 
+class UtilAgggregator:
+    @staticmethod
+    def swagger():
+        from ansible_collections.aybarsm.utils.plugins.module_utils.swagger import Swagger
+        return Swagger
+    
+    @staticmethod
+    def powerdns_api():
+        from ansible_collections.aybarsm.utils.plugins.module_utils.powerdns_api import PowerdnsApi
+        return PowerdnsApi
+
+class AbstractAgggregator:
+    @staticmethod
+    def plugin_action():
+        from ansible_collections.aybarsm.utils.plugins.module_utils.abstracts.plugin_action import PluginAction
+        return PluginAction
+
 class Registry:
+    @staticmethod
+    def config():
+        import pathlib
+        path_root = pathlib.Path(__file__).parent.parent
+
+        return {
+            'path': {
+                'dir': {
+                    'root': str(path_root),
+                    'tmp' : str(path_root.joinpath('.tmp')),
+                }
+            }
+        }
+    
     class Tools:
         Helper = ToolAgggregator.helper()
         Jinja = ToolAgggregator.jinja()
@@ -43,3 +74,10 @@ class Registry:
         Data = ToolAgggregator.data()
         DataQuery = ToolAgggregator.data_query()
         Validator = ToolAgggregator.validator()
+    
+    class Utils:
+        Swagger = UtilAgggregator.swagger()
+        PowerdnsApi = UtilAgggregator.powerdns_api()
+    
+    class Abstracts:
+        PluginAction = AbstractAgggregator.plugin_action()

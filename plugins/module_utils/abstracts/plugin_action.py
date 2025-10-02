@@ -1,13 +1,12 @@
 from ansible.errors import AnsibleActionFail
 from abc import ABC, abstractmethod
-from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Aggregator
+from ansible_collections.aybarsm.utils.plugins.module_utils.registry import Registry
 
-PassThroughAggregator = Aggregator
-Validate = Aggregator.tools.validate
-Data = Aggregator.tools.data
-Str = Aggregator.tools.str
-Helper = Aggregator.tools.helper
-Validator = Aggregator.tools.validator
+Validate = Registry.Tools.Validate
+Data = Registry.Tools.Data
+Str = Registry.Tools.Str
+Helper = Registry.Tools.Helper
+Validator = Registry.Tools.Validator
 
 class PluginAction(ABC):
     def __init__(self, action, vars):

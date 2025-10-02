@@ -1,6 +1,6 @@
 from __future__ import annotations
 import importlib, re, jinja2
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Helper
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools.helper import Helper
 
 _DEFAULTS = {
     "prefixes": {

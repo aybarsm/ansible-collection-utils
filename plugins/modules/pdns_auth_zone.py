@@ -1,13 +1,13 @@
 from __future__ import annotations
 from ansible.module_utils.basic import AnsibleModule, env_fallback
 from ansible.module_utils.urls import fetch_url
-from ansible_collections.aybarsm.utils.plugins.module_utils.swagger import Swagger, PassThroughAggregator as Aggregator
+from ansible_collections.aybarsm.utils.plugins.module_utils.registry import Registry
 
-Helper = Aggregator.tools.helper
-Validate = Aggregator.tools.validate
-Validator = Aggregator.tools.validator
-Data = Aggregator.tools.data
-json = Aggregator.tools.json
+Helper = Registry.Tools.Helper
+Validate = Registry.Tools.Validate
+Validator = Registry.Tools.Validator
+Data = Registry.Tools.Data
+Swagger = Registry.Utils.Swagger
 
 _swagger_config = {
     'settings': {

@@ -1,22 +1,82 @@
-from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Aggregator
+import json, yaml, re, requests
+from typing import Any, Mapping, Callable
+from ansible_collections.aybarsm.utils.plugins.module_utils.registry import Registry
 
-PassThroughAggregator = Aggregator
-Validate = Aggregator.tools.validate
-Data = Aggregator.tools.data
-Str = Aggregator.tools.str
-Helper = Aggregator.tools.helper
-json = Aggregator.tools.json
-yaml = Aggregator.tools.yaml
-re = Aggregator.tools.re
-itertools = Aggregator.tools.itertools
-Any = Aggregator.tools.typing.Any
-Mapping = Aggregator.tools.typing.Mapping
-CONFIG = Aggregator.config
+Validate = Registry.Tools.Validate
+Data = Registry.Tools.Data
+Str = Registry.Tools.Str
+Helper = Registry.Tools.Helper
+
+_DEFAULTS = {
+    'settings': {
+        'extraction': {
+            'ref_pattern': '.*\\.\\$ref.*$',
+        },
+        'remap': {
+            'overwrite': False,
+            'ignore_missing': False,
+        },
+        'combine': {
+            'ansible': {
+                'kwargs': {
+                    'recursive': True,
+                    'list_merge': 'prepend_rp',
+                },
+            },
+        },
+        'ansible': {
+            'validation': False,
+            'load_params': False,
+            'kwargs': {
+                'argument_spec': {},
+                'mutually_exclusive': [],
+                'required_one_of': [],
+                'required_together': [],
+                'required_if': [],
+                'required_by': {},
+                'add_file_common_args': False,
+                'supports_check_mode': False,
+            },
+            'fetch_url': {
+                'kwargs': []
+            }
+        },
+        'defaults': {
+            'header': {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+        },
+    },
+    'defaults': {
+        'url_base': {'type': 'string', 'required': True},
+        'docs_source': {'type': 'string', 'required': True},
+        'docs_validate_certs': {'type': 'boolean', 'required': False, 'default': True},
+        'docs_cache_expires': {'type': 'integer', 'required': False},
+        'url_username': {'type': 'string', 'required': False},
+        'url_password': {'type': 'string', 'required': False, '_ansible': {'no_log': True}},
+        'validate_certs': {'type': 'boolean', 'required': False},
+        'use_proxy': {'type': 'boolean', 'required': False},
+        'http_agent': {'type': 'string', 'required': False},
+        'force_basic_auth': {'type': 'string', 'required': False},
+        'client_cert': {'type': 'string', 'required': False},
+        'client_key': {'type': 'string', 'required': False},
+        'ca_path': {'type': 'string', 'required': False},
+        'use_gssapi': {'type': 'boolean', 'required': False},
+        'force': {'type': 'boolean', 'required': False},
+        'timeout': {'type': 'integer', 'required': False},
+        'unix_socket': {'type': 'string', 'required': False},
+        'unredirected_headers': {'type': 'array', 'required': False, 'items': {'type': 'string'}},
+        'use_netrc': {'type': 'boolean', 'required': False},
+        'ciphers': {'type': 'array', 'required': False, 'items': {'type': 'string'}},
+        'decompress': {'type': 'boolean', 'required': False},
+    },
+}
 
 class Swagger:
     def __init__(self, cfg: dict = {}):
-        base_config = CONFIG.copy()
-        defaults = Data.get(base_config, 'defaults.swagger', {})
+        base_config = Registry.config().copy()
+        defaults = _DEFAULTS.copy()
         Data.forget(base_config, 'defaults')
         essentials = Data.get(defaults, '_', {})
         Data.forget(defaults, '_')
@@ -99,7 +159,7 @@ class Swagger:
         
         return ret
     
-    def prepare_execution(self, path: str, method: str, params: dict = {}, before_finalise: Aggregator.tools.typing.Callable | None = None) -> dict:
+    def prepare_execution(self, path: str, method: str, params: dict = {}, before_finalise: Callable | None = None) -> dict:
         if Validate.blank(params):
             params = self.params().copy()
         
@@ -478,7 +538,7 @@ class Swagger:
         return self._get_value(self._meta.get('params', {}), key, default)
     
     def document(self) -> dict:
-        return dict(Data.all_except(self.params(), meta=True))
+        return dict(Data.all_except(self.params(), meta=True)) #type: ignore
     
     def meta(self, key: str  = '', default: Any = None) -> Any:
         return self._get_value(self._meta, key, default)
@@ -680,7 +740,7 @@ class Swagger:
                 swagger = json.loads(open_url(str(source), **kwargs).read().decode('utf-8'))
             else:
                 params = kwargs.pop('params', None)
-                response = Aggregator.tools.requests.get(str(source), params, **kwargs)
+                response = requests.get(str(source), params, **kwargs)
                 response.raise_for_status()
                 swagger = response.json().copy()
         elif Validate.file_exists(source):
