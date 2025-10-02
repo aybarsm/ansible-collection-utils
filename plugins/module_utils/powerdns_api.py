@@ -1,8 +1,6 @@
 from ansible.module_utils.basic import env_fallback
-from ansible_collections.aybarsm.utils.plugins.module_utils.registry import Registry
-
-Data = Registry.Tools.Data
-Swagger = Registry.Utils.Swagger
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Data
+from ansible_collections.aybarsm.utils.plugins.module_utils import Swagger
 
 _DEFAULTS = {
     'settings': {
@@ -29,4 +27,4 @@ class PowerdnsApi():
     def __init__(self, cfg: dict = {}):
         cfg = Data.combine(_DEFAULTS, cfg, recursive = True)
         self._meta = {'cfg': cfg}
-        self._swagger = Swagger(cfg)
+        self._swagger = Swagger()(cfg)

@@ -1,10 +1,8 @@
 from __future__ import annotations
 import re
 from collections.abc import Mapping
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools.helper import Helper
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools.jinja import Jinja
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools.data import Data
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools.validate import Validate
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Helper, Jinja, Data, Validate
+
 
 class DataQuery:
     _op_and = ['&&']

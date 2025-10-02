@@ -1,11 +1,6 @@
 import json, yaml, re, requests
 from typing import Any, Mapping, Callable
-from ansible_collections.aybarsm.utils.plugins.module_utils.registry import Registry
-
-Validate = Registry.Tools.Validate
-Data = Registry.Tools.Data
-Str = Registry.Tools.Str
-Helper = Registry.Tools.Helper
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Validate, Data, Str, Helper
 
 _DEFAULTS = {
     'settings': {

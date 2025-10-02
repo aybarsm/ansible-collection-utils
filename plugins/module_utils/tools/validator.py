@@ -1,7 +1,6 @@
 from __future__ import annotations
 import cerberus
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools.data import Data
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools.validate import Validate
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Data, Validate
 
 class Validator(cerberus.Validator):    
     def _validate_path_exists(self, constraint, field, value):
