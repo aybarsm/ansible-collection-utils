@@ -28,4 +28,5 @@ class FilterModule(object):
             'to_string': Helper.to_string,
             'to_lua': Helper.to_lua,
             'ts_mod': Helper.ts_mod,
+            'path_tmp': Helper.path_tmp,
         }

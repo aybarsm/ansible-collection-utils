@@ -1036,11 +1036,11 @@ class Helper:
         path.mkdir(parents=True, exist_ok=True)
     
     @staticmethod
-    def path_tmp(path:str, *args, **kwargs) -> str:
+    def path_tmp(file: str, *args, **kwargs) -> str:
         is_dir = kwargs.pop('dir', False)
         args = list(args)
-        ensure_directory_exists = is_dir or len(args) > 0
-        args = [tempfile.gettempdir(), path] + args
+        ensure_directory_exists = is_dir or len(args) > 1
+        args = [tempfile.gettempdir()] + args + [file]
         ret = Helper.join_paths(*args)
         
         if ensure_directory_exists:
@@ -2120,27 +2120,12 @@ class Validator(cerberus.Validator):
         return ' | '.join(parts)
 
 class PlayCache:
-    def __init__(self, file_suffix: str = ''):
-        self._file_suffix = self._cache_file_suffix(file_suffix)
+    def __init__(self, cache_file: str):
+        self._cache_file = cache_file
         self._cache = json.loads((lambda f: f.read())(open(self.cache_file()))) if self.cache_exists() else {}
 
-    @staticmethod
-    def _cache_file_suffix(file_suffix: str = '') -> str:
-        suffix = re.sub(r'^(play|_cache|cache)', '', file_suffix).strip('_')
-        suffix = re.sub(r'json$', '', suffix).strip('.')
-        return str(suffix if Validate.filled(suffix) else (str(Helper.uuid()) + str(Helper.ts(mod='long_safe'))))
-    
-    def cache_file_suffix(self) -> str:
-        return self._file_suffix
-
     def cache_file(self) -> str:
-        Helper.ensure_directory_exists(self.cache_dir())
-        return Helper.join_paths(self.cache_dir(), f'play_cache_{self._file_suffix}.json')
-
-    @staticmethod
-    def cache_dir() -> str:
-        return '/Users/aybarsm/PersonalSync/Coding/ansible/blrm/dev/play_cache'
-        # return Helper.path_tmp('ansible', 'aybarsm.utils', 'play_cache.json')
+        return self._cache_file
     
     def cache_exists(self) -> bool:
         return Validate.file_exists(self.cache_file())
