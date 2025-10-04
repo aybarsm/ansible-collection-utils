@@ -2197,16 +2197,26 @@ class Validator(cerberus.Validator):
         return ' | '.join(parts)
 
 class PlayCache:
-    def __init__(self, file: str):
+    def __init__(self, file: str, persists: Optional[bool] = None):
         self._file = file
+        self._persists = persists
         if not Validate.file_exists(self.file()):
             with open(self.file(), "w") as f:
                 f.write("{}")
     
+    def persists(self) -> bool:
+        return self._persists == True
+
+    def persist(self, persists: bool) -> None:
+        self._persists = persists
+
     def file(self) -> str:
         return self._file
         
     def destroy(self, retry_delay: float = 0.1, max_attempts: Optional[int] = None) -> None:
+        if self.persists():
+            return
+        
         attempts = 0
         while max_attempts is None or attempts < max_attempts:
             if not Validate.file_exists(self.file()):
@@ -2271,79 +2281,12 @@ class PlayCache:
     @staticmethod
     def make(vars: Mapping) -> Optional[PlayCache]:
         ph = Helper.placeholder()
-        play_id = vars.get('hostvars', {}).get('localhost', {}).get('play__id', ph)
+        cache_file = vars.get('hostvars', {}).get('localhost', {}).get('play_cache__file', ph)
         
-        if play_id == ph or not Validate.is_string(play_id) or Validate.blank(play_id):
+        if cache_file == ph or not Validate.is_string(cache_file) or Validate.blank(cache_file):
             return None
         
-        return PlayCache(Helper.path_tmp(f'{play_id}.json', 'ansible', 'play_cache'))
-
-# class MemoryCache:
-#     _instance = None
-
-#     def __new__(cls):
-#         if cls._instance is None:
-#             cls._instance = super(MemoryCache, cls).__new__(cls)
-#         return cls._instance
-
-#     def set(self, key: str, value: Any) -> None:
-#         Data.set(_AYBARSM_UTILS_CACHE, key, value)
-
-#     def get(self, key: str, default: Any=None) -> Any:
-#         return Data.get(_AYBARSM_UTILS_CACHE, key, default)
-
-#     def forget(self, key: str) -> None:
-#         Data.forget(_AYBARSM_UTILS_CACHE, key)
-
-#     def clear(self) -> None:
-#         _AYBARSM_UTILS_CACHE.clear()
-    
-#     def has(self, key: str) -> bool:
-#         return Data.has(_AYBARSM_UTILS_CACHE, key)
-
-#     def __contains__(self, key: str) -> bool:
-#         return self.has(key)
-
-# Cache = MemoryCache()
-
-# from ansible.cli.playbook
-# class Cache:
-#     _instance = None
-#     _cache = {}
-#     uuid_new = None
-#     uuid_init = None
-    
-#     def __new__(cls):
-#         if cls._instance is None:
-#             cls._instance = super(Cache, cls).__new__(cls)
-#             cls._instance.uuid_new = Helper.uuid()
-#             cls._instance._initialized = False
-#             cls._instance._cache = {}
-#         return cls._instance
-
-#     def __init__(self):
-#         if self._initialized:
-#             return
-#         self._initialized = True
-#         self.uuid_init = Helper.uuid()
-    
-#     def is_initialized(self):
-#         return self._initialized
-
-#     def set(self, key: str, value: Any) -> None:
-#         Data.set(self._cache, key, value)
-
-#     def get(self, key: str, default: Any=None) -> Any:
-#         return Data.get(self._cache, key, default)
-
-#     def forget(self, key: str) -> None:
-#         Data.forget(self._cache, key)
-
-#     def clear(self) -> None:
-#         self._cache.clear()
-    
-#     def has(self, key: str) -> bool:
-#         return Data.has(self._cache, key)
-
-#     def __contains__(self, key: str) -> bool:
-#         return self.has(key)
+        persits = vars.get('hostvars', {}).get('localhost', {}).get('play_cache__persists', ph)
+        persits = None if persits == ph or not Validate.is_bool(persits) else persits
+        
+        return PlayCache(cache_file, persits)
