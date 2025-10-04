@@ -1,8 +1,5 @@
 from __future__ import annotations
-from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Aggregator
-Data = Aggregator.tools.data
-Str = Aggregator.tools.str
-Helper = Aggregator.tools.helper
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Data, Str, Helper
 
 class FilterModule(object):
     def filters(self):        
@@ -29,5 +26,6 @@ class FilterModule(object):
             'type_name': Helper.to_type_name,
             'to_native': Helper.to_native,
             'to_string': Helper.to_string,
-            'mapping_to_lua': Helper.mapping_to_lua,
+            'to_lua': Helper.to_lua,
+            'ts_mod': Helper.ts_mod,
         }

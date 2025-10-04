@@ -1,7 +1,5 @@
 from __future__ import annotations
-from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Aggregator
-
-Validate = Aggregator.tools.validate
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Validate
 
 class TestModule(object):
     def tests(self):

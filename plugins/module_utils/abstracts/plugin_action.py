@@ -1,12 +1,6 @@
 from ansible.errors import AnsibleActionFail
 from abc import ABC, abstractmethod
-from ansible_collections.aybarsm.utils.plugins.module_utils.registry import Registry
-
-Validate = Registry.Tools.Validate
-Data = Registry.Tools.Data
-Str = Registry.Tools.Str
-Helper = Registry.Tools.Helper
-Validator = Registry.Tools.Validator
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Validate, Data, Str, Helper, Validator
 
 class PluginAction(ABC):
     def __init__(self, action, vars):
@@ -114,6 +108,7 @@ class PluginAction(ABC):
         if Validate.filled(schema):
             v = Validator(schema, allow_unknown = True) # type: ignore
             if v.validate(args) != True: # type: ignore
+                Helper.dump(schema)
                 raise AnsibleActionFail(v.error_message()) # type: ignore
             self._args = v.normalized(args) # type: ignore
         else:

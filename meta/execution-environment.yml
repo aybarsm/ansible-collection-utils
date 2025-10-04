@@ -6,3 +6,4 @@ dependencies:
     - pydash
     - cerberus
     - rich
+    - luadata

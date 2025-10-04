@@ -70,15 +70,15 @@ _DEFAULTS = {
 
 class Swagger:
     def __init__(self, cfg: dict = {}):
-        base_config = Registry.config().copy()
-        defaults = _DEFAULTS.copy()
-        Data.forget(base_config, 'defaults')
-        essentials = Data.get(defaults, '_', {})
-        Data.forget(defaults, '_')
-        cfg = Data.combine(defaults, cfg, essentials, base_config, {'_': essentials}, recursive = True)
-        Data.set(cfg, 'path.file.cache', self._get_path_file_cache(Data.get(cfg, 'path.dir.tmp')))
+        # base_config = Registry.config().copy()
+        # defaults = _DEFAULTS.copy()
+        # Data.forget(base_config, 'defaults')
+        # essentials = Data.get(defaults, '_', {})
+        # Data.forget(defaults, '_')
+        # cfg = Data.combine(defaults, cfg, essentials, base_config, {'_': essentials}, recursive = True)
+        # Data.set(cfg, 'path.file.cache', self._get_path_file_cache(Data.get(cfg, 'path.dir.tmp')))
         
-        self._meta = {'cfg': cfg}
+        self._meta = {'cfg': Data.combine(_DEFAULTS, cfg, recursive = True)}
         self._swagger = {}
 
         self._handle_config_changes()
@@ -91,7 +91,7 @@ class Swagger:
     
     def get_cerberus_validation_schema(self, path: str, method: str, remap: bool = True, ignore: bool = True) -> dict:
         is_ansible = self.is_validation_ansible()
-        self._cfg_set('settings.ansible.validation', False)
+        self.cfg_set('settings.ansible.validation', False)
 
         ret = {}
         exception = None
@@ -101,10 +101,10 @@ class Swagger:
             exception = e
 
         if exception:
-            self._cfg_set('settings.ansible.validation', is_ansible)
+            self.cfg_set('settings.ansible.validation', is_ansible)
             raise exception
         
-        self._cfg_set('settings.ansible.validation', is_ansible)
+        self.cfg_set('settings.ansible.validation', is_ansible)
 
         if '_' in ret:
             del ret['_']
@@ -118,7 +118,7 @@ class Swagger:
         only_primary = kwargs.pop('only_primary', False)
 
         is_ansible = self.is_validation_ansible()
-        self._cfg_set('settings.ansible.validation', True)
+        self.cfg_set('settings.ansible.validation', True)
 
         ret = {}
         exception = None
@@ -128,7 +128,7 @@ class Swagger:
             exception = e
 
         if exception:
-            self._cfg_set('settings.ansible.validation', is_ansible)
+            self.cfg_set('settings.ansible.validation', is_ansible)
             raise exception
         
         meta = {}
@@ -150,7 +150,7 @@ class Swagger:
                 if type_ in ['dict', 'list']:
                     Data.forget(ret, f'argument_spec.{primary_key}.options')
         
-        self._cfg_set('settings.ansible.validation', is_ansible)
+        self.cfg_set('settings.ansible.validation', is_ansible)
         
         return ret
     
@@ -210,11 +210,19 @@ class Swagger:
         return ret
     
     def get_validation_schema(self, path: str, method: str, remap: bool = True, ignore: bool = True, keep_meta: bool = False) -> dict:
-        docs = self.swagger(f'paths.{path}.{method.lower()}')
+        docs = self._swagger.get('paths', {})
         
-        if Validate.blank(docs):
-            avail = ', '.join(self.swagger('paths', {}).keys())
-            raise ValueError(f'Path entry not found for {path} - {method.lower()} in docs. Available: {avail}')
+        if path not in docs or Validate.blank(docs):
+            avail = f'Available: {', '.join(docs.keys())}' if not Validate.blank(docs) else 'Blank docs!!!'
+            raise ValueError(f'Path [{path}] entry not found in docs. {avail}')
+        
+        docs = docs[path]
+        
+        if method.lower() not in docs or Validate.blank(docs):
+            avail = f'Available: {', '.join(docs.keys())}' if not Validate.blank(docs) else 'Blank docs!!!'
+            raise ValueError(f'Method [{method.lower()}] not found for path [{path}] in docs. {avail}')
+        
+        docs = docs[method.lower()]
         
         ret = self.prepare_validation_schema()
         ret = self._resolve_validation_schema_parameters(ret, docs)
@@ -550,8 +558,13 @@ class Swagger:
     def cfg(self, key: str  = '', default: Any = None) -> Any:
         return self._get_value(self._meta['cfg'], key, default)
     
-    def _cfg_set(self, key: str, value: Any) -> None:
+    def cfg_set(self, key: str, value: Any) -> None:
         Data.set(self._meta['cfg'], key, value)
+    
+    def cfg_combine(self, *args, **kwargs) -> None:
+        args = list(args)
+        args.insert(0, self._meta['cfg'])
+        self._meta['cfg'] = Data.combine(*args, **kwargs)
 
     def cfg_has(self, key: str) -> bool:
         return Data.has(self._meta['cfg'], key)
@@ -577,11 +590,11 @@ class Swagger:
     def ignore_add(self, *keys: str) -> None:
         ignore = self.ignore()
         ignore.extend(keys)
-        return self._cfg_set('ignore', list(set(ignore)))
+        return self.cfg_set('ignore', list(set(ignore)))
 
     def ignore_forget(self, *keys: str) -> None:
         ignore = [item for item in self.ignore() if item not in keys]
-        return self._cfg_set('ignore', list(set(ignore)))
+        return self.cfg_set('ignore', list(set(ignore)))
     
     def params_set(self, params: Mapping) -> None:
         self._meta['params'] = dict(params).copy()

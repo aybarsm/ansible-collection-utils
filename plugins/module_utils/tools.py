@@ -1,8 +1,10 @@
 from __future__ import annotations
-import sys, re, json, yaml, inspect, pathlib, os, io, datetime, random, uuid, string, tempfile, importlib, hashlib, urllib.parse
+import sys, re, json, yaml, inspect, pathlib, os, io, datetime, random, uuid, string, tempfile, importlib, hashlib, urllib.parse, math
 import rich.pretty, rich.console, jinja2, cerberus
-from typing import Union
+from typing import Union, Any
 from collections.abc import Mapping, MutableMapping, Sequence, MutableSequence
+
+_CACHE_MODULE = None
 
 _DEFAULTS_TOOLS = {
     'jinja': {
@@ -813,6 +815,28 @@ class Data:
 
 class Helper:
     @staticmethod
+    def env_get(key: str, default: Any = None) -> Any:
+        return os.environ.get(key, default)
+
+    @staticmethod
+    def env_set(key: str, value: str) -> None:
+        os.environ[key] = value
+    
+    @staticmethod
+    def env_forget(key: str) -> None:
+        if key in os.environ:
+            del os.environ[key]
+
+    @staticmethod
+    def cache():
+        global _CACHE_MODULE
+        if _CACHE_MODULE == None:
+            from ansible.plugins.cache.memory import CacheModule as CacheModuleMemory
+            _CACHE_MODULE = CacheModuleMemory()
+        
+        return _CACHE_MODULE
+    
+    @staticmethod
     def to_type_name(data):
         return type(data).__name__
 
@@ -943,22 +967,27 @@ class Helper:
                 rich.pretty.pprint(arg, **kwargs)
     
     @staticmethod
+    def ts_mod(ts, mod: str):
+        match mod:
+            case 'string' | 'str':
+                return str(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
+            case 'safe':
+                return str(ts.strftime("%Y%m%dT%H%M%SZ"))
+            case 'long':
+                return str(ts.strftime("%Y-%m-%dT%H:%M:%S") + f".{ts.microsecond * 1000:09d}Z")
+            case 'long_safe':
+                return str(ts.strftime("%Y%m%dT%H%M%S") + f".{ts.microsecond * 1000:09d}Z")
+            case 'timestamp':
+                int(ts.timestamp())
+            case _:
+                return ts
+
+    @staticmethod
     def ts(**kwargs):
         ts = datetime.datetime.now(datetime.timezone.utc)
-        mod = kwargs.get('mod', '')
+        mod = kwargs.pop('mod', '')
         
-        if mod in ['str', 'string']:
-            return str(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
-        elif mod == 'safe':
-            return str(ts.strftime("%Y%m%dT%H%M%SZ"))
-        elif mod == 'long':
-            return str(ts.strftime("%Y-%m-%dT%H:%M:%S") + f".{ts.microsecond * 1000:09d}Z")
-        elif mod == 'long_safe':
-            return str(ts.strftime("%Y%m%dT%H%M%S") + f".{ts.microsecond * 1000:09d}Z")
-        elif mod == 'timestamp':
-            return int(ts.timestamp())
-        else:
-            return ts
+        return Helper.ts_mod(ts, mod)
     
     @staticmethod
     def placeholder(randLen = 32, **kwargs):
@@ -1223,11 +1252,16 @@ class Helper:
             if Validate.filled(err_body):
                 ret['kwargs']['body'] = err_body
         else:
-            ret['failed'] = False
-            ret['content'] = Helper.to_native(resp.read()) # type: ignore
+            ret = {
+                'failed': False,
+                'result': {
+                    'status': status,
+                    'response': Helper.to_native(resp.read()),
+                }
+            }
             
-            if Validate.str_is_json(ret['content']):
-                ret['content'] = json.loads(ret['content'])
+            if Validate.str_is_json(ret['result']['response']):
+                ret['result']['response'] = json.loads(ret['result']['response'])
         
         return ret
     
@@ -1280,17 +1314,10 @@ class Helper:
         return ret
     
     @staticmethod
-    def mapping_to_lua(data: Mapping) -> str:
-        data = Helper.to_safe_json(dict(data))
-        ret = json.dumps(data, separators=(",",":"))
-
-        if ret.startswith('['):
-            ret = '{' + Str.after('[', ret)
+    def to_lua(data: Mapping | Sequence) -> str:
+        import luadata
         
-        if ret.endswith(']'):
-            ret = Str.before_last(']', ret) + '}'
-
-        return ret
+        return luadata.serialize(Helper.to_safe_json(data))
 
 class Jinja:
     _instance = None
@@ -2083,29 +2110,7 @@ class Validator(cerberus.Validator):
         if constraint is True and not Validate.dir_exists(value):
             self._error(field, f"Must be an [{value}] existing directory") #type: ignore
         elif constraint is False and Validate.dir_exists(value):
-            self._error(field, f"Must be a [{value}] missing directory") #type: ignore
-    
-    def _exec_required_conditional(self, constraint, field, value, when: bool = True):
-        if not Validate.is_mapping(constraint):
-            raise cerberus.SchemaError("The constraint for 'required_when' must be a mapping.")
-
-        constraint = dict(constraint)
-        keyword = 'when' if when else 'unless'
-
-        for foreign_key, foreign_value in constraint.items():
-            res = self.document.get(foreign_key) != foreign_value #type: ignore
-            res = not res if not when else res
-            if res:
-                self._error(field, f"is required {keyword} {constraint}") #type: ignore
-                break
-    
-    def _validate_required_when(self, constraint, field, value):
-        """{'type': 'boolean'}"""
-        self._exec_required_conditional(constraint, field, value)
-    
-    def _validate_required_unless(self, constraint, field, value):
-        """{'type': 'boolean'}"""
-        self._exec_required_conditional(constraint, field, value, False)
+            self._error(field, f"Must be a [{value}] missing directory") #type: ignore    
 
     def error_message(self) -> str:
         parts = []
@@ -2113,3 +2118,125 @@ class Validator(cerberus.Validator):
             parts.append(f'{key_name}: {error}')
         
         return ' | '.join(parts)
+
+class PlayCache:
+    def __init__(self, file_suffix: str = ''):
+        self._file_suffix = self._cache_file_suffix(file_suffix)
+        self._cache = json.loads((lambda f: f.read())(open(self.cache_file()))) if self.cache_exists() else {}
+
+    @staticmethod
+    def _cache_file_suffix(file_suffix: str = '') -> str:
+        suffix = re.sub(r'^(play|_cache|cache)', '', file_suffix).strip('_')
+        suffix = re.sub(r'json$', '', suffix).strip('.')
+        return str(suffix if Validate.filled(suffix) else (str(Helper.uuid()) + str(Helper.ts(mod='long_safe'))))
+    
+    def cache_file_suffix(self) -> str:
+        return self._file_suffix
+
+    def cache_file(self) -> str:
+        Helper.ensure_directory_exists(self.cache_dir())
+        return Helper.join_paths(self.cache_dir(), f'play_cache_{self._file_suffix}.json')
+
+    @staticmethod
+    def cache_dir() -> str:
+        return '/Users/aybarsm/PersonalSync/Coding/ansible/blrm/dev/play_cache'
+        # return Helper.path_tmp('ansible', 'aybarsm.utils', 'play_cache.json')
+    
+    def cache_exists(self) -> bool:
+        return Validate.file_exists(self.cache_file())
+    
+    def destroy(self) -> None:
+        if self.cache_exists():
+            os.remove(self.cache_file())
+    
+    def clear(self) -> None:
+        self._cache = {}
+    
+    def save(self) -> None:
+        with open(self.cache_file(), "w", encoding="utf-8") as f:
+            json.dump(self._cache, f, indent=2, ensure_ascii=False)
+
+    def set(self, key: str, value: Any) -> None:
+        Data.set(self._cache, key, value)
+
+    def get(self, key: str = '', default: Any=None) -> Any:
+        return Data.get(self._cache, key, default) if Validate.filled(key) else self._cache.copy()
+
+    def forget(self, key: str) -> None:
+        Data.forget(self._cache, key)
+    
+    def has(self, key: str) -> bool:
+        return Data.has(self._cache, key)
+
+    def __contains__(self, key: str) -> bool:
+        return self.has(key)
+
+# class MemoryCache:
+#     _instance = None
+
+#     def __new__(cls):
+#         if cls._instance is None:
+#             cls._instance = super(MemoryCache, cls).__new__(cls)
+#         return cls._instance
+
+#     def set(self, key: str, value: Any) -> None:
+#         Data.set(_AYBARSM_UTILS_CACHE, key, value)
+
+#     def get(self, key: str, default: Any=None) -> Any:
+#         return Data.get(_AYBARSM_UTILS_CACHE, key, default)
+
+#     def forget(self, key: str) -> None:
+#         Data.forget(_AYBARSM_UTILS_CACHE, key)
+
+#     def clear(self) -> None:
+#         _AYBARSM_UTILS_CACHE.clear()
+    
+#     def has(self, key: str) -> bool:
+#         return Data.has(_AYBARSM_UTILS_CACHE, key)
+
+#     def __contains__(self, key: str) -> bool:
+#         return self.has(key)
+
+# Cache = MemoryCache()
+
+# from ansible.cli.playbook
+# class Cache:
+#     _instance = None
+#     _cache = {}
+#     uuid_new = None
+#     uuid_init = None
+    
+#     def __new__(cls):
+#         if cls._instance is None:
+#             cls._instance = super(Cache, cls).__new__(cls)
+#             cls._instance.uuid_new = Helper.uuid()
+#             cls._instance._initialized = False
+#             cls._instance._cache = {}
+#         return cls._instance
+
+#     def __init__(self):
+#         if self._initialized:
+#             return
+#         self._initialized = True
+#         self.uuid_init = Helper.uuid()
+    
+#     def is_initialized(self):
+#         return self._initialized
+
+#     def set(self, key: str, value: Any) -> None:
+#         Data.set(self._cache, key, value)
+
+#     def get(self, key: str, default: Any=None) -> Any:
+#         return Data.get(self._cache, key, default)
+
+#     def forget(self, key: str) -> None:
+#         Data.forget(self._cache, key)
+
+#     def clear(self) -> None:
+#         self._cache.clear()
+    
+#     def has(self, key: str) -> bool:
+#         return Data.has(self._cache, key)
+
+#     def __contains__(self, key: str) -> bool:
+#         return self.has(key)
