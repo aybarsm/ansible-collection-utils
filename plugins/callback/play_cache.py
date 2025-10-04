@@ -25,107 +25,68 @@ class CallbackModule(CallbackBase):
     def __init__(self, display=None):
         super(CallbackModule, self).__init__(display=display)
         self._play: Optional[Play] = None
-        self._cache_file: Optional[str] = None
-        self._cache: Optional[PlayCache] = None
-        self._persistent: Optional[bool] = None
-    
-    def _cache_init(self):
-        if not self._cache and self.cache_file():
-            self._cache = PlayCache(self.cache_file()) #type: ignore
-            self.cache_clear()
     
     def cache(self) -> Optional[PlayCache]:
-        return self._cache
+        cache = None
+        if self._play != None:
+            cache = PlayCache.make(self._play.get_variable_manager().get_vars()) #type: ignore
 
-    def cache_file(self) -> Optional[str]:
-        if self._cache_file == None and self._play != None:
-            cache_file = PlayCache.resolve_file(self._play.get_variable_manager().get_vars()) #type: ignore
-            if cache_file != None:
-                self._cache_file = cache_file
-            
-        return self._cache_file
+        return cache
     
     def cache_save(self) -> None:
-        if self._cache:
-            self._cache.save()
-        else:
-            self._cache_init()
-    
-    def cache_clear(self) -> None:
-        if self._cache:
-            self._cache.clear()
-        else:
-            self._cache_init()
+        cache = self.cache()
+        if cache:
+            cache.save()
     
     def cache_destroy(self) -> None:
-        if self._cache:
-            self._cache.destroy()
-    
-    def is_cache_persistent(self) -> Optional[bool]:
-        if self._persistent == None and self._play != None:
-            self._persistent = PlayCache.resolve_persistent(self._play.get_variable_manager().get_vars()) #type: ignore
-        
-        return self._persistent
+        cache = self.cache()
+        if cache and cache.persists() != True:
+            cache.destroy()
 
     def v2_runner_on_failed(self, *args, **kwargs):
         self.cache_save()
     
     def v2_runner_on_ok(self, *args, **kwargs):
-        # self.cache().set(str(Helper.ts(mod='long')), 'any')
         self.cache_save()
     
     def v2_runner_on_skipped(self, *args, **kwargs):
-        # self.cache().set(str(Helper.ts(mod='long')), 'any')
         self.cache_save()
     
     def v2_runner_on_unreachable(self, *args, **kwargs):
-        # self.cache().set(str(Helper.ts(mod='long')), 'any')
         self.cache_save()
     
     def v2_runner_on_async_poll(self, *args, **kwargs):
-        # self.cache().set(str(Helper.ts(mod='long')), 'any')
         self.cache_save()
     
     def v2_runner_on_async_ok(self, *args, **kwargs):
-        # self.cache().set(str(Helper.ts(mod='long')), 'any')
         self.cache_save()
     
-    def v2_runner_on_async_failed(self, *args, **kwargs):
-        # self.cache().set(str(Helper.ts(mod='long')), 'any')
+    def v2_runner_on_async_failed(self, *args, **kwargs):        
         self.cache_save()
     
     def v2_playbook_on_notify(self, *args, **kwargs):
-        # self.cache().set(str(Helper.ts(mod='long')), 'any')
         self.cache_save()
     
     def v2_playbook_on_no_hosts_matched(self, *args, **kwargs):
-        # self.cache().set(str(Helper.ts(mod='long')), 'any')
         self.cache_save()
     
-    def v2_playbook_on_no_hosts_remaining(self, *args, **kwargs):
-        # self.cache().set(str(Helper.ts(mod='long')), 'any')
+    def v2_playbook_on_no_hosts_remaining(self, *args, **kwargs):        
         self.cache_save()
     
     def v2_playbook_on_task_start(self, *args, **kwargs):
-        # self.cache().set(str(Helper.ts(mod='long')), 'any')
         self.cache_save()
     
-    def v2_playbook_on_handler_task_start(self, *args, **kwargs):
-        # self.cache().set(str(Helper.ts(mod='long')), 'any')
+    def v2_playbook_on_handler_task_start(self, *args, **kwargs):        
         self.cache_save()
     
     def v2_playbook_on_vars_prompt(self, *args, **kwargs):
-        # self.cache().set(str(Helper.ts(mod='long')), 'any')
         self.cache_save()
     
     def v2_playbook_on_play_start(self, play):
         self._play = play
-        self._cache_init()
     
     def v2_playbook_on_stats(self, *args, **kwargs):
-        self.cache_save()
-        # if not self.is_cache_persistent():
-            # self.cache_destroy()
+        self.cache_destroy()
     
     def v2_on_file_diff(self, *args, **kwargs):
         # self.cache().set(str(Helper.ts(mod='long')), 'any')

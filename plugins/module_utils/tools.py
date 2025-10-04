@@ -815,6 +815,13 @@ class Data:
 
 class Helper:
     @staticmethod
+    def to_md5(data) -> str:
+        if Validate.is_mapping(data) or Validate.is_sequence(data):
+            data = json.dumps(Helper.to_safe_json(data))
+
+        return hashlib.md5(str(data).encode()).hexdigest()
+    
+    @staticmethod
     def env_get(key: str, default: Any = None) -> Any:
         return os.environ.get(key, default)
 
@@ -1498,7 +1505,7 @@ class Str:
     
     @staticmethod
     def to_md5(data) -> str:
-        return hashlib.md5(str(data).encode()).hexdigest()
+        return Helper.to_md5(data)
     
     @staticmethod
     def url_strip(data):
@@ -2120,17 +2127,25 @@ class Validator(cerberus.Validator):
         return ' | '.join(parts)
 
 class PlayCache:
-    def __init__(self, cache_file: str):
-        self._dirty = False
+    def __init__(self, cache_file: str, persists: Optional[bool] = None):
+        self._persists = persists
         self._cache_file = cache_file
         if not self.cache_exists():
             self._cache = {}
             self.save()
         else:
             self._cache = json.loads((lambda f: f.read())(open(self.cache_file())))
+        
+        self._original = self._cache.copy()
+
+    def persists(self) -> Optional[bool]:
+        return self._persists
+
+    def persist(self, persist: bool) -> None:
+        self._persists = persist
 
     def dirty(self) -> bool:
-        return self._dirty
+        return Helper.to_md5(self._original) != Helper.to_md5(self._cache)
     
     def cache_file(self) -> str:
         return self._cache_file
@@ -2141,17 +2156,17 @@ class PlayCache:
     def destroy(self) -> None:
         if self.cache_exists():
             os.remove(self.cache_file())
-            self._dirty = False
+            self._original = {}
     
     def clear(self) -> None:
         self._cache = {}
-        self._dirty = False
+        self._original = self._cache.copy()
     
     def save(self) -> None:
         with open(self.cache_file(), "w", encoding="utf-8") as f:
             json.dump(self._cache, f, indent=2, ensure_ascii=False)
         
-        self._dirty = False
+        self._original = self._cache.copy()
     
     def save_dirty(self) -> None:
         if self.dirty():
@@ -2159,14 +2174,12 @@ class PlayCache:
 
     def set(self, key: str, value: Any) -> None:
         Data.set(self._cache, key, value)
-        self._dirty = True
 
     def get(self, key: str = '', default: Any=None) -> Any:
         return Data.get(self._cache, key, default) if Validate.filled(key) else self._cache.copy()
 
     def forget(self, key: str) -> None:
         Data.forget(self._cache, key)
-        self._dirty = True
     
     def has(self, key: str) -> bool:
         return Data.has(self._cache, key)
@@ -2181,15 +2194,16 @@ class PlayCache:
         return None if ret == ph or not Validate.is_string(ret) or Validate.blank(ret) else ret
 
     @staticmethod
-    def resolve_persistent(vars: Mapping) -> Optional[bool]:
+    def resolve_persists(vars: Mapping) -> Optional[bool]:
         ph = Helper.placeholder()
-        ret = vars.get('hostvars', {}).get('localhost', {}).get('play_cache__persistent', ph)
+        ret = vars.get('hostvars', {}).get('localhost', {}).get('play_cache__persists', ph)
         return None if ret == ph or not Validate.is_bool(ret) else ret
 
     @staticmethod
     def make(vars: Mapping) -> Optional[PlayCache]:
-        cache_file = PlayCache.resolve_file(vars)        
-        return PlayCache(cache_file) if cache_file != None else None
+        cache_file = PlayCache.resolve_file(vars)
+        persits = PlayCache.resolve_persists(vars)
+        return PlayCache(cache_file, persits) if cache_file != None else None
 
 # class MemoryCache:
 #     _instance = None
