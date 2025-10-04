@@ -1,7 +1,7 @@
 from __future__ import annotations
-import sys, re, json, yaml, inspect, pathlib, os, io, datetime, random, uuid, string, tempfile, importlib, hashlib, urllib.parse, math
+import sys, re, json, yaml, inspect, pathlib, os, io, datetime, random, uuid, string, tempfile, importlib, hashlib, urllib.parse, math, time, errno
 import rich.pretty, rich.console, jinja2, cerberus
-from typing import Union, Any, Optional
+from typing import Callable, Union, Any, Optional
 from collections.abc import Mapping, MutableMapping, Sequence, MutableSequence
 
 _CACHE_MODULE = None
@@ -815,6 +815,47 @@ class Data:
 
 class Helper:
     @staticmethod
+    def tap_(value: Any, callback: Callable) -> Any:
+        callback(value)
+        return value
+
+    @staticmethod
+    def with_(value: Any, callback: Callable) -> Any:
+        return callback(value)
+
+    @staticmethod
+    def fs_lock(file) -> None:
+        if sys.platform == 'win32':
+            import msvcrt
+            saved_pos = file.tell()
+            try:
+                file.seek(0)
+                msvcrt.locking(file.fileno(), msvcrt.LK_LOCK, 1)
+            finally:
+                file.seek(saved_pos)
+        else:
+            import fcntl
+            fcntl.flock(file.fileno(), fcntl.LOCK_EX)
+    
+    @staticmethod
+    def fs_unlock(file) -> None:
+        if sys.platform == 'win32':
+            import msvcrt
+            saved_pos = file.tell()
+            try:
+                file.seek(0)
+                msvcrt.locking(file.fileno(), msvcrt.LK_UNLCK, 1)
+            finally:
+                file.seek(saved_pos)
+        else:
+            import fcntl
+            fcntl.flock(file.fileno(), fcntl.LOCK_UN)
+    
+    @staticmethod
+    def fs_release(file) -> None:
+        Helper.fs_unlock(file)
+    
+    @staticmethod
     def to_md5(data) -> str:
         if Validate.is_mapping(data) or Validate.is_sequence(data):
             data = json.dumps(Helper.to_safe_json(data))
@@ -1562,6 +1603,35 @@ class Str:
 
 class Validate:
     @staticmethod
+    def is_fs_locked(file):
+        try:
+            if sys.platform == 'win32':
+                import msvcrt
+                saved_pos = file.tell()
+                try:
+                    file.seek(0)
+                    msvcrt.locking(file.fileno(), msvcrt.LK_NBRLCK, 1)
+                except OSError as e:
+                    if e.errno == errno.EACCES:
+                        return True
+                    raise
+                finally:
+                    file.seek(saved_pos)
+                
+                file.seek(0)
+                msvcrt.locking(file.fileno(), msvcrt.LK_UNLCK, 1)
+                file.seek(saved_pos)
+            else:
+                import fcntl
+                fcntl.flock(file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(file.fileno(), fcntl.LOCK_UN)
+            return False
+        except OSError as e:
+            if sys.platform != 'win32' and e.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+                return True
+            raise
+
+    @staticmethod
     def is_truthy(data):
         return Helper.to_string(data).lower() in ('y', 'yes', 'on', '1', 'true', 't', 1, 1.0)
     
@@ -2127,83 +2197,86 @@ class Validator(cerberus.Validator):
         return ' | '.join(parts)
 
 class PlayCache:
-    def __init__(self, cache_file: str, persists: Optional[bool] = None):
-        self._persists = persists
-        self._cache_file = cache_file
-        if not self.cache_exists():
-            self._cache = {}
-            self.save()
-        else:
-            self._cache = json.loads((lambda f: f.read())(open(self.cache_file())))
+    def __init__(self, file: str):
+        self._file = file
+        if not Validate.file_exists(self.file()):
+            with open(self.file(), "w") as f:
+                f.write("{}")
+    
+    def file(self) -> str:
+        return self._file
         
-        self._original = self._cache.copy()
+    def destroy(self, retry_delay: float = 0.1, max_attempts: Optional[int] = None) -> None:
+        attempts = 0
+        while max_attempts is None or attempts < max_attempts:
+            if not Validate.file_exists(self.file()):
+                break
 
-    def persists(self) -> Optional[bool]:
-        return self._persists
-
-    def persist(self, persist: bool) -> None:
-        self._persists = persist
-
-    def dirty(self) -> bool:
-        return Helper.to_md5(self._original) != Helper.to_md5(self._cache)
-    
-    def cache_file(self) -> str:
-        return self._cache_file
-    
-    def cache_exists(self) -> bool:
-        return Validate.file_exists(self.cache_file())
-    
-    def destroy(self) -> None:
-        if self.cache_exists():
-            os.remove(self.cache_file())
-            self._original = {}
-    
-    def clear(self) -> None:
-        self._cache = {}
-        self._original = self._cache.copy()
-    
-    def save(self) -> None:
-        with open(self.cache_file(), "w", encoding="utf-8") as f:
-            json.dump(self._cache, f, indent=2, ensure_ascii=False)
+            is_locked = self._exec(lambda file: Validate.is_fs_locked(file), mod='file', lock=False)
+            
+            if is_locked:
+                attempts += 1
+                time.sleep(retry_delay)
+            else:
+                os.remove(self.file())
         
-        self._original = self._cache.copy()
+        if Validate.file_exists(self.file()) and max_attempts != None and attempts >= max_attempts:
+            raise TimeoutError(f"Could not delete '{self.file()}' after {max_attempts} attempts.")
     
-    def save_dirty(self) -> None:
-        if self.dirty():
-            self.save()
+    def _exec(self, callback: Callable, **kwargs) -> Any:
+        ret = None
+        mod = kwargs.pop('mod', 'ret')
+        lock = kwargs.pop('lock', True)
+        with open(self.file(), 'r+') as f:
+            if lock:
+                Helper.fs_lock(f)
+            try:
+                if mod == 'file':
+                    ret = callback(f)
+                else:
+                    data = json.load(f)
+                    original = data.copy()
+
+                    if mod == 'tap':
+                        data = Helper.tap_(data, callback)
+                    elif mod == 'with':
+                        data = Helper.with_(data, callback)
+                    elif mod == 'ret':
+                        ret = callback(data)
+
+                    if mod in ['tap', 'with'] and Helper.to_md5(data) != Helper.to_md5(original):
+                        f.seek(0)
+                        f.truncate()
+                        json.dump(data, f, indent=4)
+                        f.flush()
+                        os.fsync(f.fileno())
+            finally:
+                if lock:
+                    Helper.fs_unlock(f)
+        
+        return ret
 
     def set(self, key: str, value: Any) -> None:
-        Data.set(self._cache, key, value)
+        self._exec(lambda cache: Data.set(cache, key, value), mod='with')
+    
+    def forget(self, key: str) -> None:
+        self._exec(lambda cache: Data.forget(cache, key), mod='tap')
 
     def get(self, key: str = '', default: Any=None) -> Any:
-        return Data.get(self._cache, key, default) if Validate.filled(key) else self._cache.copy()
-
-    def forget(self, key: str) -> None:
-        Data.forget(self._cache, key)
+        return self._exec(lambda cache: Data.get(cache, key, default) if Validate.filled(key) else cache.copy())
     
     def has(self, key: str) -> bool:
-        return Data.has(self._cache, key)
-
-    def __contains__(self, key: str) -> bool:
-        return self.has(key)
-    
-    @staticmethod
-    def resolve_file(vars: Mapping) -> Optional[str]:
-        ph = Helper.placeholder()
-        ret = vars.get('hostvars', {}).get('localhost', {}).get('play_cache__file', ph)
-        return None if ret == ph or not Validate.is_string(ret) or Validate.blank(ret) else ret
-
-    @staticmethod
-    def resolve_persists(vars: Mapping) -> Optional[bool]:
-        ph = Helper.placeholder()
-        ret = vars.get('hostvars', {}).get('localhost', {}).get('play_cache__persists', ph)
-        return None if ret == ph or not Validate.is_bool(ret) else ret
+        return self._exec(lambda cache: Data.has(cache, key))
 
     @staticmethod
     def make(vars: Mapping) -> Optional[PlayCache]:
-        cache_file = PlayCache.resolve_file(vars)
-        persits = PlayCache.resolve_persists(vars)
-        return PlayCache(cache_file, persits) if cache_file != None else None
+        ph = Helper.placeholder()
+        play_id = vars.get('hostvars', {}).get('localhost', {}).get('play__id', ph)
+        
+        if play_id == ph or not Validate.is_string(play_id) or Validate.blank(play_id):
+            return None
+        
+        return PlayCache(Helper.path_tmp(f'{play_id}.json', 'ansible', 'play_cache'))
 
 # class MemoryCache:
 #     _instance = None
