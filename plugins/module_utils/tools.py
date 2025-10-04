@@ -1,7 +1,7 @@
 from __future__ import annotations
 import sys, re, json, yaml, inspect, pathlib, os, io, datetime, random, uuid, string, tempfile, importlib, hashlib, urllib.parse, math
 import rich.pretty, rich.console, jinja2, cerberus
-from typing import Union, Any
+from typing import Union, Any, Optional
 from collections.abc import Mapping, MutableMapping, Sequence, MutableSequence
 
 _CACHE_MODULE = None
@@ -105,7 +105,7 @@ _DEFAULTS_TOOLS = {
                     "ansible.cli.vault",
                 ]
         },
-    }
+    },
 }
 
 class DataQuery:
@@ -2121,9 +2121,17 @@ class Validator(cerberus.Validator):
 
 class PlayCache:
     def __init__(self, cache_file: str):
+        self._dirty = False
         self._cache_file = cache_file
-        self._cache = json.loads((lambda f: f.read())(open(self.cache_file()))) if self.cache_exists() else {}
+        if not self.cache_exists():
+            self._cache = {}
+            self.save()
+        else:
+            self._cache = json.loads((lambda f: f.read())(open(self.cache_file())))
 
+    def dirty(self) -> bool:
+        return self._dirty
+    
     def cache_file(self) -> str:
         return self._cache_file
     
@@ -2133,28 +2141,55 @@ class PlayCache:
     def destroy(self) -> None:
         if self.cache_exists():
             os.remove(self.cache_file())
+            self._dirty = False
     
     def clear(self) -> None:
         self._cache = {}
+        self._dirty = False
     
     def save(self) -> None:
         with open(self.cache_file(), "w", encoding="utf-8") as f:
             json.dump(self._cache, f, indent=2, ensure_ascii=False)
+        
+        self._dirty = False
+    
+    def save_dirty(self) -> None:
+        if self.dirty():
+            self.save()
 
     def set(self, key: str, value: Any) -> None:
         Data.set(self._cache, key, value)
+        self._dirty = True
 
     def get(self, key: str = '', default: Any=None) -> Any:
         return Data.get(self._cache, key, default) if Validate.filled(key) else self._cache.copy()
 
     def forget(self, key: str) -> None:
         Data.forget(self._cache, key)
+        self._dirty = True
     
     def has(self, key: str) -> bool:
         return Data.has(self._cache, key)
 
     def __contains__(self, key: str) -> bool:
         return self.has(key)
+    
+    @staticmethod
+    def resolve_file(vars: Mapping) -> Optional[str]:
+        ph = Helper.placeholder()
+        ret = vars.get('hostvars', {}).get('localhost', {}).get('play_cache__file', ph)
+        return None if ret == ph or not Validate.is_string(ret) or Validate.blank(ret) else ret
+
+    @staticmethod
+    def resolve_persistent(vars: Mapping) -> Optional[bool]:
+        ph = Helper.placeholder()
+        ret = vars.get('hostvars', {}).get('localhost', {}).get('play_cache__persistent', ph)
+        return None if ret == ph or not Validate.is_bool(ret) else ret
+
+    @staticmethod
+    def make(vars: Mapping) -> Optional[PlayCache]:
+        cache_file = PlayCache.resolve_file(vars)        
+        return PlayCache(cache_file) if cache_file != None else None
 
 # class MemoryCache:
 #     _instance = None
