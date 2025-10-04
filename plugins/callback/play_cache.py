@@ -68,7 +68,6 @@ class CallbackModule(CallbackBase):
         return self._persistent
 
     def v2_runner_on_failed(self, *args, **kwargs):
-    #     self.cache().set(str(Helper.ts(mod='long')), 'any')
         self.cache_save()
     
     def v2_runner_on_ok(self, *args, **kwargs):
