@@ -1,16 +1,30 @@
-from ansible.errors import AnsibleActionFail
+from typing import Any
 from abc import ABC, abstractmethod
+from ansible.errors import AnsibleActionFail
 from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Validate, Data, Str, Helper, Validator
+
+_CONF = {
+    'roles': {
+        'fs': {
+            'req_dirs': {
+                'skip': ['/bin', '/boot', '/dev', '/etc', '/home', '/lib', '/lib64', '/mnt', '/media', '/opt', '/proc', '/root', '/run', '/sbin', '/srv', '/sys', '/tmp', '/usr', '/var']
+            }
+        }
+    }
+}
 
 class PluginAction(ABC):
     def __init__(self, action, vars):
-        self._meta = {}
+        self._meta = {'conf': _CONF.copy()}
         self._vars = {}
         self._args = {}
         self.set_op(action, vars)
     
-    def _get_value(self, container, key = '', default = None):
+    def _get_value(self, container, key = '', default = None)-> Any:
         return Data.get(container, key, default) if Validate.filled(key) else container
+
+    def conf(self, key = '', default = None):
+        return self._get_value(self._meta['conf'], key, default)
     
     def host_vars(self, host, key = '', default = None):
         key = str(Str.start(key, 'hostvars.' + host + '.')).rstrip('.')
@@ -41,13 +55,14 @@ class PluginAction(ABC):
     def meta(self, key = '', default = None):
         return self._get_value(self._meta, key, default)
     
-    def _set_meta(self, key, value):
+    def _meta_set(self, key, value):
         Data.set(self._meta, key, value)
     
-    def _forget_meta(self, key):
+    def _meta_forget(self, key):
         Data.forget(self._meta, key)
     
-    def _append_meta(self, key, value):
+    def _meta_append(self, key, value, **kwargs):
+        is_unique = kwargs.pop('unique', False)
         current = self.meta(key, [])
         current.append(value) #type: ignore
         Data.set(self._meta, key, current)

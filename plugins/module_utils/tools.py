@@ -2255,6 +2255,7 @@ class PlayCache:
                         ret = callback(data)
 
                     if mod in ['tap', 'with'] and Helper.to_md5(data) != Helper.to_md5(original):
+                        Helper.dump('Play cache dump')
                         f.seek(0)
                         f.truncate()
                         json.dump(data, f, indent=4)
