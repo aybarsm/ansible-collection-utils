@@ -1,7 +1,7 @@
-from typing import Any, Mapping
+from typing import Any, Optional, Mapping
 from abc import ABC, abstractmethod
 from ansible.errors import AnsibleActionFail
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Validate, Data, Str, Helper, Validator
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Validate, Data, Str, Helper, Validator, PlayCache
 
 _CONF = {
     'roles': {
@@ -16,6 +16,7 @@ _CONF = {
 class PluginAction(ABC):
     def __init__(self, args: Mapping = {}, vars: Mapping = {}):
         self._meta = {'conf': _CONF.copy()}
+        self._cache: Optional[PlayCache] = None
         self.set_op(args, vars)
     
     def _get_value(self, container, key = '', default = None)-> Any:
@@ -54,9 +55,7 @@ class PluginAction(ABC):
     def host(self, default: Any = None)-> Any:
         return self.vars('inventory_hostname', default)
 
-    def host_vars(self, host: str = '', key = '', default = None):
-        if Validate.blank(host):
-            host = self.host()
+    def host_vars(self, host, key = '', default = None):
         key = str(Str.start(key, 'hostvars.' + host + '.')).rstrip('.')
         return self.vars(key, default)
     
@@ -75,22 +74,6 @@ class PluginAction(ABC):
         Data.set(self._meta, meta_key, ret)
 
         return ret
-
-    def host_arg_vars(self, var: str, **kwargs)-> Any:
-        default = kwargs.pop('default', None)
-        var = self.args(f'vars.{var}', '')
-        if Validate.blank(var):
-            return default
-        
-        host = kwargs.pop('host', self.host())
-        append = kwargs.pop('append', [])
-        key_parts = ['hostvars', host, var]
-        if Validate.filled(append):
-            key_parts += list(append)
-
-        key = Helper.normalise_data_key(*key_parts)
-
-        return self.vars(key, default)
     
     def play_batch(self, default: Any = None)-> Any:
         return self.vars('ansible_play_batch', default)
@@ -103,6 +86,36 @@ class PluginAction(ABC):
 
     def is_op(self, op: str):
         return self.op('op') == op
+    
+    def has_cache(self)-> bool:
+        return self._cache != None
+
+    def cache(self)-> Optional[PlayCache]:
+        return self._cache
+    
+    def cache_set(self, key: str, value: Any)-> None:
+        if not self._cache:
+            return
+        
+        self._cache.set(key, value)
+    
+    def cache_forget(self, key: str)-> None:
+        if not self._cache:
+            return
+        
+        self._cache.forget(key)
+    
+    def cache_append(self, key: str, value: Any, **kwargs)-> None:
+        if not self._cache:
+            return
+        
+        self._cache.append(key, value, **kwargs)
+    
+    def cache_prepend(self, key: str, value: Any, **kwargs)-> None:
+        if not self._cache:
+            return
+        
+        self._cache.prepend(key, value, **kwargs)
     
     def set_op(self, args: Mapping = {}, vars: Mapping = {}):
         op = args.get('op', '')
@@ -119,6 +132,7 @@ class PluginAction(ABC):
 
         self._meta_set('args', dict(args).copy())
         self._meta_set('vars', dict(vars).copy())
+        self._cache = PlayCache.make(vars)
         
     @abstractmethod
     def _get_validation_schema_operation(self, args, vars):
