@@ -1,7 +1,7 @@
 from typing import Any, Optional, Mapping
 from abc import ABC, abstractmethod
 from ansible.errors import AnsibleActionFail
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Validate, Data, Str, Helper, Validator, PlayCache
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Validate, Data, Str, Helper, Validator
 
 _CONF = {
     'roles': {
@@ -16,7 +16,6 @@ _CONF = {
 class PluginAction(ABC):
     def __init__(self, args: Mapping = {}, vars: Mapping = {}):
         self._meta = {'conf': _CONF.copy()}
-        self._cache: Optional[PlayCache] = None
         self.set_op(args, vars)
     
     def _get_value(self, container, key = '', default = None)-> Any:
@@ -105,42 +104,6 @@ class PluginAction(ABC):
     def is_op(self, op: str):
         return self.op('op') == op
     
-    def has_cache(self)-> bool:
-        return self._cache != None
-    
-    def get_cache(self) -> Optional[PlayCache]:
-        return self._cache
-
-    def cache(self, key: str = '', default: Any=None) -> Any:
-        if not self._cache:
-            return default
-
-        return self._cache.get(key, default)
-    
-    def cache_set(self, key: str, value: Any)-> None:
-        if not self._cache:
-            return
-        
-        self._cache.set(key, value)
-    
-    def cache_forget(self, key: str)-> None:
-        if not self._cache:
-            return
-        
-        self._cache.forget(key)
-    
-    def cache_append(self, key: str, value: Any, **kwargs)-> None:
-        if not self._cache:
-            return
-
-        self._cache.append(key, value, **kwargs)
-    
-    def cache_prepend(self, key: str, value: Any, **kwargs)-> None:
-        if not self._cache:
-            return
-        
-        self._cache.prepend(key, value, **kwargs)
-    
     def set_op(self, args: Mapping = {}, vars: Mapping = {}):
         op = args.get('op', '')
         if Validate.blank(op):
@@ -156,7 +119,6 @@ class PluginAction(ABC):
 
         self._meta_set('args', dict(args).copy())
         self._meta_set('vars', dict(vars).copy())
-        self._cache = PlayCache.make(vars)
         
     @abstractmethod
     def _get_validation_schema_operation(self, args, vars):
