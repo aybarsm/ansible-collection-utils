@@ -13,7 +13,7 @@ plugins/dev/
 .ansible/
 .tmp/*
 !.tmp/.gitkeep
-
+tach.toml
 # General
 .DS_Store
 .AppleDouble
