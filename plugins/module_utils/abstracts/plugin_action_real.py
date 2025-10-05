@@ -55,9 +55,7 @@ class PluginAction(ABC):
     def host(self, default: Any = None)-> Any:
         return self.vars('inventory_hostname', default)
 
-    def host_vars(self, host: str = '', key = '', default = None):
-        if Validate.blank(host):
-            host = self.host()
+    def host_vars(self, host, key = '', default = None):
         key = str(Str.start(key, 'hostvars.' + host + '.')).rstrip('.')
         return self.vars(key, default)
     
@@ -76,22 +74,6 @@ class PluginAction(ABC):
         Data.set(self._meta, meta_key, ret)
 
         return ret
-
-    def host_arg_vars(self, var: str, **kwargs)-> Any:
-        default = kwargs.pop('default', None)
-        var = self.args(f'vars.{var}', '')
-        if Validate.blank(var):
-            return default
-        
-        host = kwargs.pop('host', self.host())
-        append = kwargs.pop('append', [])
-        key_parts = ['hostvars', host, var]
-        if Validate.filled(append):
-            key_parts += list(append)
-
-        key = Helper.normalise_data_key(*key_parts)
-
-        return self.vars(key, default)
     
     def play_batch(self, default: Any = None)-> Any:
         return self.vars('ansible_play_batch', default)
@@ -107,15 +89,9 @@ class PluginAction(ABC):
     
     def has_cache(self)-> bool:
         return self._cache != None
-    
-    def get_cache(self) -> Optional[PlayCache]:
+
+    def cache(self)-> Optional[PlayCache]:
         return self._cache
-
-    def cache(self, key: str = '', default: Any=None) -> Any:
-        if not self._cache:
-            return default
-
-        return self._cache.get(key, default)
     
     def cache_set(self, key: str, value: Any)-> None:
         if not self._cache:
@@ -132,7 +108,7 @@ class PluginAction(ABC):
     def cache_append(self, key: str, value: Any, **kwargs)-> None:
         if not self._cache:
             return
-
+        
         self._cache.append(key, value, **kwargs)
     
     def cache_prepend(self, key: str, value: Any, **kwargs)-> None:

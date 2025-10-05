@@ -493,6 +493,39 @@ class Data:
         return Data.pydash().unset(data, key)
 
     @staticmethod
+    def append(data, key: str, value, **kwargs) -> Mapping:
+        current = list(Data.get(data, key, []))
+        is_extend = kwargs.pop('extend', False)
+        is_unique = kwargs.pop('unique', False)
+
+        if is_extend:
+            current.extend(value)
+        else:
+            current.append(value)
+
+        if is_unique:
+            current = list(set(current))
+        
+        return Data.set(data, key, current.copy())
+    
+    @staticmethod
+    def prepend(data, key: str, value, **kwargs) -> Mapping:
+        current = list(Data.get(data, key, []))
+        is_extend = kwargs.pop('extend', False)
+        is_unique = kwargs.pop('unique', False)
+
+        if is_extend:
+            for item in Helper.to_iterable(value):
+                current.insert(0, item)
+        else:
+            current.insert(0, value)
+
+        if is_unique:
+            current = list(set(current))
+        
+        return Data.set(data, key, current.copy())
+
+    @staticmethod
     def pluck(data, key):
         return Data.pydash().pluck(data, key)
     
@@ -790,30 +823,16 @@ class Data:
             ret = set(ret) - set(seq)
         
         return list(ret)
-    
-    @staticmethod
-    def append(data, key: str, value, **kwargs) -> None:
-        is_ioi_extend = kwargs.pop('ioi_extend', False)
-        exclude = kwargs.pop('exclude', [])
-        is_unique = kwargs.pop('unique', False)
-
-        current = list(Data.get(data, key, []))
-        if is_ioi_extend and Validate.is_iterable_of_iterables(value):
-            current.extend(value)
-        else:
-            current.append(value)
-        
-        if Validate.filled(exclude):
-            for exc in exclude:
-                exc = Helper.to_iterable(exc)
-                current = Data.difference(current, exc)
-        
-        if is_unique:
-            current = list(set(current))
-
-        Data.set(data, key, current.copy())
 
 class Helper:
+    @staticmethod
+    def normalise_data_key(*args: str) -> str:
+        ret = []
+        for key in args:
+            ret.append(re.sub(r'\.+', '.', key).strip('.'))
+        
+        return '.'.join(ret)
+    
     @staticmethod
     def tap_(value: Any, callback: Callable) -> Any:
         callback(value)
@@ -1038,13 +1057,14 @@ class Helper:
         return Helper.ts_mod(ts, mod)
     
     @staticmethod
-    def placeholder(randLen = 32, **kwargs):
+    def placeholder(*args, **kwargs):
+        rand_len = kwargs.pop('rand_len', 32)
         now = Helper.ts()
 
         ret = str('|'.join([
-            ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for _ in range(math.ceil(randLen/2))),
+            ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for _ in range(math.ceil(rand_len/2))),
             now.strftime("%Y-%m-%dT%H:%M:%S") + f".{now.microsecond * 1000:09d}Z", #type: ignore
-            ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for _ in range(math.floor(randLen/2)))
+            ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for _ in range(math.floor(rand_len/2)))
         ]))
 
         mod = kwargs.get('mod', '')
@@ -2270,6 +2290,13 @@ class PlayCache:
     def set(self, key: str, value: Any) -> None:
         self._exec(lambda cache: Data.set(cache, key, value), mod='with')
     
+    def append(self, key: str, value: Any, **kwargs) -> None:
+        Helper.dump(['play cache append', self.file(), self.persists()])
+        self._exec(lambda cache: Data.append(cache, key, value, **kwargs), mod='with')
+    
+    def prepend(self, key: str, value: Any, **kwargs) -> None:
+        self._exec(lambda cache: Data.prepend(cache, key, value, **kwargs), mod='with')
+    
     def forget(self, key: str) -> None:
         self._exec(lambda cache: Data.forget(cache, key), mod='tap')
 
@@ -2278,13 +2305,20 @@ class PlayCache:
     
     def has(self, key: str) -> bool:
         return self._exec(lambda cache: Data.has(cache, key))
+    
+    @staticmethod
+    def _is_valid_cache_file(ph:str, value: Any) -> bool:
+        return value != ph and Validate.is_string(value) and Validate.filled(value)
 
     @staticmethod
     def make(vars: Mapping) -> Optional[PlayCache]:
         ph = Helper.placeholder()
         cache_file = vars.get('hostvars', {}).get('localhost', {}).get('play_cache__file', ph)
         
-        if cache_file == ph or not Validate.is_string(cache_file) or Validate.blank(cache_file):
+        if not PlayCache._is_valid_cache_file(ph, cache_file):
+            cache_file = vars.get('play_cache__file', ph)
+        
+        if not PlayCache._is_valid_cache_file(ph, cache_file):
             return None
         
         persits = vars.get('hostvars', {}).get('localhost', {}).get('play_cache__persists', ph)
