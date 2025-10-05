@@ -113,7 +113,6 @@ class PluginAction(ABC):
         if Validate.filled(schema):
             v = Validator(schema, allow_unknown = True) # type: ignore
             if v.validate(args) != True: # type: ignore
-                Helper.dump(schema)
                 raise AnsibleActionFail(v.error_message()) # type: ignore
             args = v.normalized(args) # type: ignore
 
