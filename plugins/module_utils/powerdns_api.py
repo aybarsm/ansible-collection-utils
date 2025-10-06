@@ -8,9 +8,9 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.swagger import Swagg
 _DEFAULTS = {
     'swagger': {
         'settings': {
-        'ansible': {
-            'load_params': True,
-        },
+            'ansible': {
+                'load_params': True,
+            },
         },
         'defaults': {
             'url_base': {'_ansible': {'fallback': (env_fallback, ['PDNS_AUTH_API_URL_BASE'])}},
@@ -68,7 +68,6 @@ class PowerdnsApi():
         
         self._swagger.load_swagger(docs_source)
 
-        before_finalise_callback = None
         state = None
         match op:
             case PdnsOperation.auth_zone:
@@ -89,20 +88,31 @@ class PowerdnsApi():
                     case 'update':
                         method = 'PUT'
                         self._swagger.remap_set('body.zone_struct', 'zone_struct')
+                        self._swagger.ignore_add('body.zone_struct.rrsets')
                     case 'rrsets':
                         method = 'PATCH'
                         self._swagger.remap_set('body.zone_struct.rrsets', 'rrsets')
                         self._swagger.ignore_add('body.zone_struct')
-                        before_finalise_callback = self._op_auth_zone_rrsets_before_finalise_callback
                     case 'absent':
                         method = 'DELETE'
+                    case 'retrieve':
+                        method = 'GET'
+                        self._swagger.remap_set('query.rrsets', 'rrsets')
+                        self._swagger.remap_set('query.rrset_name', 'rrset_name')
+                        self._swagger.remap_set('query.rrset_type', 'rrset_type')
+                        self._swagger.cfg_set('settings.remap.ignore_missing', True)
+                    case 'list':
+                        method = 'GET'
+                        self._swagger.remap_set('query.zone', 'zone')
+                        self._swagger.remap_set('query.dnssec', 'dnssec')
+                        self._swagger.cfg_set('settings.remap.ignore_missing', True)
                     case _:
                         method = 'GET'
         ret = {
             'type': op,
             'path': path,
             'method': method,
-            'before_finalise_callback': before_finalise_callback,
+            'before_finalise_callback': self._op_auth_zone_before_finalise_callback,
             'state': state,
             'valid': True,
         }
@@ -171,12 +181,19 @@ class PowerdnsApi():
             ret['changed'] = fetch_kwargs['method'] not in ['GET', 'HEAD', 'OPTIONS']
             del ret['failed']
         
+        if self.operation_type() == PdnsOperation.auth_zone and self.operation_state() == 'retrieve':
+            ret['result']['exists'] = ret['result']['status'] == 200
+        
         return ret
 
-    @staticmethod
-    def _op_auth_zone_rrsets_before_finalise_callback(ret: dict)-> dict:
-        Data.set(ret, 'data.rrsets', Data.get(ret, 'data.zone_struct.rrsets'))
-        Data.forget(ret, 'data.zone_struct')
+    def _op_auth_zone_before_finalise_callback(self, ret: dict)-> dict:
+        state = self.operation_state()
+        if state == 'rrsets':
+            Data.set(ret, 'data.rrsets', Data.get(ret, 'data.zone_struct.rrsets'))
+            Data.forget(ret, 'data.zone_struct')
+        elif state in ['present', 'update']:
+            zone_struct = Data.get(ret, 'data.zone_struct', {})
+            Data.set(ret, 'data', zone_struct.copy())
         
         return ret
 

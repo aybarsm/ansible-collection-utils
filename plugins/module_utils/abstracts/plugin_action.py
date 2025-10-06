@@ -118,6 +118,8 @@ class PluginAction(ABC):
 
         self._meta_set('args', dict(args).copy())
         self._meta_set('vars', dict(vars).copy())
+        # self._meta_set('args', dict(Helper.to_safe_json(args)).copy())
+        # self._meta_set('vars', dict(Helper.to_safe_json(vars)).copy())
         
     @abstractmethod
     def _get_validation_schema_operation(self, args, vars):

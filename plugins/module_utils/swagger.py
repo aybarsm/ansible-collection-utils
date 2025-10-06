@@ -87,7 +87,7 @@ class Swagger:
         from ansible.module_utils.basic import _load_params
         ansible_load_params = self.cfg('settings.ansible.load_params', False)
         if  ansible_load_params == True and not self.meta_has('params'):
-            self.params_set(_load_params())
+            self.params_set(Data.all_except(Helper.to_safe_json(_load_params()), meta=True)) #type: ignore
     
     def get_cerberus_validation_schema(self, path: str, method: str, remap: bool = True, ignore: bool = True) -> dict:
         is_ansible = self.is_validation_ansible()
@@ -204,7 +204,7 @@ class Swagger:
         if before_finalise:
             ret = before_finalise(ret)
 
-        if 'application/json' in ret['headers']['Content-Type'] and Validate.filled(ret['data']) and not Validate.is_string(ret['data']):
+        if 'data' in ret and 'application/json' in ret['headers']['Content-Type'] and not Validate.is_string(ret['data']):
             ret['data'] = json.dumps(ret['data']).encode("utf-8")
 
         return ret

@@ -630,7 +630,7 @@ class Data:
         return ret
 
     @staticmethod
-    def only_with(data: dict | Sequence[dict], *args, **kwargs) -> Sequence[dict] | list[dict] | dict:
+    def only_with(data: Mapping | Sequence[dict], *args, **kwargs) -> Sequence[dict] | list[dict] | dict:
         Validate.require(['dict', 'iterable_of_dicts'], data, 'data')
         Validate.require(['iterable_of_strings'], args, 'args')
 
@@ -638,11 +638,12 @@ class Data:
         meta_fix = Data.get(kwargs, 'meta_fix', False)
         no_dot = Data.get(kwargs, 'no_dot', False)
         filled = Data.get(kwargs, 'filled', False)
+        is_mapping = Validate.is_mapping(data)
+        data = dict(data) if is_mapping else Helper.to_iterable(data) #type: ignore
         if Validate.blank(args) and not meta:
             return data
         
         ret = []
-        is_dict = Validate.is_dict(data)
         args = list(args)
 
         for item in Helper.to_iterable(data):
@@ -671,10 +672,10 @@ class Data:
             
             ret.append(new_item)
         
-        return ret[0] if is_dict else ret
+        return ret[0] if is_mapping else ret
     
     @staticmethod
-    def all_except(data: dict | Sequence[dict], *args, **kwargs) -> Sequence[dict] | list[dict] | dict:
+    def all_except(data: Mapping | Sequence[dict], *args, **kwargs) -> Sequence[dict] | list[dict] | dict:
         Validate.require(['dict', 'iterable_of_dicts'], data, 'data')
         Validate.require(['iterable_of_strings'], args, 'args')
 
@@ -682,10 +683,11 @@ class Data:
         omitted = Data.get(kwargs, 'omitted', False)
         blank = Data.get(kwargs, 'blank', False)
         no_dot = Data.get(kwargs, 'no_dot', False)
+        is_mapping = Validate.is_mapping(data)
+        data = dict(data) if is_mapping else Helper.to_iterable(data) #type: ignore
         if Validate.blank(args) and not meta and not omitted and not blank:
             return data
-
-        is_dict = Validate.is_dict(data)
+        
         args = list(args)
         ret = []
 
@@ -714,7 +716,7 @@ class Data:
             
             ret.append(new_item)
         
-        return ret[0] if is_dict else ret
+        return ret[0] if is_mapping else ret
 
     @staticmethod
     def query(data, query, *args, **kwargs):
@@ -1350,7 +1352,7 @@ class Helper:
             }
         }
         
-        if not status >= status_min and not status < status_max:
+        if not (status_min <= status < status_max):
             msg = {'Message': info.get('msg')}
 
             if Validate.filled(info.get('exception', '')):
@@ -1371,12 +1373,12 @@ class Helper:
                 'failed': False,
                 'result': {
                     'status': status,
-                    'response': Helper.to_native(resp.read()),
+                    'data': Helper.to_native(resp.read()),
                 }
             }
             
-            if Validate.str_is_json(ret['result']['response']):
-                ret['result']['response'] = json.loads(ret['result']['response'])
+            if Validate.str_is_json(ret['result']['data']):
+                ret['result']['data'] = json.loads(ret['result']['data'])
         
         return ret
     
