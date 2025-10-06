@@ -1,4 +1,6 @@
 from __future__ import annotations
+from ast import Call
+from multiprocessing import Value
 import sys, re, json, yaml, inspect, pathlib, os, io, datetime, random, uuid, string, tempfile, importlib, hashlib, urllib.parse, math, time, errno
 import rich.pretty, rich.console, jinja2, cerberus
 from typing import Callable, Union, Any, Optional
@@ -408,6 +410,33 @@ class DataQuery:
         return self._data
 
 class Data:
+    @staticmethod
+    def first(data: Mapping|Sequence, callback: Optional[Callable] = None, default: Any = None) -> Any:
+        Validate.require(['sequence', 'mapping'], data, 'data')
+        is_seq = Validate.is_sequence(data)
+        data = list(data) if is_seq else dict(data)
+
+        if Validate.blank(data):
+            return data
+
+        ret = None
+        found = False
+        if not callback and is_seq:
+            return data[0]
+        elif not callback and not is_seq:
+            first_key = list(data.keys())[0] #type: ignore
+            return data[first_key]
+        else:
+            iterate = enumerate(data) if is_seq else data.items() #type: ignore
+            for key, value in iterate: #type: ignore
+                res = Helper.callback(callback, value, key)
+                if res == True:
+                    ret = value
+                    found = True
+                    break
+        
+        return default if not found else ret
+    
     @staticmethod
     def dot(data, prepend='') -> dict:
         ret = {}
@@ -825,6 +854,24 @@ class Data:
         return list(ret)
 
 class Helper:
+    @staticmethod
+    def fs_glob(path: Union[pathlib.Path, str], **kwargs) -> list[pathlib.Path]:
+        path = pathlib.Path(path)
+        if not path.exists() or not path.is_dir():
+            raise ValueError(f'{str(path)} is not a valid directory to glob')
+        
+        is_recursive = kwargs.pop('recursive', False)
+        is_include_files = kwargs.pop('files', True)
+        is_include_dirs = kwargs.pop('dirs', True)
+
+        ret = []
+        iterate = path.rglob('*') if is_recursive else path.iterdir()
+        for item in iterate:
+            if (is_include_files and item.is_file()) or (is_include_dirs and item.is_dir()):
+                ret.append(item)
+
+        return ret
+    
     @staticmethod
     def normalise_data_key(*args: str) -> str:
         ret = []
@@ -1623,6 +1670,33 @@ class Str:
 
 class Validate:
     @staticmethod
+    def str_endswith(haystack: str, *args, **kwargs)-> bool:
+        for needle in args:
+            res = haystack.endswith(needle, **kwargs)
+            if res:
+                return True
+        
+        return False
+    
+    @staticmethod
+    def str_startswith(haystack: str, *args, **kwargs)-> bool:
+        for needle in args:
+            res = haystack.startswith(needle, **kwargs)
+            if res:
+                return True
+        
+        return False
+
+    @staticmethod
+    def str_contains(haystack: str, *args, **kwargs)-> bool:
+        for needle in args:
+            res = needle in haystack
+            if res:
+                return True
+        
+        return False
+
+    @staticmethod
     def is_fs_locked(file):
         try:
             if sys.platform == 'win32':
@@ -1954,6 +2028,10 @@ class Validate:
                 return Validate.is_iterable_of_dicts(data)
             case 'dictofiterables':
                 return Validate.is_dict_of_iterables(data)
+            case 'sequence':
+                return Validate.is_sequence(data)
+            case 'mapping':
+                return Validate.is_mapping(data)
             case 'callable':
                 return Validate.is_callable(data)
             case _:
@@ -2095,13 +2173,14 @@ class Validate:
         return Validate.str_is_regex(haystack, patterns, *args, **kwargs)
 
     @staticmethod
-    def str_is_regex(haystack, patterns, *args, **kwargs):
+    def str_is_regex(haystack: str, patterns: Sequence, *args, **kwargs):
         import re
         is_cli = kwargs.get('cli', False)
         is_all = kwargs.get('all', False)
         is_escape = kwargs.get('escape', False)
         is_prepare = kwargs.get('prepare', False)
         
+        patterns = list(patterns)
         if is_cli and Validate.is_string(patterns):
             patterns = Str.to_cli(patterns)
         
