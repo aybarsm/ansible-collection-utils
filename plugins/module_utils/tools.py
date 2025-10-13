@@ -1,5 +1,6 @@
 from __future__ import annotations
 from ast import Call
+from http.client import HTTPResponse
 from multiprocessing import Value
 import sys, re, json, yaml, inspect, pathlib, os, io, datetime, random, uuid, string, tempfile, importlib, hashlib, urllib.parse, math, time, errno
 import rich.pretty, rich.console, jinja2, cerberus
@@ -411,31 +412,70 @@ class DataQuery:
 
 class Data:
     @staticmethod
-    def first(data: Mapping|Sequence, callback: Optional[Callable] = None, default: Any = None) -> Any:
-        Validate.require(['sequence', 'mapping'], data, 'data')
+    def where(data: Mapping|Sequence, callback: Optional[Callable] = None, default: Any = None, **kwargs) -> Any:
+        is_negate = kwargs.pop('negate', False)
+        is_first = kwargs.pop('first', False)
+        is_last = kwargs.pop('last', False)
+
+        if is_first == True and is_last == True:
+            raise ValueError('First and last cannot be searched at the same time.')
+        
         is_seq = Validate.is_sequence(data)
         data = list(data) if is_seq else dict(data)
 
         if Validate.blank(data):
-            return data
+            return default
 
-        ret = None
-        found = False
-        if not callback and is_seq:
+        if is_first and is_seq and not callback:
             return data[0]
-        elif not callback and not is_seq:
+        elif is_first and not is_seq and not callback:
             first_key = list(data.keys())[0] #type: ignore
             return data[first_key]
         else:
+            ret = [] if is_seq else {}
             iterate = enumerate(data) if is_seq else data.items() #type: ignore
-            for key, value in iterate: #type: ignore
+            for key, value in iterate:
                 res = Helper.callback(callback, value, key)
+                if is_negate:
+                    res = not res
+                
                 if res == True:
-                    ret = value
-                    found = True
-                    break
+                    if is_seq:
+                        ret.append(value) #type: ignore
+                    else:
+                        ret[key] = value
+                    
+                    if is_first:
+                        break
+
+        if Validate.blank(ret):
+            return default
         
-        return default if not found else ret
+        if is_first or is_last:
+            if not is_seq:
+                ret_keys = ret.keys() #type: ignore
+                return ret[ret_keys[0]] if is_first else ret[ret_keys[-1]] #type: ignore
+            else:
+                return ret[0] if is_first else ret[-1]
+
+        return ret
+    
+    @staticmethod
+    def reject(data: Mapping|Sequence, callback: Optional[Callable] = None, default: Any = None, **kwargs) -> Any:
+        kwargs['negate'] = True
+        return Data.where(data, callback, default, **kwargs)
+
+    @staticmethod
+    def first(data: Mapping|Sequence, callback: Optional[Callable] = None, default: Any = None, **kwargs) -> Any:
+        kwargs['first'] = True
+        kwargs['last'] = False
+        return Data.where(data, callback, default, **kwargs)
+
+    @staticmethod
+    def last(data: Mapping|Sequence, callback: Optional[Callable] = None, default: Any = None, **kwargs) -> Any:
+        kwargs['first'] = False
+        kwargs['last'] = True
+        return Data.where(data, callback, default, **kwargs)
     
     @staticmethod
     def dot(data, prepend='') -> dict:
@@ -518,8 +558,9 @@ class Data:
         return Data.pydash().has(data, key)
 
     @staticmethod
-    def forget(data, key):
-        return Data.pydash().unset(data, key)
+    def forget(data, keys)-> None:
+        for key in Helper.to_iterable(keys):
+            Data.pydash().unset(data, key)
 
     @staticmethod
     def append(data, key: str, value, **kwargs) -> Mapping:
@@ -857,6 +898,119 @@ class Data:
 
 class Helper:
     @staticmethod
+    def ipaddr(value, query: str = ''):
+        from ansible_collections.ansible.utils.plugins.plugin_utils.base.ipaddr_utils import ipaddr
+        return ipaddr(value, query)
+
+    @staticmethod
+    def play_meta(vars: Mapping, **kwargs)-> dict:
+        ts = Helper.ts()
+
+        play_hosts = ','.join(vars.get('ansible_play_hosts_all', []))
+        play_batch = ','.join(vars.get('ansible_play_batch', []))
+        ret = {
+            'ph': 'N/A' if Validate.blank(play_hosts) else play_hosts,
+            'if': vars.get('inventory_file', 'N/A'),
+            'cf': vars.get('ansible_config_file', 'N/A'),
+            'pbd': vars.get('playbook_dir', 'N/A'),
+            'pbn': vars.get('ansible_play_name', 'N/A'),
+            'pb': 'N/A' if Validate.blank(play_batch) else play_batch,
+            'ts': Helper.ts_mod(ts, 'long_safe'), #type: ignore
+        }
+
+        kwargs['encoding'] = kwargs.get('encoding', 'utf-8')
+        play_id = Str.urlencode(ret, **kwargs)
+        play_id = urllib.parse.unquote(play_id, encoding='utf-8', errors='strict')
+        ret = {
+            'id': {
+                'raw': play_id,
+                'hash': Str.to_md5(play_id),
+            },
+            'ts': {
+                'raw': ts,
+                'str': Helper.ts_mod(ts, 'str'), #type: ignore
+                'safe': Helper.ts_mod(ts, 'safe'), #type: ignore
+                'long': Helper.ts_mod(ts, 'long'), #type: ignore
+                'long_safe': Helper.ts_mod(ts, 'long_safe'), #type: ignore
+                'timestamp': Helper.ts_mod(ts, 'timestamp'), #type: ignore
+            },
+        }
+        return ret
+    
+    @staticmethod
+    def data_key(key: str = '')-> str:
+        return re.sub(r'\.+', '.', key).strip('.')
+    
+    @staticmethod
+    def to_toml(data: Mapping, **kwargs)-> str:
+        from tomlkit import dumps
+        return dumps(data, **kwargs)
+    
+    @staticmethod
+    def from_toml(data: str | bytes)-> dict:
+        from tomlkit import parse
+        return parse(data)
+    
+    @staticmethod
+    def hash_scrypt(data: str, **kwargs)-> str:
+        from passlib.hash import scrypt
+
+        return scrypt.hash(data, **kwargs)
+        meta_order = kwargs.pop('meta_order', [])
+        kwargs['salt_size'] = kwargs.get('salt_size', scrypt.default_salt_size)
+        kwargs['ident'] = kwargs.get('ident', scrypt.default_ident)
+        kwargs['parallelism'] = kwargs.get('parallelism', scrypt.parallelism)
+        kwargs['block_size'] = kwargs.get('block_size', scrypt.block_size)
+        # kwargs['salt_chars'] = kwargs.get('salt_chars', scrypt.default_salt_chars)
+        # kwargs['rounds'] = kwargs.get('rounds', scrypt.default_rounds)
+        # kwargs['block_size'] = kwargs.get('ident', scrypt.def)
+        # kwargs['salt'] = kwargs.get('salt', os.urandom(salt_length))
+
+        
+        ret = None
+        try:
+            ret = scrypt(**kwargs).hash(data)
+            # ret = scrypt.hash(data, **kwargs)
+        except Exception as e:
+            Helper.dump(str(e))
+        
+        return ret if ret else 'N/A'
+        ret = scrypt.hash(data)
+        has_salt = 'salt' in kwargs
+
+        if has_salt and kwargs.get('salt', None) is None:
+            
+            kwargs['salt'] = os.urandom(salt_length)
+
+        ret = scrypt.using(**kwargs).hash(data)
+        
+        if Validate.filled(meta_order):
+            segments = ret.lstrip('$').split('$')
+            if not len(segments) >= 3 or segments[0] != 'scrypt' or '=' not in segments[1]:
+                raise ValueError('Could not resolve scrypt hash segments to re-order')
+            
+            meta = {}
+            for segment in str(segments[1]).split(','):
+                [key, val] = str(segment).split('=', 1)
+                meta[str(key)] = str(val)
+            
+            if not Validate.contains(meta, *meta_order, all=True):
+                raise ValueError('Invalid meta_order keys provided')
+            
+            meta_parts = []
+            for key in meta_order:
+                val = meta.pop(key)
+                meta_parts.append(f'{key}={val}')
+            
+            if Validate.filled(meta):
+                for key, val in meta.items():
+                    meta_parts.append(f'{key}={val}')
+            
+            return '$'.join(['$scrypt', ','.join(meta_parts), '$'.join(segments[2:])])            
+
+        return ret
+    
+    @staticmethod
     def fs_glob(path: Union[pathlib.Path, str], **kwargs) -> list[pathlib.Path]:
         path = pathlib.Path(path)
         if not path.exists() or not path.is_dir():
@@ -957,35 +1111,58 @@ class Helper:
         return type(data).__name__
 
     @staticmethod
-    def to_ip_address(data):
+    def to_ip_address(data, exception: bool = True):
         from ansible_collections.ansible.utils.plugins.plugin_utils.base.ipaddress_utils import ip_address
+
         try:
             return ip_address(data)
         except Exception as e:
-            return e
+            return e if exception else False
         
     @staticmethod
-    def to_ip_network(data):
+    def to_ip_network(data, exception: bool = True):
         from ansible_collections.ansible.utils.plugins.plugin_utils.base.ipaddress_utils import ip_network
         try:
             return ip_network(data)
         except Exception as e:
-            return e
-            
+            return e if exception else False
+    
     @staticmethod
-    def save_as_json(content: Mapping | Sequence | str, path: str, **kwargs) -> None:
+    def fs_write(path: pathlib.Path | str, data: str | bytes, **kwargs)-> None:
+        path = pathlib.Path(path)
+        if Validate.is_string(data):
+            path.write_text(str(data), **kwargs)
+        else:
+            path.write_bytes(data, **kwargs) #type: ignore
+    
+    @staticmethod
+    def fs_read(path: pathlib.Path | str, **kwargs)-> str:
+        return pathlib.Path(path).read_text(**kwargs)
+    
+    @staticmethod
+    def json_load(path: pathlib.Path | str, **kwargs) -> dict | list:
+        path = pathlib.Path(path)
+        if not path.exists():
+            raise ValueError(f'Json file [{str(path)}] does not exist.')
+        return json.loads(Helper.fs_read(path), **kwargs)
+
+    @staticmethod
+    def json_save(content: Mapping | Sequence | str, path: pathlib.Path | str, **kwargs) -> None:
+        path = pathlib.Path(path)
         overwrite = kwargs.pop('overwrite', False)
 
-        if Validate.file_exists(path) and not overwrite:
-            return
+        if path.exists() and not overwrite:
+            raise ValueError(f'Json file [{str(path)}] already exists.')
         
+        kwargs_path = Data.only_with(kwargs, 'encoding', 'errors')
+        kwargs_json = Data.all_except(kwargs, 'encoding', 'errors', 'newline')
+
         if Validate.is_mapping(content):
-            content = json.dumps(Helper.to_safe_json(dict(content)), **kwargs)
+            content = json.dumps(Helper.to_safe_json(dict(content)), **kwargs_json) #type: ignore
         elif Validate.is_sequence(content):
-            content = json.dumps(Helper.to_safe_json(list(content)), **kwargs)
+            content = json.dumps(Helper.to_safe_json(list(content)), **kwargs_json) #type: ignore
         
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(str(content))
+        Helper.fs_write(path, str(content), **kwargs_path) #type: ignore
 
     @staticmethod
     def path_rglob(path: pathlib.Path | str):
@@ -1083,7 +1260,7 @@ class Helper:
                 rich.pretty.pprint(arg, **kwargs)
     
     @staticmethod
-    def ts_mod(ts, mod: str):
+    def ts_mod(ts: datetime.datetime, mod: str)-> datetime.datetime | str | int:
         match mod:
             case 'string' | 'str':
                 return str(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
@@ -1094,7 +1271,7 @@ class Helper:
             case 'long_safe':
                 return str(ts.strftime("%Y%m%dT%H%M%S") + f".{ts.microsecond * 1000:09d}Z")
             case 'timestamp':
-                int(ts.timestamp())
+                return int(ts.timestamp())
             case _:
                 return ts
 
@@ -1147,6 +1324,11 @@ class Helper:
         
         return ret if raw == True else str(ret)
     
+    # @staticmethod
+    # def path_relative_to(path: Union[pathlib.Path, str], rel: Union[pathlib.Path, str]) -> str:
+    #     path = pathlib.Path(path)
+    #     return 
+
     @staticmethod
     def ensure_directory_exists(path: Union[pathlib.Path, str]) -> None:
         path = pathlib.Path(path)
@@ -1261,9 +1443,8 @@ class Helper:
     
     @staticmethod
     def to_safe_json(data):
-        
         if Validate.is_bytes(data):
-            return Helper.to_safe_json(Helper.to_native(data))
+            return Helper.to_safe_json(Helper.to_text(data))
         elif Validate.is_string(data) and Validate.str_is_json(data):
             return Helper.to_safe_json(json.loads(data))
         elif Validate.is_string(data) and Validate.str_is_yaml(data):
@@ -1330,13 +1511,27 @@ class Helper:
         return os.path.basename(path)
     
     @staticmethod
-    def to_native(*args, **kwargs):
-        from ansible.module_utils.common.text.converters import to_native
-        return to_native(*args, **kwargs)
-    
+    def to_text(*args, **kwargs):
+        from ansible.module_utils.common.text.converters import to_text
+        return to_text(*args, **kwargs)
+
+    # @staticmethod
+    # def from_ansible_tagged_object(data, **kwargs):
+    #     if Validate.is_ansible_tagged_object(data):
+    #             data = data._native_copy()
+        
+    #     if Validate.is_mapping(data):
+    #         return {str(k): Helper.from_ansible_tagged_object(v) for k, v in data.items()}
+    #     elif Validate.is_sequence(data):
+    #         return [Helper.from_ansible_tagged_object(item) for item in data]
+
+    #     return data
+
+        # return data._native_copy() if Validate.is_ansible_tagged_object(data) else data
+
     @staticmethod
     def to_string(data, **kwargs):
-        return str(Helper.to_native(data, **kwargs))
+        return str(Helper.to_text(data, **kwargs))
 
     @staticmethod
     def fetch_url_to_module_result(resp, info, **kwargs):
@@ -1362,9 +1557,9 @@ class Helper:
             
             err_body = None
             if Validate.is_http_response(resp):
-                err_body = Helper.to_native(resp.read())
+                err_body = Helper.to_text(resp.read())
             elif Validate.filled(info.get('body', '')):
-                err_body = Helper.to_native(info.get('body', ''))
+                err_body = Helper.to_text(info.get('body', ''))
                 
             if Validate.filled(err_body):
                 ret['kwargs']['body'] = err_body
@@ -1373,7 +1568,49 @@ class Helper:
                 'failed': False,
                 'result': {
                     'status': status,
-                    'data': Helper.to_native(resp.read()),
+                    'data': Helper.to_text(resp.read()),
+                }
+            }
+            
+            if Validate.str_is_json(ret['result']['data']):
+                ret['result']['data'] = json.loads(ret['result']['data'])
+        
+        return ret
+
+    @staticmethod
+    def ansible_open_url_to_result(resp: HTTPResponse, **kwargs):
+        status_min = int(kwargs.pop('status_min', 200))
+        status_max = int(kwargs.pop('status_max', 300))
+        status = int(resp.status)
+
+        ret = {
+            'failed': True,
+            'msg': '',
+            'kwargs': {
+                'status': status,
+            }
+        }
+        
+        if not (status_min <= status < status_max):
+            # msg = {'Message': info.get('msg')}
+
+            # if Validate.filled(info.get('exception', '')):
+            #     msg['Exception'] = info.get('exception', '')
+            
+            # ret['msg'] = Helper.mapping_to_str(msg, assign=': ', join=' | ')
+            
+            err_body = None
+            if Validate.is_http_response(resp):
+                err_body = Helper.to_text(resp.read())
+                
+            if Validate.filled(err_body):
+                ret['kwargs']['body'] = err_body
+        else:
+            ret = {
+                'failed': False,
+                'result': {
+                    'status': status,
+                    'data': Helper.to_text(resp.read()),
                 }
             }
             
@@ -1526,6 +1763,10 @@ class Jinja:
 
 class Str:
     @staticmethod
+    def remove_empty_lines(data: str) -> str:
+        return re.sub(r'(\n\s*){2,}', '\n', re.sub(r'^\s*[\r\n]+|[\r\n]+\s*\Z', '', data))
+    
+    @staticmethod
     def to_str(data) -> str | list[str]:
         if Validate.is_string(data):
             return data
@@ -1622,7 +1863,7 @@ class Str:
         return re.sub(r'^https?://', '', str(data))
     
     @staticmethod
-    def urlencode(data, **kwargs):
+    def urlencode(data, **kwargs)-> str:
         keys = data.keys()
         for key in keys:
             if Validate.is_bool(data[key]):
@@ -1744,6 +1985,14 @@ class Validate:
         return isinstance(data, BaseException) or (isinstance(data, type) and issubclass(data, BaseException))
     
     @staticmethod
+    def is_ip(data):
+        return Helper.to_ip_address(data, False) != False
+    
+    @staticmethod
+    def is_network(data):
+        return Helper.to_ip_network(data, False) != False
+    
+    @staticmethod
     def is_ip_v4(data):
         ip = Helper.to_ip_address(data)
         return ip.version == 4 if not Validate.is_exception(data) else False #type: ignore
@@ -1860,8 +2109,68 @@ class Validate:
         return Validate.is_object(data) and type(data).__name__ == '_AnsibleLazyTemplateDict'
     
     @staticmethod
+    def is_python_native(data):
+        return type(data).__module__ == 'builtins'
+    
+    @staticmethod
     def is_ansible_mapping(data):
         return Validate.is_hostvars(data) or Validate.is_hostvarsvars(data) or Validate.is_lazytemplatedict(data)
+    
+    @staticmethod
+    def is_ansible_marker(data):
+        return Validate.is_object(data) and type(data).__module__ == 'ansible._internal._templating._jinja_common' and type(data).__name__ == 'Marker'
+
+    @staticmethod
+    def is_ansible_undefined_marker(data):
+        return Validate.is_object(data) and type(data).__module__ == 'ansible._internal._templating._jinja_common' and type(data).__name__ == 'UndefinedMarker'
+    
+    @staticmethod
+    def is_ansible_tagged_object(data):
+        return Validate.is_object(data) and type(data).__module__ == 'ansible.module_utils._internal._datatag' and any("AnsibleTaggedObject" == cls.__name__ for cls in type(data).__mro__)
+    
+    @staticmethod
+    def is_ansible_tagged_data(data):
+        return Validate.is_object(data) and type(data).__module__ == 'ansible.module_utils._internal._datatag'
+
+    @staticmethod
+    def is_ansible_tagged_date(data):
+        return Validate.is_ansible_tagged_data(data) and type(data).__name__ == '_AnsibleTaggedDate'
+
+    @staticmethod
+    def is_ansible_tagged_time(data):
+        return Validate.is_ansible_tagged_data(data) and type(data).__name__ == '_AnsibleTaggedTime'
+
+    @staticmethod
+    def is_ansible_tagged_datetime(data):
+        return Validate.is_ansible_tagged_data(data) and type(data).__name__ == '_AnsibleTaggedDateTime'
+
+    @staticmethod
+    def is_ansible_tagged_str(data):
+        return Validate.is_ansible_tagged_data(data) and type(data).__name__ == '_AnsibleTaggedStr'
+    
+    @staticmethod
+    def is_ansible_tagged_int(data):
+        return Validate.is_ansible_tagged_data(data) and type(data).__name__ == '_AnsibleTaggedInt'
+    
+    @staticmethod
+    def is_ansible_tagged_float(data):
+        return Validate.is_ansible_tagged_data(data) and type(data).__name__ == '_AnsibleTaggedFloat'
+    
+    @staticmethod
+    def is_ansible_tagged_list(data):
+        return Validate.is_ansible_tagged_data(data) and type(data).__name__ == '_AnsibleTaggedList'
+    
+    @staticmethod
+    def is_ansible_tagged_set(data):
+        return Validate.is_ansible_tagged_data(data) and type(data).__name__ == '_AnsibleTaggedSet'
+    
+    @staticmethod
+    def is_ansible_tagged_tuple(data):
+        return Validate.is_ansible_tagged_data(data) and type(data).__name__ == '_AnsibleTaggedTuple'
+
+    @staticmethod
+    def is_ansible_tagged_dict(data):
+        return Validate.is_ansible_tagged_data(data) and type(data).__name__ == '_AnsibleTaggedDict'
     
     @staticmethod
     def is_int(data):
@@ -1901,6 +2210,10 @@ class Validate:
             return False
         
         return isinstance(data, Sequence)
+    
+    @staticmethod
+    def is_sequence_of_mappings(data):
+        return Validate.is_sequence(data) and all(Validate.is_ansible_mapping(item) for item in data)
     
     @staticmethod
     def is_list_of_dicts(data):
@@ -2213,7 +2526,7 @@ class Validate:
                 try:
                     myvars.append(json.dumps(x))
                 except Exception:
-                    myvars.append(Helper.to_native(x))
+                    myvars.append(Helper.to_text(x))
             raise ValueError("failed to combine variables, expected dicts but got a '{0}' and a '{1}': \n{2}\n{3}".format(
                 a.__class__.__name__, b.__class__.__name__, myvars[0], myvars[1])
             )

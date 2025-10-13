@@ -1,5 +1,5 @@
 from __future__ import annotations
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Data, Str, Helper
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Data, Str, Helper, Validate
 
 class FilterModule(object):
     def filters(self):        
@@ -16,17 +16,31 @@ class FilterModule(object):
             'to_safe_json': Helper.to_safe_json,
             'to_lofs': Helper.to_list_dicts,
             'top_level_dirs': Helper.top_level_dirs,
+            'subnets_collapse': Helper.subnets_collapse,
+            'type_name': Helper.to_type_name,
+            'to_native': Helper.to_text,
+            'to_string': Helper.to_string,
+            'to_lua': Helper.to_lua,
+            'ts_mod': Helper.ts_mod,
+            'path_tmp': Helper.path_tmp,
+            'pluck': Data.pluck,
+            'hash_scrypt': Helper.hash_scrypt,
+            'quote': lambda data, single = True: Str.wrap(data, ("'" if single else '"')),
             'str_cli': Str.to_cli,
             'str_tokenize': Str.to_tokens,
             'str_wrap': Str.wrap,
             'str_finish': Str.finish,
             'str_start': Str.start,
             'ip_as_addr': Helper.ip_as_addr,
-            'subnets_collapse': Helper.subnets_collapse,
-            'type_name': Helper.to_type_name,
-            'to_native': Helper.to_native,
-            'to_string': Helper.to_string,
-            'to_lua': Helper.to_lua,
-            'ts_mod': Helper.ts_mod,
-            'path_tmp': Helper.path_tmp,
+            'str_regex': lambda data, patterns, **kwargs: [item for item in Helper.to_iterable(data) if Validate.str_is_regex(item, patterns, **kwargs)],
+            'str_strip': lambda data, chars = None: str(data).strip(chars),
+            'str_lstrip': lambda data, chars = None: str(data).lstrip(chars),
+            'str_rstrip': lambda data, chars = None: str(data).rstrip(chars),
+            'str_remove_empty_lines': Str.remove_empty_lines,
+            'str_before': Str.before,
+            'str_before_last': Str.before_last,
+            'str_after': Str.after,
+            'str_after_last': Str.after_last,
+            'to_toml': Helper.to_toml,
+            'from_toml': Helper.from_toml,
         }

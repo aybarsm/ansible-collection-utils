@@ -1,5 +1,5 @@
 from __future__ import annotations
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Validate
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Validate, Data
 
 class TestModule(object):
     def tests(self):
@@ -19,4 +19,9 @@ class TestModule(object):
             'type_name': Validate.is_type_name,
             'truthy': Validate.is_truthy,
             'falsy': Validate.is_falsy,
+            'item_exec': lambda data: not Validate.is_truthy(Data.get('_skip', False)) and not Validate.is_falsy(Data.get('_keep', True)),
+            'mapping': Validate.is_mapping,
+            'sequence': Validate.is_sequence,
+            'd_blank': lambda data, key: Validate.blank(Data.get(data, key)),
+            'd_filled': lambda data, key: Validate.filled(Data.get(data, key)),
         }

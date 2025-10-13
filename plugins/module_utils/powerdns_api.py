@@ -1,17 +1,12 @@
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 from enum import Enum, auto
-from ansible.module_utils.urls import fetch_url
+from ansible.module_utils.urls import open_url, fetch_url
 from ansible.module_utils.basic import env_fallback
 from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Data, Validate, Validator, Helper
 from ansible_collections.aybarsm.utils.plugins.module_utils.swagger import Swagger
 
 _DEFAULTS = {
     'swagger': {
-        'settings': {
-            'ansible': {
-                'load_params': True,
-            },
-        },
         'defaults': {
             'url_base': {'_ansible': {'fallback': (env_fallback, ['PDNS_AUTH_API_URL_BASE'])}},
             'docs_source': {'_ansible': {'fallback': (env_fallback, ['PDNS_AUTH_API_DOCS_SOURCE'])}},
@@ -37,10 +32,13 @@ class PdnsOperation(Enum):
     auth_zone = auto()
 
 class PowerdnsApi():
-    def __init__(self, op: PdnsOperation):
+    def __init__(self, op: PdnsOperation, params: Mapping = {}):
         self._meta = {'cfg': _DEFAULTS.copy()}
         self._swagger = Swagger(self.meta('cfg.swagger', {}))
         
+        if Validate.filled(params):
+            self._swagger.params_set(dict(params))
+
         self._operation_set(op)
     
     def _get_value(self, container, key = '', default = None) -> Any:   
@@ -152,7 +150,7 @@ class PowerdnsApi():
         
         return kwargs
     
-    def operation_execute(self, module) -> dict:
+    def operation_execute(self, module = None) -> dict:
         path = self.operation_path()
         method = self.operation_method()
         ret = {
@@ -174,7 +172,9 @@ class PowerdnsApi():
         
         fetch_kwargs = self._swagger.prepare_execution(path, method, before_finalise = before_finalise_callback)
         url = fetch_kwargs.pop('url', '')
-
+        if not module:
+            return Helper.ansible_open_url_to_result(open_url(url, **fetch_kwargs))
+        
         ret = Helper.fetch_url_to_module_result(*fetch_url(module, url, **fetch_kwargs))
 
         if not ret['failed']:

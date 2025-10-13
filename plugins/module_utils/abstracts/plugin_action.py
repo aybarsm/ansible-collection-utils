@@ -1,6 +1,5 @@
 from typing import Any, Mapping
 from abc import ABC, abstractmethod
-from ansible.errors import AnsibleActionFail
 from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Validate, Data, Str, Helper, Validator
 
 _CONF = {
@@ -15,7 +14,7 @@ _CONF = {
 
 class PluginAction(ABC):
     def __init__(self, args: Mapping = {}, vars: Mapping = {}):
-        self._meta = {'conf': _CONF.copy()}
+        self._meta = {'conf': _CONF.copy(), '_': {}}
         self.set_op(args, vars)
     
     def _get_value(self, container, key = '', default = None)-> Any:
@@ -47,6 +46,34 @@ class PluginAction(ABC):
 
     def vars(self, key = '', default = None):
         return self._get_value(self._meta['vars'], key, default)
+    
+    @staticmethod
+    def _key(key: str = ''):
+        return Helper.data_key(key.strip('.').strip('_').strip('.'))
+
+    def _(self, key = '', default = None)-> Any:
+        return self._get_value(self._meta['_'], self._key(key), default)
+
+    def _set(self, key, value: Any)-> Any:
+        return Data.set(self._meta['_'], self._key(key), value)
+    
+    def _forget(self, key)-> Any:
+        return Data.forget(self._meta['_'], self._key(key))
+    
+    def _append(self, key, value: Any, **kwargs)-> Any:
+        return Data.append(self._meta['_'], self._key(key), value, **kwargs)
+
+    def _prepend(self, key, value: Any, **kwargs)-> Any:
+        return Data.prepend(self._meta['_'], self._key(key), value, **kwargs)
+    
+    def _has(self, key)-> bool:
+        return Data.has(self._meta['_'], self._key(key))
+
+    def _filled(self, key)-> bool:
+        return Validate.filled(self._(key))
+    
+    def _blank(self, key)-> bool:
+        return Validate.blank(self._(key))
 
     def op(self, default: Any = None)-> Any:
         return self.args('op', default)
@@ -59,6 +86,11 @@ class PluginAction(ABC):
             host = self.host()
         key = str(Str.start(key, 'hostvars.' + host + '.')).rstrip('.')
         return self.vars(key, default)
+    
+    def host_ansible_facts(self, host: str = '', key = '', default = None):
+        if Validate.blank(host):
+            host = self.host()
+        return self.vars(Str.start(Helper.data_key(key), f'hostvars.{host}.ansible_facts.'), default)
     
     def host_role_vars(self, host, key, default = None):
         meta_key = f'hosts.{host}.{key}'
@@ -95,8 +127,13 @@ class PluginAction(ABC):
     def play_batch(self, default: Any = None)-> Any:
         return self.vars('ansible_play_batch', default)
     
-    def inventory(self, default: Any = None)-> Any:
-        return self.vars('groups.all', default)
+    def inventory(self, **kwargs)-> list:
+        inventory = list(self.vars('groups.all', []))
+        
+        if kwargs.pop('remote', False) == True:
+            inventory = Data.difference(inventory, ['vars'])
+
+        return inventory
     
     def is_check_mode(self)-> bool:
         return self.vars('ansible_check_mode', False) == True
@@ -107,20 +144,41 @@ class PluginAction(ABC):
     def set_op(self, args: Mapping = {}, vars: Mapping = {}):
         op = args.get('op', '')
         if Validate.blank(op):
-            raise AnsibleActionFail('Operation argument op value cannot be blank')
+            raise ValueError('Operation argument op value cannot be blank')
 
         schema = self._get_validation_schema_operation(args, vars)
         if Validate.filled(schema):
             v = Validator(schema, allow_unknown = True) # type: ignore
             if v.validate(args) != True: # type: ignore
-                raise AnsibleActionFail(v.error_message()) # type: ignore
+                raise ValueError(v.error_message()) # type: ignore
             args = v.normalized(args) # type: ignore
 
         self._meta_set('args', dict(args).copy())
         self._meta_set('vars', dict(vars).copy())
-        # self._meta_set('args', dict(Helper.to_safe_json(args)).copy())
-        # self._meta_set('vars', dict(Helper.to_safe_json(vars)).copy())
-        
+        self._meta_set('_.tags.run', set(list(self.vars('ansible_run_tags', [])) + self.args('tags.run', []))) #type: ignore
+        self._meta_set('_.tags.skip', set(list(self.vars('ansible_skip_tags', [])) + self.args('tags.skip', []))) #type: ignore
+    
+    def tag_run_has(self, *terms: str, **kwargs)->bool:
+        return Validate.contains(self.meta('_.tags.run', []), *terms, **kwargs)
+    
+    def tag_skip_has(self, *terms: str, **kwargs)->bool:
+        return Validate.contains(self.meta('_.tags.skip', []), *terms, **kwargs)
+    
+    def mod_eligible(self, mod):
+        return self.tag_run_has('all', mod) and not self.tag_skip_has(mod)
+    
+    @staticmethod
+    def item_eligible(item: Mapping)-> bool:
+        return Data.get(item, '_skip', False) != True and Data.get(item, '_keep', True) != False
+    
+    def is_host_in_play_batch(self, host: str)-> bool:
+        return host in self.vars('ansible_play_batch', [])
+    
+    def domain(self, host: str = '')-> str:
+        if Validate.blank(host):
+            host = self.host()
+        return self.vars('_domain', self.host_vars(host, '_domain', ''))    
+
     @abstractmethod
     def _get_validation_schema_operation(self, args, vars):
         pass
