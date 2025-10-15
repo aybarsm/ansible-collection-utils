@@ -2,7 +2,7 @@ from __future__ import annotations
 from ast import Call
 from http.client import HTTPResponse
 from multiprocessing import Value
-import sys, re, json, yaml, inspect, pathlib, os, io, datetime, random, uuid, string, tempfile, importlib, hashlib, urllib.parse, math, time, errno
+import sys, re, json, yaml, inspect, pathlib, os, io, datetime, random, uuid, string, tempfile, importlib, hashlib, urllib.parse, math, time, errno, copy
 import rich.pretty, rich.console, jinja2, cerberus
 from typing import Callable, Union, Any, Optional
 from collections.abc import Mapping, MutableMapping, Sequence, MutableSequence
@@ -671,6 +671,25 @@ class Data:
         return ret
 
     @staticmethod
+    def unique_by(data: Sequence[Mapping], by: Sequence[str] | Callable, **kwargs) -> list[dict]:
+        unique_hashes = []
+        ret = []
+        ph = Helper.placeholder(mod='hashed')
+        
+        for idx, item in enumerate(data):
+            if Validate.is_callable(by):
+                unique_hash = Helper.callback(by, item, idx)
+            else:
+                unique_parts = Data.only_with(item, *by, default_missing=ph, default_blank=ph).values() #type: ignore
+                unique_hash = Str.to_md5('|'.join([Helper.to_text(unique_value) for unique_value in unique_parts]))
+
+            if unique_hash not in unique_hashes:
+                ret.append(item)
+                unique_hashes.append(unique_hash)
+        
+        return ret
+
+    @staticmethod
     def only_with(data: Mapping | Sequence[dict], *args, **kwargs) -> Sequence[dict] | list[dict] | dict:
         Validate.require(['dict', 'iterable_of_dicts'], data, 'data')
         Validate.require(['iterable_of_strings'], args, 'args')
@@ -680,6 +699,9 @@ class Data:
         no_dot = Data.get(kwargs, 'no_dot', False)
         filled = Data.get(kwargs, 'filled', False)
         is_mapping = Validate.is_mapping(data)
+        ph = Helper.placeholder(mod='hashed')
+        default_missing = Data.get(kwargs, 'default_missing', ph)
+        default_blank = Data.get(kwargs, 'default_blank', ph)
         data = dict(data) if is_mapping else Helper.to_iterable(data) #type: ignore
         if Validate.blank(args) and not meta:
             return data
@@ -696,20 +718,27 @@ class Data:
             new_item = {}
             for key in keys:
                 key_exists = (no_dot and key in item) or (not no_dot and Data.has(item, key))
+                new_value = item.get(key) if no_dot else Data.get(item, key)
                 if not key_exists:
-                    continue
+                    if default_missing != ph:
+                        new_value = default_missing
+                    else:
+                        continue
                 
                 is_filled = not filled or ((no_dot and Validate.filled(item[key])) or (not no_dot and Validate.filled(Data.get(item, key))))
                 if not is_filled:
-                    continue
+                    if default_blank != ph:
+                        new_value = default_blank
+                    else:
+                        continue
 
                 is_meta = meta and str(key).startswith('_')
                 new_key = str(key).lstrip('_') if is_meta and meta_fix else key
                 
                 if no_dot:
-                    new_item[new_key] = item[key]
+                    new_item[new_key] = Helper.copy(new_value)
                 else:
-                    Data.set(new_item, new_key, Data.get(item, key))
+                    Data.set(new_item, new_key, Helper.copy(new_value))
             
             ret.append(new_item)
         
@@ -898,6 +927,57 @@ class Data:
 
 class Helper:
     @staticmethod
+    def copy(data):
+        if Validate.is_deepcopyable(data):
+            return copy.deepcopy(data)
+        elif Validate.is_copyable(data):
+            return copy.copy(data)
+        else:
+            return data
+
+    @staticmethod
+    def random_mac(value, seed=None):
+        if not isinstance(value, str):
+            raise ValueError(f'Invalid value type ({type(value)}) for random_mac ({value})')
+
+        value = value.lower()
+        mac_items = value.split(':')
+
+        if len(mac_items) > 5:
+            raise ValueError(f'Invalid value ({value}) for random_mac: 5 colon(:) separated items max')
+
+        err = ""
+        for mac in mac_items:
+            if not mac:
+                err += ",empty item"
+                continue
+            if not re.match('[a-f0-9]{2}', mac):
+                err += f",{mac} not hexa byte"
+        err = err.strip(',')
+
+        if err:
+            raise ValueError(f'Invalid value ({value}) for random_mac: {err}')
+
+        from random import Random, SystemRandom
+        if seed is None:
+            r = SystemRandom()
+        else:
+            r = Random(seed)
+        
+        v = r.randint(68719476736, 1099511627775)
+        remain = 2 * (6 - len(mac_items))
+        rnd = f'{v:x}'[:remain]
+        return value + re.sub(r'(..)', r':\1', rnd)
+
+    @staticmethod
+    def first_filled(*args, default: Any = None)-> Any:
+        for arg in args:
+            if Validate.filled(arg):
+                return arg
+        
+        return default
+    
+    @staticmethod
     def ipaddr(value, query: str = ''):
         from ansible_collections.ansible.utils.plugins.plugin_utils.base.ipaddr_utils import ipaddr
         return ipaddr(value, query)
@@ -934,6 +1014,7 @@ class Helper:
                 'long_safe': Helper.ts_mod(ts, 'long_safe'), #type: ignore
                 'timestamp': Helper.ts_mod(ts, 'timestamp'), #type: ignore
             },
+            'placeholder': Helper.placeholder(mod='hash'),
         }
         return ret
     
@@ -1513,7 +1594,14 @@ class Helper:
     @staticmethod
     def to_text(*args, **kwargs):
         from ansible.module_utils.common.text.converters import to_text
-        return to_text(*args, **kwargs)
+        strip_quotes = kwargs.pop('strip_quotes', False)
+
+        ret = to_text(*args, **kwargs)
+        
+        if strip_quotes:
+            ret = str(ret).strip().strip("'").strip().strip('"').strip()
+
+        return ret
 
     # @staticmethod
     # def from_ansible_tagged_object(data, **kwargs):
@@ -1912,6 +2000,22 @@ class Str:
         return data
 
 class Validate:
+    @staticmethod
+    def is_copyable(data):
+        try:
+            copy.copy(data)
+            return True
+        except Exception:
+            return False
+    
+    @staticmethod
+    def is_deepcopyable(data):
+        try:
+            copy.deepcopy(data)
+            return True
+        except Exception:
+            return False
+    
     @staticmethod
     def str_endswith(haystack: str, *args, **kwargs)-> bool:
         for needle in args:

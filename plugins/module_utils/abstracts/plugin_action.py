@@ -145,7 +145,8 @@ class PluginAction(ABC):
         op = args.get('op', '')
         if Validate.blank(op):
             raise ValueError('Operation argument op value cannot be blank')
-
+        
+        args = Helper.to_safe_json(args)
         schema = self._get_validation_schema_operation(args, vars)
         if Validate.filled(schema):
             v = Validator(schema, allow_unknown = True) # type: ignore
@@ -177,7 +178,7 @@ class PluginAction(ABC):
     def domain(self, host: str = '')-> str:
         if Validate.blank(host):
             host = self.host()
-        return self.vars('_domain', self.host_vars(host, '_domain', ''))    
+        return Helper.first_filled(self.host_vars(host, '_domain'), self.vars('_domain'), 'blrm')
 
     @abstractmethod
     def _get_validation_schema_operation(self, args, vars):

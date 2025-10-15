@@ -43,4 +43,5 @@ class FilterModule(object):
             'str_after_last': Str.after_last,
             'to_toml': Helper.to_toml,
             'from_toml': Helper.from_toml,
+            'unique_by': Data.unique_by,
         }
