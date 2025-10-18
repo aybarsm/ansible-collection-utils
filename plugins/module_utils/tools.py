@@ -478,6 +478,69 @@ class Data:
         return Data.where(data, callback, default, **kwargs)
     
     @staticmethod
+    def map(data: Sequence, callback: Callable, **kwargs)-> list:
+        ret = []
+
+        if Validate.blank(data):
+            return ret
+        
+        for idx, item in enumerate(Helper.to_iterable(data)):
+            ret.append(Helper.callback(callback, item, idx))
+
+        return ret
+
+    @staticmethod
+    def keys(data: Mapping|Sequence[Mapping], **kwargs) -> Any:
+        ret = []
+        is_mapping = Validate.is_mapping(data)
+        replace = kwargs.pop('replace', {})
+        
+        no_dot = kwargs.pop('no_dot', False)
+        ph = Helper.placeholder(mod='hashed')
+
+        for item in Helper.to_iterable(data):
+            item_new = Helper.copy(item)
+        
+            for replacement in replace.get('keys', []):
+                if not Validate.is_sequence(replacement) or len(replacement) < 2:
+                    raise ValueError('Key replacement requires at least 2 elements')
+            
+                key_from = replacement[0]
+                key_to = replacement[1]
+                if key_from == key_to:
+                    continue
+
+                key_default = ph
+                key_exists = (no_dot and key_from in item_new) or (not no_dot and Data.has(item_new, key_from))
+
+                if len(replacement) > 2:
+                    key_default = replacement[2]
+
+                value_new = key_default
+                if key_exists and no_dot:
+                    value_new = item_new[key_from]
+                elif key_exists and not no_dot:
+                    value_new = Data.get(item_new, key_from)
+                
+                if value_new == ph:
+                    continue
+
+                if no_dot:
+                    item_new[key_to] = value_new
+                else:
+                    Data.set(item_new, key_to, value_new)
+
+                if key_exists and not Validate.is_falsy(replace.get('remove_replaced', True)):
+                    if no_dot:
+                        del item_new[key_from]
+                    else:
+                        Data.forget(item_new, key_from)
+                
+            ret.append(item_new)
+
+        return ret[0] if is_mapping else ret
+    
+    @staticmethod
     def dot(data, prepend='') -> dict:
         ret = {}
         if Validate.is_sequence(data):
@@ -567,6 +630,7 @@ class Data:
         current = list(Data.get(data, key, []))
         is_extend = kwargs.pop('extend', False)
         is_unique = kwargs.pop('unique', False)
+        is_sorted = kwargs.pop('sort', False)
 
         if is_extend:
             current.extend(value)
@@ -576,6 +640,9 @@ class Data:
         if is_unique:
             current = list(set(current))
         
+        if is_sorted:
+            current = list(sorted(current))
+        
         return Data.set(data, key, current.copy())
     
     @staticmethod
@@ -583,6 +650,7 @@ class Data:
         current = list(Data.get(data, key, []))
         is_extend = kwargs.pop('extend', False)
         is_unique = kwargs.pop('unique', False)
+        is_sorted = kwargs.pop('sort', False)
 
         if is_extend:
             for item in Helper.to_iterable(value):
@@ -592,6 +660,9 @@ class Data:
 
         if is_unique:
             current = list(set(current))
+        
+        if is_sorted:
+            current = list(sorted(current))
         
         return Data.set(data, key, current.copy())
 
@@ -927,6 +998,109 @@ class Data:
 
 class Helper:
     @staticmethod
+    def items_to_mapping_by(data: Sequence, callback: Callable)-> dict:
+        ret = {}
+
+        for idx, item in data:
+            [key, value] = Helper.callback(callback, item, idx)
+            Data.set(ret, key, value)
+        
+        return ret
+
+    @staticmethod
+    def mapping_to_items(data: Mapping, key_name='key', value_name='value')-> list:
+        data = dict(data)
+
+        ret = []
+        for key, value in data.items():
+            new_item = {}
+            Data.set(new_item, key_name, key)
+            Data.set(new_item, value_name, value)
+            ret.append(Helper.copy(new_item))
+        
+        return ret
+
+    @staticmethod
+    def group_by(data: Sequence[Mapping], by: Callable | str, **kwargs)-> dict:
+        key_default = kwargs.pop('default', 'Z_UNKNOWN')
+        ret = {}
+
+        for idx, value in enumerate(data):
+            if Validate.is_callable(by):
+                key_group = Helper.callback(by, value, idx)
+            else:
+                key_group = Data.get(value, by)
+
+            if Validate.blank(key_group):
+                key_group = key_default
+
+            Data.append(ret, str(key_group), value)
+
+        return ret
+
+    @staticmethod
+    def dictsort(data: Mapping, **kwargs)-> dict:
+        using = kwargs.pop('using', None)
+        
+        if Validate.is_callable(using):
+            return dict(sorted(data, key=using, **kwargs))
+
+        return dict(sorted(dict(data).items(), **kwargs))
+
+    @staticmethod
+    def to_conf(data: Mapping, **kwargs)-> list:
+        list_strategy = kwargs.pop('list_strategy', 'join')
+        if list_strategy not in ['join', 'iterate_key']:
+            raise ValueError('Invalid list_strategy option. Available: join, iterate_key')
+        
+        keep_meta = kwargs.pop('meta', False)
+        char_join = str(kwargs.pop('char_join', ', '))
+        char_set = str(kwargs.pop('char_set', ' = '))
+        list_unique = kwargs.pop('list_unique', False)
+        
+        if kwargs.pop('sorted', False) == True:
+            data = dict(sorted(dict(data).items()))
+        else:
+            data = dict(data)
+
+        ret = []
+        
+        for key, val in data.items():
+            key = str(key)
+            if key.startswith('_') and not keep_meta:
+                continue
+            
+            if Validate.is_sequence(val):
+                val = Data.map(val, lambda val_: str(val_))
+                if list_unique:
+                    val = list(set(val))
+
+                if list_strategy == 'join':
+                    ret.append(f'{key}{char_set}{char_join.join(val)}')
+                else:
+                    for val_inner in val:
+                        ret.append(f'{key}{char_set}{val_inner}')
+            else:
+                ret.append(f'{key}{char_set}{str(val)}')
+
+        return ret
+    
+    @staticmethod
+    def as_validated_ip_segments(data, on_invalid: Optional[Callable] = None, **kwargs)-> list:
+        ret = Data.map(Helper.to_iterable(data), lambda ip_: Helper.ip_as_segments(ip_))
+
+        if Validate.filled(ret) and Validate.filled(on_invalid):
+            for idx, item in enumerate(ret):
+                if Data.get(item, 'ctrl.valid') == True:
+                    continue
+                
+                e = Helper.callback(on_invalid, item, idx)
+                if Validate.is_exception(e):
+                    raise e
+            
+        return ret
+
+    @staticmethod
     def copy(data):
         if Validate.is_deepcopyable(data):
             return copy.deepcopy(data)
@@ -981,6 +1155,47 @@ class Helper:
     def ipaddr(value, query: str = ''):
         from ansible_collections.ansible.utils.plugins.plugin_utils.base.ipaddr_utils import ipaddr
         return ipaddr(value, query)
+
+    @staticmethod
+    def ip_cidr_merge(value, action="merge"):
+        import netaddr
+        if not hasattr(value, "__iter__"):
+            raise ValueError("cidr_merge: expected iterable, got " + repr(value))
+
+        if action == "merge":
+            try:
+                return [str(ip) for ip in netaddr.cidr_merge(value)]
+            except Exception as e:
+                raise ValueError("cidr_merge: error in netaddr:\n%s" % e)
+
+        elif action == "span":
+            # spanning_cidr needs at least two values
+            if len(value) == 0:
+                return None
+            elif len(value) == 1:
+                try:
+                    return str(netaddr.IPNetwork(value[0]))
+                except Exception as e:
+                    raise ValueError("cidr_merge: error in netaddr:\n%s" % e)
+            else:
+                try:
+                    return str(netaddr.spanning_cidr(value))
+                except Exception as e:
+                    raise ValueError("cidr_merge: error in netaddr:\n%s" % e)
+        elif action == "collapse":
+            networks = list(set([netaddr.IPNetwork(ip) for ip in value]))
+            ret = [
+                net for net in networks
+                if not any(
+                    (net != other) and (net.first >= other.first and net.last <= other.last)
+                    for other in networks
+                )
+            ]
+
+            return [str(net_) for net_ in ret]
+
+        else:
+            raise ValueError("cidr_merge: invalid action '%s'" % action)
 
     @staticmethod
     def play_meta(vars: Mapping, **kwargs)-> dict:
@@ -1192,21 +1407,32 @@ class Helper:
         return type(data).__name__
 
     @staticmethod
-    def to_ip_address(data, exception: bool = True):
+    def to_ip_address(data, **kwargs):
         from ansible_collections.ansible.utils.plugins.plugin_utils.base.ipaddress_utils import ip_address
+        ph = Helper.placeholder(mod='hashed')
+        default = kwargs.get('default', ph)
 
         try:
             return ip_address(data)
         except Exception as e:
-            return e if exception else False
+            if default == ph:
+                raise e
+            
+            return default
         
     @staticmethod
-    def to_ip_network(data, exception: bool = True):
+    def to_ip_network(data, **kwargs):
+        ph = Helper.placeholder(mod='hashed')
+        default = kwargs.get('default', ph)
+
         from ansible_collections.ansible.utils.plugins.plugin_utils.base.ipaddress_utils import ip_network
         try:
             return ip_network(data)
         except Exception as e:
-            return e if exception else False
+            if default == ph:
+                raise e
+            
+            return default
     
     @staticmethod
     def fs_write(path: pathlib.Path | str, data: str | bytes, **kwargs)-> None:
@@ -1708,24 +1934,119 @@ class Helper:
         return ret
     
     @staticmethod
-    def ip_as_addr(data) -> str:
-        data = str(data)
-        if '/' not in data:
-            return data
+    def ip_as_subnet(data: str, **kwargs) -> Any:
+        ph = Helper.placeholder(mod='hashed')
+        default = kwargs.pop('default', ph)
 
+        if Validate.blank(data):
+            return default if default != ph else data
+
+        addr = Helper.ip_as_addr(data)
+        proto = 'v4' if Validate.is_ip_v4(addr) else ('v6' if Validate.is_ip_v6(addr) else None)
+
+        if Validate.blank(proto):
+            return default if default != ph else data
+        
+        prefix = str(Str.after_last(data, '/', default=''))
+        if Validate.blank(prefix):
+            prefix = '32' if proto == 'v4' else '128'
+
+        return f'{addr}/{prefix}'
+
+    @staticmethod
+    def ip_as_segments(data: str) -> dict:
+        type_ = Helper.ipaddr(data, 'type')
+        type_ = 'addr' if type_ == 'address' else ('net' if type_ == 'network' else None)
+        
+        net = Helper.ipaddr(data, 'network/prefix')
+        if net and data == net:
+            cidr = net
+            addr = Str.before(cidr, '/')
+            addr_net = addr
+        else:
+            cidr = Helper.ipaddr(data, 'address/prefix')
+            addr = Helper.ipaddr(data, 'address')
+            addr_net = Helper.ipaddr(net, 'address') if net else None
+
+        v4 = Helper.ipaddr(data, 'ipv4')
+        v6 = Helper.ipaddr(data, 'ipv6')
+        proto = 'v6' if v6 in [data, cidr, addr] else ('v4' if v4 in [data, cidr, addr] else None)
+
+        pub = Helper.ipaddr(addr, 'public') if addr else None
+        pri = Helper.ipaddr(addr, 'private') if addr else None
+
+        size_net = Helper.ipaddr(net, 'size') if net else None
+        host_cidr = Helper.ipaddr(data, 'host/prefix')
+        return {
+            'raw': data,
+            'type': type_,
+            'addr': addr,
+            'cidr': cidr,
+            'prefix': Helper.ipaddr(data, 'prefix'),
+            'proto': proto,
+            'ctrl': {
+                'v4': proto == 'v4',
+                'v6': proto == 'v6',
+                'pub': pub in [data, cidr, addr],
+                'pri': pri in [data, cidr, addr],
+                'valid': Validate.filled(type_) and Validate.filled(proto),
+            },
+            'net': {
+                'addr': addr_net,
+                'cidr': net,
+                # 'subnet': Helper.ipaddr(net, 'subnet') if net else None,
+                'size': size_net,
+                'mask': Helper.ipaddr(net, 'netmask') if net else None,
+                'broadcast': Helper.ipaddr(net, 'broadcast') if net else None,
+            },
+            'host': {
+                'addr': Helper.ipaddr(host_cidr, 'address') if host_cidr else None,
+                'cidr': host_cidr,
+            },
+            'wrap': {
+                'addr': Helper.ipaddr(addr, 'wrap') if addr else None,
+                'cidr': Helper.ipaddr(cidr, 'wrap') if cidr else None,
+            },
+            'first': {
+                'addr': Helper.ipaddr(Helper.ipaddr(net, '1'), 'address') if net else None,
+                'cidr': Helper.ipaddr(net, '1') if net else None,
+                'usable': Helper.ipaddr(net, 'first_usable') if net else None,
+            },
+            'last': {
+                'addr': Helper.ipaddr(Helper.ipaddr(net, '-1'), 'address') if net else None,
+                'cidr': Helper.ipaddr(net, '-1') if net else None,
+                'usable': Helper.ipaddr(net, 'last_usable') if net else None,
+            },
+            'range': {
+                'usable': str(Helper.ipaddr(net, 'range_usable')).split('-', 2) if net and size_net and size_net > 1 else None,
+            }
+        }
+    
+    @staticmethod
+    def ip_as_addr(data: str, **kwargs) -> str:
+        ph = Helper.placeholder(mod='hashed')
+        default = kwargs.pop('default', ph)
+        
         addr = Str.before(data, '/')
+        proto = 'v4' if Validate.is_ip_v4(addr) else ('v6' if Validate.is_ip_v6(addr) else None)
 
-        if Validate.is_ip_v4(addr) and Str.after_last(addr, '.') == '0':
-            return Str.before_last(addr, '.') + '.1'
-        elif Validate.is_ip_v6(addr):
-            if addr.endswith('::'):
-                return Str.before_last(addr, '::') + '::1'
-            elif addr.endswith('::0'):
-                return Str.before_last(addr, '::0') + '::1'
-            elif addr.endswith(':0'):
-                return Str.before_last(addr, ':0') + ':1'
-            elif addr.endswith(':'):
-                return Str.before_last(addr, ':') + ':1'
+        if Validate.blank(proto):
+            return default if default != ph else data
+                
+        from_network = kwargs.pop('from_network', True)
+
+        if not Validate.is_falsy(from_network):
+            if Validate.is_ip_v4(addr) and Str.after_last(addr, '.') == '0':
+                return Str.before_last(addr, '.') + '.1'
+            elif Validate.is_ip_v6(addr):
+                if addr.endswith('::'):
+                    return Str.before_last(addr, '::') + '::1'
+                elif addr.endswith('::0'):
+                    return Str.before_last(addr, '::0') + '::1'
+                elif addr.endswith(':0'):
+                    return Str.before_last(addr, ':0') + ':1'
+                elif addr.endswith(':'):
+                    return Str.before_last(addr, ':') + ':1'
         
         return addr
     
@@ -1753,7 +2074,7 @@ class Helper:
             if not any([Validate.is_subnet_of(subnet, supernet) for supernet in supernets]):
                 ret.append(subnet)
 
-        return ret
+        return list(set(ret))
     
     @staticmethod
     def to_lua(data: Mapping | Sequence) -> str:
@@ -1851,6 +2172,58 @@ class Jinja:
 
 class Str:
     @staticmethod
+    def pad(data: Any, count: int = 4, char: str = ' ', **kwargs) -> str:
+        padding = kwargs.pop('pad')
+        if padding not in ['left', 'right', 'both']:
+            raise ValueError(f'Invalid padding type [{padding}]. Available: left, right, both')
+
+        count = max([count, 0])
+        data = str(Helper.to_text(data))
+        is_strip = kwargs.pop('strip', True)
+        is_dent = kwargs.pop('dent', False)
+
+        if not Validate.is_falsy(is_strip):
+            data = data.strip()
+                
+        if Validate.is_truthy(is_dent):
+            padding = 'left' if padding == 'right' else ('right' if padding == 'left' else padding)
+            count += len(data)
+        
+        if padding == 'left':
+            return str(data).ljust(count, char)
+        elif padding == 'right':
+            return str(data).rjust(count, char)
+        else:
+            return str(data).center(count, char)
+
+    @staticmethod
+    def ljust(data: Any, count: int = 4, char: str = ' ', **kwargs) -> str:
+        kwargs['pad'] = 'left'
+        return Str.pad(data, count, char, **kwargs)
+
+    @staticmethod
+    def rjust(data: Any, count: int = 4, char: str = ' ', **kwargs) -> str:
+        kwargs['pad'] = 'right'
+        return Str.pad(data, count, char, **kwargs)
+
+    @staticmethod
+    def center(data: Any, count: int = 4, char: str = ' ', **kwargs) -> str:
+        kwargs['pad'] = 'both'
+        return Str.pad(data, count, char, **kwargs)
+    
+    @staticmethod
+    def pad_left(data: Any, count: int = 4, char: str = ' ', **kwargs) -> str:
+        return Str.ljust(data, count, char, **kwargs)
+
+    @staticmethod
+    def pad_right(data: Any, count: int = 4, char: str = ' ', **kwargs) -> str:
+        return Str.rjust(data, count, char, **kwargs)
+
+    @staticmethod
+    def pad_both(data: Any, count: int = 4, char: str = ' ', **kwargs) -> str:
+        return Str.rjust(data, count, char, **kwargs)
+    
+    @staticmethod
     def remove_empty_lines(data: str) -> str:
         return re.sub(r'(\n\s*){2,}', '\n', re.sub(r'^\s*[\r\n]+|[\r\n]+\s*\Z', '', data))
     
@@ -1894,25 +2267,29 @@ class Str:
             return Helper.to_iterable(ret if as_stripped else data) if as_iterable else (ret if as_stripped else data)
     
     @staticmethod
-    def find(haystack, needle, reverse = False, before = True) -> str:
+    def find(haystack, needle, reverse = False, before = True, **kwargs) -> str:
+        ph = Helper.placeholder(mod='hashed')
+        default = str(kwargs.pop('default', ph))
+
         index = haystack.rfind(needle) if reverse else haystack.find(needle)
-        return str(haystack if index == -1 else (haystack[:index] if before else haystack[index + len(needle):]))
+        ret = str(haystack if index == -1 else (haystack[:index] if before else haystack[index + len(needle):]))
+        return default if default != ph and ret == haystack else ret
     
     @staticmethod
-    def before(haystack, needle) -> str:
-        return Str.find(haystack, needle)
+    def before(haystack, needle, **kwargs) -> str:
+        return Str.find(haystack, needle, **kwargs)
     
     @staticmethod
-    def before_last(haystack, needle) -> str:
-        return Str.find(haystack, needle, reverse = True)
+    def before_last(haystack, needle, **kwargs) -> str:
+        return Str.find(haystack, needle, reverse = True, **kwargs)
     
     @staticmethod
-    def after(haystack, needle) -> str:
-        return Str.find(haystack, needle, reverse = False, before = False)
+    def after(haystack, needle, **kwargs) -> str:
+        return Str.find(haystack, needle, reverse = False, before = False, **kwargs)
     
     @staticmethod
-    def after_last(haystack, needle) -> str:
-        return Str.find(haystack, needle, reverse = True, before = False)
+    def after_last(haystack, needle, **kwargs) -> str:
+        return Str.find(haystack, needle, reverse = True, before = False, **kwargs)
     
     @staticmethod
     def start(haystack, needle) -> str:
@@ -2073,51 +2450,47 @@ class Validate:
             raise
 
     @staticmethod
-    def is_truthy(data):
+    def is_truthy(data)-> bool:
         return Helper.to_string(data).lower() in ('y', 'yes', 'on', '1', 'true', 't', 1, 1.0)
     
     @staticmethod
-    def is_falsy(data):
+    def is_falsy(data)-> bool:
         return Helper.to_string(data).lower() in ('n', 'no', 'off', '0', 'false', 'f', 0, 0.0)
     
     @staticmethod
-    def is_type_name(data, name: str):
+    def is_type_name(data, name: str)-> bool:
         return Helper.to_type_name(data) == name
     
     @staticmethod
-    def is_exception(data):
+    def is_exception(data)-> bool:
         return isinstance(data, BaseException) or (isinstance(data, type) and issubclass(data, BaseException))
     
     @staticmethod
-    def is_ip(data):
-        return Helper.to_ip_address(data, False) != False
+    def is_ip(data)-> bool:
+        return Helper.to_ip_address(data, default=False) != False
     
     @staticmethod
-    def is_network(data):
-        return Helper.to_ip_network(data, False) != False
+    def is_network(data)-> bool:
+        return Helper.to_ip_network(data, default=False) != False
     
     @staticmethod
-    def is_ip_v4(data):
-        ip = Helper.to_ip_address(data)
-        return ip.version == 4 if not Validate.is_exception(data) else False #type: ignore
+    def is_ip_v4(data)-> bool:
+        return Helper.to_ip_address(data).version == 4 #type: ignore
     
     @staticmethod
-    def is_ip_v6(data):
-        ip = Helper.to_ip_address(data)
-        return ip.version == 6 if not Validate.is_exception(data) else False #type: ignore
+    def is_ip_v6(data)-> bool:
+        return Helper.to_ip_address(data).version == 6 #type: ignore
     
     @staticmethod
-    def is_ip_public(data):
-        ip = Helper.to_ip_address(data)
-        return ip.is_global if not Validate.is_exception(data) else False #type: ignore
+    def is_ip_public(data)-> bool:        
+        return Helper.to_ip_address(data).is_global #type: ignore
     
     @staticmethod
-    def is_ip_private(data):
-        ip = Helper.to_ip_address(data)
-        return ip.is_private if not Validate.is_exception(data) else False #type: ignore
+    def is_ip_private(data)-> bool:
+        return Helper.to_ip_address(data).is_private #type: ignore
     
     @staticmethod
-    def is_subnet_of(network_a, network_b):
+    def is_subnet_of(network_a, network_b)-> bool:
         network_a = Helper.to_ip_network(network_a)
         network_b = Helper.to_ip_network(network_b)
         
@@ -2135,7 +2508,7 @@ class Validate:
             return False
     
     @staticmethod
-    def is_supernet_of(network_a, network_b):
+    def is_supernet_of(network_a, network_b)-> bool:
         return Validate.is_subnet_of(network_b, network_a)
     
     @staticmethod

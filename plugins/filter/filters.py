@@ -32,6 +32,7 @@ class FilterModule(object):
             'str_finish': Str.finish,
             'str_start': Str.start,
             'ip_as_addr': Helper.ip_as_addr,
+            'ip_as_segments': Helper.ip_as_segments,
             'str_regex': lambda data, patterns, **kwargs: [item for item in Helper.to_iterable(data) if Validate.str_is_regex(item, patterns, **kwargs)],
             'str_strip': lambda data, chars = None: str(data).strip(chars),
             'str_lstrip': lambda data, chars = None: str(data).lstrip(chars),
@@ -44,4 +45,7 @@ class FilterModule(object):
             'to_toml': Helper.to_toml,
             'from_toml': Helper.from_toml,
             'unique_by': Data.unique_by,
+            'keys': Data.keys,
+            'to_conf': Helper.to_conf,
+            'dictsort': Helper.dictsort,
         }
