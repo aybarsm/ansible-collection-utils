@@ -615,6 +615,13 @@ class Data:
         return ret
     
     @staticmethod
+    def pop(data: Mapping, *args):
+        ret = Data.only_with(data, *args)
+        Data.forget(data, list(args))
+
+        return ret
+    
+    @staticmethod
     def pydash():
         import pydash
         return pydash

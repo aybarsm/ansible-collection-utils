@@ -260,10 +260,11 @@ class RoleManager(ABC):
     def _exec_cmd(self, *args, **kwargs):
         return self._module._low_level_execute_command(*args, **kwargs) #type: ignore
     
-    def _exec_module(self, *args, **kwargs):
+    def _exec_module(self, **kwargs):
         kwargs = dict(kwargs)
         kwargs['task_vars'] = Helper.copy(self.vars())
-        return self._module._execute_module(*args, **kwargs) #type: ignore
+
+        return self._module._execute_module(**kwargs) #type: ignore
     
     def set_cache(self, cache: Fluent)-> None:
         self.cache = Helper.copy(cache)
