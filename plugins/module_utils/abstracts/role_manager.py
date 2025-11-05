@@ -1,6 +1,6 @@
-from typing import Any, Mapping
+from typing import Any, Optional, Mapping
 from abc import ABC, abstractmethod
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Validate, Data, Str, Helper, Validator
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Validate, Data, Cache, Str, Helper, Validator, Fluent
 
 _CONF = {
     'roles': {
@@ -12,13 +12,23 @@ _CONF = {
     }
 }
 
-class PluginAction(ABC):
+class RoleManager(ABC):
     def __init__(self, args: Mapping = {}, vars: Mapping = {}):
+        self._container = {}
         self._meta = {'conf': _CONF.copy(), '_': {}}
+        self._module = None
         self.set_op(args, vars)
+        self.cache: Fluent = Fluent()
+
+        if self._has_cache_file_path():
+            self.cache = Cache.load(self._get_cache_file_path())
+            self._meta_set('conf.cache.loaded', True)
     
     def _get_value(self, container, key = '', default = None)-> Any:
         return Data.get(container, key, default) if Validate.filled(key) else container
+    
+    def _has_key(self, container, key = '')-> bool:
+        return Data.has(container, key)
 
     def conf(self, key = '', default = None):
         return self._get_value(self._meta['conf'], key, default)
@@ -46,6 +56,9 @@ class PluginAction(ABC):
 
     def vars(self, key = '', default = None):
         return self._get_value(self._meta['vars'], key, default)
+    
+    def vars_has(self, key):
+        return self._has_key(self._meta['vars'], key)
     
     @staticmethod
     def _key(key: str = ''):
@@ -86,6 +99,9 @@ class PluginAction(ABC):
             host = self.host()
         key = str(Str.start(key, 'hostvars.' + host + '.')).rstrip('.')
         return self.vars(key, default)
+    
+    def host_vars_has(self, host: str, key: str):
+        return self.vars_has(str(Str.start(key, 'hostvars.' + host + '.')).rstrip('.'))
     
     def host_ansible_facts(self, host: str = '', key = '', default = None):
         if Validate.blank(host):
@@ -140,6 +156,15 @@ class PluginAction(ABC):
 
     def is_op(self, op: str):
         return self.op('op') == op
+
+    def is_cache_loaded(self)-> bool:
+        return Validate.is_truthy(self.meta('conf.cache.loaded'))
+    
+    def _has_cache_file_path(self)-> bool:
+        return Validate.filled(self._get_cache_file_path())
+    
+    def _get_cache_file_path(self)-> str:
+        return self.args('play.cache_file', '')
     
     def set_op(self, args: Mapping = {}, vars: Mapping = {}):
         op = args.get('op', '')
@@ -148,6 +173,7 @@ class PluginAction(ABC):
         
         args = Helper.to_safe_json(args)
         schema = self._get_validation_schema_operation(args, vars)
+        # Helper.dump(schema)
         if Validate.filled(schema):
             v = Validator(schema, allow_unknown = True) # type: ignore
             if v.validate(args) != True: # type: ignore
@@ -179,6 +205,71 @@ class PluginAction(ABC):
         if Validate.blank(host):
             host = self.host()
         return Helper.first_filled(self.host_vars(host, '_domain'), self.vars('_domain'), 'blrm')
+    
+    def get_role_cfg(self, **kwargs)-> Fluent:
+        role_name = self.meta('role.name', '')
+        if Validate.blank(role_name):
+            return Fluent()
+        
+        role_cfg = self.meta('role.cfg', {})
+        if Validate.filled(role_cfg):
+            return Fluent(role_cfg)
+        
+        role_name = str(role_name).strip().strip('_').strip()
+
+        role_var_keys = Data.where(
+            list(self.vars(default = {}).keys()),
+            lambda var_name: str(var_name).startswith(f'{role_name}__')
+        )
+
+        cfg = {}
+        for var_name in role_var_keys:
+            cfg_key = Str.chop_start(var_name, 'crypto__')
+            cfg[cfg_key] = self._template(self.vars(var_name))
+        
+        self._meta_set('role.cfg', Helper.copy(cfg))
+
+        return Fluent(cfg)
+    
+    def _template(self, data, **kwargs)-> Any:
+        # if Validate.blank(data) or not Validate.is_plugin_action(self._module):
+        #     return data
+        if Validate.blank(data) or Validate.blank(self._module):
+            return data
+        
+        return self._module._templar.template(data, **kwargs) #type: ignore
+    
+    def _lookup(self, name: str, *args, **kwargs):
+        lookup = Data.get(self._container, f'lookup.{name}')
+        if Validate.blank(lookup):
+            from ansible.plugins.loader import lookup_loader
+            lookup = lookup_loader.get(
+                name,
+                loader=self._module._loader, #type: ignore
+                templar=self._module._templar #type: ignore
+            )
+
+            Data.set(self._container, f'lookup.{name}', Helper.copy(lookup))
+        
+        args = list(args)
+        kwargs = dict(kwargs)
+        kwargs['variables'] = Helper.copy(self.vars())
+
+        return lookup.run(args, **kwargs)
+    
+    def _exec_cmd(self, *args, **kwargs):
+        return self._module._low_level_execute_command(*args, **kwargs) #type: ignore
+    
+    def _exec_module(self, *args, **kwargs):
+        kwargs = dict(kwargs)
+        kwargs['task_vars'] = Helper.copy(self.vars())
+        return self._module._execute_module(*args, **kwargs) #type: ignore
+    
+    def set_cache(self, cache: Fluent)-> None:
+        self.cache = Helper.copy(cache)
+
+    def set_module(self, module=None):
+        self._module = module
 
     @abstractmethod
     def _get_validation_schema_operation(self, args, vars):

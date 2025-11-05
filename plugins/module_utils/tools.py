@@ -2,7 +2,7 @@ from __future__ import annotations
 from ast import Call
 from http.client import HTTPResponse
 from multiprocessing import Value
-import sys, re, json, yaml, inspect, pathlib, os, io, datetime, random, uuid, string, tempfile, importlib, hashlib, urllib.parse, math, time, errno, copy
+import sys, re, json, yaml, inspect, pathlib, os, io, datetime, random, uuid, string, tempfile, importlib, hashlib, urllib.parse, math, time, errno, copy, base64
 import rich.pretty, rich.console, jinja2, cerberus
 from typing import Callable, Union, Any, Optional
 from collections.abc import Mapping, MutableMapping, Sequence, MutableSequence
@@ -416,6 +416,7 @@ class Data:
         is_negate = kwargs.pop('negate', False)
         is_first = kwargs.pop('first', False)
         is_last = kwargs.pop('last', False)
+        is_key = kwargs.pop('key', False)
 
         if is_first == True and is_last == True:
             raise ValueError('First and last cannot be searched at the same time.')
@@ -441,7 +442,10 @@ class Data:
                 
                 if res == True:
                     if is_seq:
-                        ret.append(value) #type: ignore
+                        if is_key:
+                            ret.append(key) #type: ignore
+                        else:
+                            ret.append(value) #type: ignore
                     else:
                         ret[key] = value
                     
@@ -478,7 +482,22 @@ class Data:
         return Data.where(data, callback, default, **kwargs)
     
     @staticmethod
-    def map(data: Sequence, callback: Callable, **kwargs)-> list:
+    def map(data: Sequence|Mapping, callback: Callable, **kwargs)-> list|dict:
+        is_mapping = Validate.is_mapping(data)
+        
+        if is_mapping:
+            ret = {}
+            is_with_keys = kwargs.pop('with_keys', False)
+            for key, value in dict(data).items():
+                new_key = Helper.copy(key)
+                if is_with_keys:
+                    [new_key, new_value] = Helper.callback(callback, value, key)
+                else:
+                    new_value = Helper.callback(callback, value, key)
+                ret[new_key] = new_value
+            
+            return ret
+
         ret = []
 
         if Validate.blank(data):
@@ -929,6 +948,9 @@ class Data:
 
         return x
     
+    # @staticmethod
+    # def combine_by(*args, callback: Callable, **kwargs):
+    
     @staticmethod
     def combine(*args, **kwargs):
         recursive = kwargs.pop('recursive', False)
@@ -995,8 +1017,172 @@ class Data:
             ret = set(ret) - set(seq)
         
         return list(ret)
+    
+    @staticmethod
+    def intersect(a: Sequence, b: Sequence, *args: Sequence) -> list:
+        if not Validate.is_sequence(a) or not Validate.is_sequence(b):
+            raise ValueError('Invalid sequence type')
+        
+        ret = set(a) & set(b)
+
+        for seq in args:
+            if not Validate.is_sequence(seq):
+                raise ValueError('Invalid sequence type')
+            
+            ret = set(ret) & set(seq)
+        
+        return list(ret)
 
 class Helper:
+    @staticmethod
+    def b64_encode(data)-> str:
+        data = Helper.to_text(data)
+        return base64.b64encode(data.encode("utf-8"))
+
+    @staticmethod
+    def b64_decode(data)-> str:
+        data = Helper.to_text(data)
+        return base64.b64decode(data).decode("utf-8")
+    
+    @staticmethod
+    def to_datettime_from_format(data: str, format_: str, **kwargs) -> datetime.datetime:
+        ret = datetime.datetime.strptime(data, format_)
+        
+        tzinfo_ = kwargs.pop('tzinfo', None)
+        if Validate.filled(tzinfo_):
+            ret = ret.replace(tzinfo=getattr(datetime.timezone, tzinfo_))
+        
+        return ret
+    
+    @staticmethod
+    def ensure_utc_timezone(timestamp: datetime.datetime) -> datetime.datetime:
+        if timestamp.tzinfo is datetime.timezone.utc:
+            return timestamp
+        if timestamp.tzinfo is None:
+            # We assume that naive datetime objects use timezone UTC!
+            return timestamp.replace(tzinfo=datetime.timezone.utc)
+        return timestamp.astimezone(datetime.timezone.utc)
+
+    @staticmethod
+    def remove_timezone(timestamp: datetime.datetime) -> datetime.datetime:
+        # Convert to native datetime object
+        if timestamp.tzinfo is None:
+            return timestamp
+        if timestamp.tzinfo is not datetime.timezone.utc:
+            timestamp = timestamp.astimezone(datetime.timezone.utc)
+        return timestamp.replace(tzinfo=None)
+
+    @staticmethod
+    def add_or_remove_timezone(
+        timestamp: datetime.datetime, *, with_timezone: bool
+    ) -> datetime.datetime:
+        return (
+            Helper.ensure_utc_timezone(timestamp) if with_timezone else Helper.remove_timezone(timestamp)
+        )
+    
+    @staticmethod
+    def crypto_convert_relative_to_datetime(
+        relative_time_string: str,
+        *,
+        with_timezone: bool = False,
+        now: datetime.datetime | None = None,
+    ) -> datetime.datetime | None:
+        """Get a datetime.datetime or None from a string in the time format described in sshd_config(5)"""
+
+        parsed_result = re.match(
+            r"^(?P<prefix>[+-])((?P<weeks>\d+)[wW])?((?P<days>\d+)[dD])?((?P<hours>\d+)[hH])?((?P<minutes>\d+)[mM])?((?P<seconds>\d+)[sS]?)?$",
+            relative_time_string,
+        )
+
+        if parsed_result is None or len(relative_time_string) == 1:
+            # not matched or only a single "+" or "-"
+            return None
+
+        offset = datetime.timedelta(0)
+        if parsed_result.group("weeks") is not None:
+            offset += datetime.timedelta(weeks=int(parsed_result.group("weeks")))
+        if parsed_result.group("days") is not None:
+            offset += datetime.timedelta(days=int(parsed_result.group("days")))
+        if parsed_result.group("hours") is not None:
+            offset += datetime.timedelta(hours=int(parsed_result.group("hours")))
+        if parsed_result.group("minutes") is not None:
+            offset += datetime.timedelta(minutes=int(parsed_result.group("minutes")))
+        if parsed_result.group("seconds") is not None:
+            offset += datetime.timedelta(seconds=int(parsed_result.group("seconds")))
+
+        if now is None:
+            now = Helper.ts() #type: ignore
+        else:
+            now = Helper.add_or_remove_timezone(now, with_timezone=with_timezone)
+
+        if parsed_result.group("prefix") == "+":
+            return now + offset #type: ignore
+        return now - offset #type: ignore
+
+    @staticmethod
+    def crypto_get_relative_time_option(
+        input_string: str,
+        *,
+        input_name: str,
+        with_timezone: bool = False,
+        now: datetime.datetime | None = None,
+    ) -> datetime.datetime:
+        """
+        Return an absolute timespec if a relative timespec or an ASN1 formatted
+        string is provided.
+
+        The return value will be a datetime object.
+        """
+        result = Helper.to_text(input_string)
+        if result is None:
+            raise ValueError(
+                f'The timespec "{input_string}" for {input_name} is not valid'
+            )
+        # Relative time
+        if result.startswith("+") or result.startswith("-"):
+            res = Helper.crypto_convert_relative_to_datetime(result, with_timezone=with_timezone, now=now)
+            if res is None:
+                raise ValueError(
+                    f'The timespec "{input_string}" for {input_name} is invalid'
+                )
+            return res
+        # Absolute time
+        for date_fmt, length in [
+            (
+                "%Y%m%d%H%M%SZ",
+                15,
+            ),  # this also parses '202401020304Z', but as datetime(2024, 1, 2, 3, 0, 4)
+            ("%Y%m%d%H%MZ", 13),
+            (
+                "%Y%m%d%H%M%S%z",
+                14 + 5,
+            ),  # this also parses '202401020304+0000', but as datetime(2024, 1, 2, 3, 0, 4, tzinfo=...)
+            ("%Y%m%d%H%M%z", 12 + 5),
+        ]:
+            if len(result) != length:
+                continue
+            try:
+                res = datetime.datetime.strptime(result, date_fmt)
+            except ValueError:
+                pass
+            else:
+                return Helper.add_or_remove_timezone(res, with_timezone=with_timezone)
+
+        raise ValueError(
+            f'The time spec "{input_string}" for {input_name} is invalid'
+        )
+    
+    @staticmethod
+    def replace_stubs(data: str, replacements: Mapping)-> str:
+        ret = re.sub('}+', '}', re.sub(r'{+', '{', data))
+
+        replacements = dict(replacements)
+        for key, val in replacements.items():
+            key = re.sub('}', '', re.sub(r'{', '', key))
+            ret = ret.replace(f'{{{key}}}', str(Helper.to_text(val)))
+        
+        return ret
+
     @staticmethod
     def items_to_mapping_by(data: Sequence, callback: Callable)-> dict:
         ret = {}
@@ -1098,7 +1284,7 @@ class Helper:
                 if Validate.is_exception(e):
                     raise e
             
-        return ret
+        return list(ret)
 
     @staticmethod
     def copy(data):
@@ -1199,6 +1385,7 @@ class Helper:
 
     @staticmethod
     def play_meta(vars: Mapping, **kwargs)-> dict:
+        make_cache = kwargs.pop('make_cache', False)
         ts = Helper.ts()
 
         play_hosts = ','.join(vars.get('ansible_play_hosts_all', []))
@@ -1230,7 +1417,14 @@ class Helper:
                 'timestamp': Helper.ts_mod(ts, 'timestamp'), #type: ignore
             },
             'placeholder': Helper.placeholder(mod='hash'),
+            'cache_file': Helper.path_tmp(f'play_{Str.to_md5(play_id)}.json'),
         }
+
+        if Validate.is_truthy(make_cache) and not Validate.file_exists(ret['cache_file']):
+            cache_defaults = kwargs.pop('cache_defaults', {})
+            cache_content = Data.combine(cache_defaults, {'play': Helper.copy(ret)}, recursive=True)
+            Helper.json_save(cache_content, ret['cache_file'])
+
         return ret
     
     @staticmethod
@@ -1374,6 +1568,15 @@ class Helper:
         Helper.fs_unlock(file)
     
     @staticmethod
+    def fs_remove(file_) -> None:
+        if Validate.file_exists(file_):
+            os.remove(file_)
+    
+    @staticmethod
+    def fs_delete(file_) -> None:
+        Helper.fs_remove(file_)
+    
+    @staticmethod
     def to_md5(data) -> str:
         if Validate.is_mapping(data) or Validate.is_sequence(data):
             data = json.dumps(Helper.to_safe_json(data))
@@ -1403,9 +1606,17 @@ class Helper:
         return _CACHE_MODULE
     
     @staticmethod
-    def to_type_name(data):
+    def to_type_name(data)-> str:
         return type(data).__name__
-
+    
+    @staticmethod
+    def to_type_module(data)-> str:
+        return type(data).__module__
+    
+    @staticmethod
+    def to_type_bases(data)-> list:
+        return list(type(data).__bases__)
+    
     @staticmethod
     def to_ip_address(data, **kwargs):
         from ansible_collections.ansible.utils.plugins.plugin_utils.base.ipaddress_utils import ip_address
@@ -1568,6 +1779,7 @@ class Helper:
     
     @staticmethod
     def ts_mod(ts: datetime.datetime, mod: str)-> datetime.datetime | str | int:
+        mod = mod.lower()
         match mod:
             case 'string' | 'str':
                 return str(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
@@ -1579,6 +1791,8 @@ class Helper:
                 return str(ts.strftime("%Y%m%dT%H%M%S") + f".{ts.microsecond * 1000:09d}Z")
             case 'timestamp':
                 return int(ts.timestamp())
+            case 'asn1':
+                return str(ts.strftime('%Y%m%d%H%M%SZ'))
             case _:
                 return ts
 
@@ -1794,16 +2008,22 @@ class Helper:
     @staticmethod
     def to_list_dicts(data, defaults={}, *args, **kwargs):
         no_dot = kwargs.get('no_dot', False)
+        combines = kwargs.pop('combine', [])
+        combine_args = kwargs.pop('combine_args', {})
+        data_keys = list(data.keys())
         ret = []
 
-        for keyIndex in range(0, len(data[list(data.keys())[0]])):
+        for idx_item in range(0, len(data[data_keys[0]])):
             new_item = defaults.copy()
 
-            for dataKey in data.keys():
+            if Validate.filled(combines) and Validate.filled(Data.get(combines, str(idx_item))):
+                new_item = Data.combine(new_item, Data.get(combines, str(idx_item)), **combine_args)
+
+            for data_key in data_keys:
                 if no_dot:
-                    new_item[dataKey] = data[dataKey][keyIndex]
+                    new_item[data_key] = data[data_key][idx_item]
                 else:
-                    Data.set(new_item, dataKey, data[dataKey][keyIndex])
+                    Data.set(new_item, data_key, data[data_key][idx_item])
 
             ret.append(new_item)
 
@@ -2378,6 +2598,32 @@ class Str:
 
 class Validate:
     @staticmethod
+    def is_item_exec(data: Mapping)-> bool:
+        return not Validate.is_truthy(Data.get('_skip', False)) and not Validate.is_falsy(Data.get('_keep', True))
+    
+    @staticmethod
+    def is_plugin_lookup(data)-> bool:
+        if Validate.blank(data) or not Validate.is_object(data):
+            return False
+        
+        mros = type(data).__mro__
+
+        return Data.get(mros, '0.__name__') == 'LookupModule' and Data.get(mros, '1.__name__') == 'LookupBase' and Data.get(mros, '1.__module__') == 'ansible.plugins.lookup'
+    
+    @staticmethod
+    def is_plugin_action(data)-> bool:
+        if Validate.blank(data) or not Validate.is_object(data):
+            return False
+        
+        mros = type(data).__mro__
+
+        return Data.get(mros, '0.__name__') == 'ActionModule' and Data.get(mros, '1.__name__') == 'ActionBase' and Data.get(mros, '1.__module__') == 'ansible.plugins.action'
+    
+    @staticmethod
+    def has_method(obj, method: str)-> bool:
+        return Validate.filled(obj) and Validate.filled(method) and hasattr(obj, method) and callable(getattr(obj, method))
+        
+    @staticmethod
     def is_copyable(data):
         try:
             copy.copy(data)
@@ -2454,12 +2700,16 @@ class Validate:
         return Helper.to_string(data).lower() in ('y', 'yes', 'on', '1', 'true', 't', 1, 1.0)
     
     @staticmethod
+    def truthy(data)-> bool:
+        return Validate.is_truthy(data)
+    
+    @staticmethod
     def is_falsy(data)-> bool:
         return Helper.to_string(data).lower() in ('n', 'no', 'off', '0', 'false', 'f', 0, 0.0)
     
     @staticmethod
-    def is_type_name(data, name: str)-> bool:
-        return Helper.to_type_name(data) == name
+    def falsy(data)-> bool:
+        return Validate.is_falsy(data)
     
     @staticmethod
     def is_exception(data)-> bool:
@@ -2741,7 +2991,7 @@ class Validate:
         return Validate.is_list(data) and all(Validate.is_bool(item) for item in data)
 
     @staticmethod
-    def is_blank(data):
+    def _is_blank(data):
         if Validate.is_string(data) and data.strip() == '':
             return True
         elif Validate.is_sequence(data) and len(data) == 0:
@@ -2756,17 +3006,39 @@ class Validate:
             return True
         
         return False
+
     @staticmethod
-    def is_filled(data):
-        return not Validate.is_blank(data)
+    def _is_filled(data):
+        return not Validate._is_blank(data)
     
     @staticmethod
-    def blank(data):
-        return Validate.is_blank(data)
+    def is_type_name(data, type_):
+        type_ = Helper.to_iterable(type_)
+
+        if Helper.to_type_name(data) in type_:
+            return True
+        
+        return any([Validate.is_type_of(data, entry) for entry in type_])
     
     @staticmethod
-    def filled(data):
-        return Validate.is_filled(data)
+    def blank(data, **kwargs):
+        ret = Validate._is_blank(data)
+        type_ = kwargs.get('type', None)
+        
+        if ret and not Validate._is_blank(type_):
+            ret = Validate.is_type_name(data, type_)
+    
+        return ret
+    
+    @staticmethod
+    def filled(data, **kwargs):
+        ret = Validate._is_filled(data)
+        type_ = kwargs.get('type', None)
+        
+        if ret and not Validate._is_blank(type_):
+            ret = Validate.is_type_name(data, type_)
+    
+        return ret
     
     @staticmethod
     def contains(data, *args, **kwargs):
@@ -2786,7 +3058,7 @@ class Validate:
                 return Validate.is_tuple(data)
             case 'dict':
                 return Validate.is_dict(data)
-            case 'string':
+            case 'str' | 'string':
                 return Validate.is_string(data)
             case 'int' | 'integer':
                 return Validate.is_int(data)
@@ -3078,7 +3350,64 @@ class Validator(cerberus.Validator):
         if constraint is True and not Validate.dir_exists(value):
             self._error(field, f"Must be an [{value}] existing directory") #type: ignore
         elif constraint is False and Validate.dir_exists(value):
-            self._error(field, f"Must be a [{value}] missing directory") #type: ignore    
+            self._error(field, f"Must be a [{value}] missing directory") #type: ignore
+    
+    def _validate_ip(self, constraint, field, value):
+        """{'type': 'boolean'}"""
+        if constraint is True and not Validate.is_ip(value):
+            self._error(field, f"[{value}] Must be an IP address") #type: ignore
+        elif constraint is False and Validate.is_ip(value):
+            self._error(field, f"[{value}] cannot be an IP address") #type: ignore
+    
+    def _validate_ipv4(self, constraint, field, value):
+        """{'type': 'boolean'}"""
+        if constraint is True and not Validate.is_ip_v4(value):
+            self._error(field, f"[{value}] Must be an IPv4 address") #type: ignore
+        elif constraint is False and Validate.is_ip_v4(value):
+            self._error(field, f"[{value}] cannot be an IPv4 address") #type: ignore
+    
+    def _validate_ipv6(self, constraint, field, value):
+        """{'type': 'boolean'}"""
+        if constraint is True and not Validate.is_ip_v4(value):
+            self._error(field, f"[{value}] Must be an IPv6 address") #type: ignore
+        elif constraint is False and Validate.is_ip_v4(value):
+            self._error(field, f"[{value}] cannot be an IPv6 address") #type: ignore
+    
+    def _validate_unique_field(self, constraint, field, value):
+        """ {'type': ['string', 'list']} """
+
+        errors = {}
+        for unique_field in Helper.to_iterable(constraint):
+            # Build hash set for uniqueness check
+            hashes = []
+            for channel in value:
+                if unique_field not in channel:
+                    continue  # Skip if field is missing (handles optional fields from oneof/anyof)
+                field_value = channel[unique_field]
+                if isinstance(field_value, dict):
+                    h = hash(frozenset(field_value.items()))
+                elif isinstance(field_value, list):
+                    # For lists, sort and tuple to make hashable (assuming elements are hashable)
+                    h = hash(tuple(sorted(field_value)))
+                else:
+                    h = hash(field_value)
+                hashes.append((h, field_value))  # Store value for error reporting
+
+            # Detect and log duplicates
+            seen = {}
+            for i, (h, field_value) in enumerate(hashes):
+                if h in seen:
+                    prev_i = seen[h]
+                    # Error on the current (duplicate) item
+                    if str(i) not in errors:
+                        errors[str(i)] = {}
+                    errors[str(i)][unique_field] = f"value '{field_value}' duplicates previous at index {prev_i}"
+                else:
+                    seen[h] = i
+
+        # Report errors if any
+        if errors:
+            self._error(field, errors)
 
     def error_message(self) -> str:
         parts = []
@@ -3086,3 +3415,99 @@ class Validator(cerberus.Validator):
             parts.append(f'{key_name}: {error}')
         
         return ' | '.join(parts)
+
+class Fluent():
+    on_save: Optional[Callable] = None
+    on_destroy: Optional[Callable] = None
+
+    def __init__(self, data: Mapping[Any, Any] = {}):
+        self.data = dict(data).copy()
+    
+    def get(self, key: str, default: Any = None)-> Any:
+        return Data.pydash().get(self.data, key, default)
+    
+    def get_filled(self, key: str, default, **kwargs)-> Any:
+        if not self.has(key):
+            return default
+        
+        ret = self.get(key)
+        return default if not Validate.filled(ret, **kwargs) else ret
+    
+    def set(self, key: str, value: Any)-> dict:
+        Data.pydash().set_(self.data, key, value)
+        return self.data
+    
+    def forget(self, key: str)-> dict:
+        Data.pydash().unset(self.data, key)
+        return self.data
+    
+    def unset(self, key: str)-> dict:
+        return self.forget(key)
+
+    def has(self, key: str)-> bool:
+        return Data.pydash().has(self.data, key)
+
+    def filled(self, key: str)-> bool:
+        return Validate.filled(self.get(key))
+    
+    def contains(self, key: str, *args, **kwargs)-> bool:
+        return Validate.contains(self.get(key, []), *args, **kwargs)
+
+    def blank(self, key: str)-> bool:
+        return Validate.blank(self.get(key))
+    
+    def append(self, key: str, value, **kwargs)-> dict:
+        self.data = dict(Data.append(self.data, key, value, **kwargs))
+        return self.data
+
+    def prepend(self, key: str, value, **kwargs)-> dict:
+        self.data = dict(Data.prepend(self.data, key, value, **kwargs))
+        return self.data
+
+    def all(self)-> dict:
+        return self.data.copy()
+
+    def only_with(self, *args, **kwargs):
+        return Data.only_with(self.all(), *args, **kwargs)
+    
+    def all_except(self, *args, **kwargs):
+        return Data.all_except(self.all(), *args, **kwargs)
+    
+    def pydash(self):
+        return Data.pydash()
+    
+    def copy(self):
+        return Fluent(self.all())
+    
+    def __copy__(self):
+        return self.copy()
+
+    def __deepcopy__(self):
+        return self.copy()
+    
+    def save(self)-> None:
+        if Validate.blank(self.on_save):
+            return
+        
+        Helper.callback(self.on_save, self.all())
+
+class Cache:
+    @staticmethod
+    def make(file_name_prefix: str = ''):
+        file_name = f'{file_name_prefix}{Helper.placeholder(mod='hashed')}.json'
+        file_path = Helper.path_tmp(file_name)
+        
+        if not Validate.file_exists(file_path):
+            Helper.json_save({'ts': Helper.ts(mod='long')}, file_path)
+        
+        return file_path
+
+    @staticmethod
+    def load(file_path: str)-> Fluent:
+        if not Validate.file_exists(file_path):
+            raise ValueError(f'Cache file [{file_path}] does not exit.')
+        
+        cache = Fluent(dict(Helper.json_load(file_path)))
+        cache.on_save = lambda data: Helper.json_save(data, file_path, overwrite=True)
+
+        return cache
