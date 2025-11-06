@@ -1,6 +1,9 @@
 from typing import Any, Optional, Mapping
 from abc import ABC, abstractmethod
 from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Validate, Data, Cache, Str, Helper, Validator, Fluent
+from ansible_collections.aybarsm.utils.plugins.module_utils.channel import Channel
+from ansible.plugins.action import ActionBase
+from ansible.plugins.lookup import LookupBase
 
 _CONF = {
     'roles': {
@@ -16,7 +19,8 @@ class RoleManager(ABC):
     def __init__(self, args: Mapping = {}, vars: Mapping = {}):
         self._container = {}
         self._meta = {'conf': _CONF.copy(), '_': {}}
-        self._module = None
+        self._action_module: Optional[ActionBase] = None
+        self._lookup_module: Optional[LookupBase] = None
         self.set_op(args, vars)
         self.cache: Fluent = Fluent()
 
@@ -232,21 +236,26 @@ class RoleManager(ABC):
         return Fluent(cfg)
     
     def _template(self, data, **kwargs)-> Any:
-        # if Validate.blank(data) or not Validate.is_plugin_action(self._module):
-        #     return data
-        if Validate.blank(data) or Validate.blank(self._module):
+        if Validate.blank(data):
             return data
         
-        return self._module._templar.template(data, **kwargs) #type: ignore
+        module = self.get_module()
+        if not module:
+            raise RuntimeError('No module found to access templar')
+        
+        return module._templar.template(data, **kwargs) #type: ignore
     
     def _lookup(self, name: str, *args, **kwargs):
+        if not self._action_module:
+            raise RuntimeError('Action module does not exist to perform this')
+        
         lookup = Data.get(self._container, f'lookup.{name}')
         if Validate.blank(lookup):
             from ansible.plugins.loader import lookup_loader
             lookup = lookup_loader.get(
                 name,
-                loader=self._module._loader, #type: ignore
-                templar=self._module._templar #type: ignore
+                loader=self._action_module._loader,
+                templar=self._action_module._templar,
             )
 
             Data.set(self._container, f'lookup.{name}', Helper.copy(lookup))
@@ -258,19 +267,73 @@ class RoleManager(ABC):
         return lookup.run(args, **kwargs)
     
     def _exec_cmd(self, *args, **kwargs):
-        return self._module._low_level_execute_command(*args, **kwargs) #type: ignore
+        if not self._action_module:
+            raise RuntimeError('Action module does not exist to perform this')
+        
+        return self._action_module._low_level_execute_command(*args, **kwargs)
     
     def _exec_module(self, **kwargs):
+        if not self._action_module:
+            raise RuntimeError('Action module does not exist to perform this')
+        
         kwargs = dict(kwargs)
-        kwargs['task_vars'] = Helper.copy(self.vars())
+        kwargs['task_vars'] = self.vars()
 
-        return self._module._execute_module(**kwargs) #type: ignore
+        return self._action_module._execute_module(**kwargs)
+
+    def _async_status(self, job: Mapping, **kwargs):
+        if not self._action_module:
+            raise RuntimeError('Action module does not exist to perform this')
+        
+        is_cleanup = kwargs.pop('is_cleanup', False)
+        jid = Data.get(job, 'ansible_job_id')
+        async_dir = Helper.dirname(Data.get(job, 'results_file'))
+
+        kwargs = dict(kwargs)
+        kwargs['module_name'] = 'ansible.builtin.async_status'
+        kwargs['module_args'] = {
+            'jid': jid,
+            '_async_dir': async_dir,
+        }
+
+        if is_cleanup:
+            kwargs['module_args']['mode'] = 'cleanup'
+
+        return self._exec_module(**kwargs)
     
+    def _async_cleanup(self, job: Mapping, **kwargs):
+        kwargs['is_cleanup'] = True
+
+        return self._async_status(job, **kwargs)
+
     def set_cache(self, cache: Fluent)-> None:
         self.cache = Helper.copy(cache)
+    
+    def get_action_module(self)-> Optional[ActionBase]:
+        return self._action_module
 
-    def set_module(self, module=None):
-        self._module = module
+    def set_action_module(self, module: ActionBase)-> None:
+        self._action_module = module
+    
+    def has_action_module(self)-> bool:
+        return Validate.filled(self._action_module)
+    
+    def get_lookup_module(self)-> Optional[LookupBase]:
+        return self._lookup_module
+
+    def set_lookup_module(self, module: LookupBase)-> None:
+        self._lookup_module = module
+    
+    def has_lookup_module(self)-> bool:
+        return Validate.filled(self._lookup_module)
+    
+    def get_module(self)-> Optional[ActionBase|LookupBase]:
+        if self._action_module:
+            return self._action_module
+        elif self._lookup_module:
+            return self._lookup_module
+        
+        return None
 
     @abstractmethod
     def _get_validation_schema_operation(self, args, vars):

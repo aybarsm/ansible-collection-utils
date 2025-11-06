@@ -6,6 +6,7 @@ import sys, re, json, yaml, inspect, pathlib, os, io, datetime, random, uuid, st
 import rich.pretty, rich.console, jinja2, cerberus
 from typing import Callable, Union, Any, Optional
 from collections.abc import Mapping, MutableMapping, Sequence, MutableSequence
+from ansible.plugins.action import ActionBase
 
 _CACHE_MODULE = None
 
@@ -3518,3 +3519,13 @@ class Cache:
         cache.on_save = lambda data: Helper.json_save(data, file_path, overwrite=True)
 
         return cache
+
+class Aggregator:
+    DataQuery = DataQuery
+    Data = Data
+    Helper = Helper
+    Str = Str
+    Validate = Validate
+    Validator = Validator
+    Cache = Cache
+    Fluent = Fluent
