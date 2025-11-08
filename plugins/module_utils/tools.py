@@ -4,7 +4,7 @@ from http.client import HTTPResponse
 from multiprocessing import Value
 import sys, re, json, yaml, inspect, pathlib, os, io, datetime, random, uuid, string, tempfile, importlib, hashlib, urllib.parse, math, time, errno, copy, base64
 import rich.pretty, rich.console, jinja2, cerberus
-from typing import Callable, Union, Any, Optional
+from typing import Callable, Union, Any, Optional, Iterable
 from collections.abc import Mapping, MutableMapping, Sequence, MutableSequence
 from ansible.plugins.action import ActionBase
 
@@ -1043,6 +1043,70 @@ class Data:
 
 class Helper:
     @staticmethod
+    def get_uid()-> int:
+        return os.getuid()
+    
+    @staticmethod
+    def get_uname()-> str:
+        import pwd
+        return pwd.getpwuid(Helper.get_uid()).pw_name
+    
+    @staticmethod
+    def get_gid()-> int:
+        return os.getgid()
+    
+    @staticmethod
+    def get_gname()-> str:
+        import grp
+        return grp.getgrgid(Helper.get_gid()).gr_name
+    
+    @staticmethod
+    def get_temp_var_name()-> str:
+        return f'__tmp_var_{Helper.placeholder(mod='hashed')}'
+
+    @staticmethod
+    def ansible_template(templar, variable, **kwargs)-> Any:
+        from ansible.template import is_trusted_as_template, trust_as_template 
+        extra_vars = kwargs.pop('extra_vars', {})
+        remove_extra_vars = kwargs.pop('remove_extra_vars', True)
+
+        if Validate.is_string(variable) and not is_trusted_as_template(variable):
+            variable = trust_as_template(variable)
+        
+        for var_key, var_value in extra_vars.items():
+            templar.available_variables[var_key] = var_value
+        
+        ret = templar.template(variable, **kwargs)
+        
+        if not Validate.falsy(remove_extra_vars):
+            for var_key, var_value in extra_vars.items():
+                del templar.available_variables[var_key]
+        
+        return ret
+
+    @staticmethod
+    def to_ansible_vault(templar, data: str, secret: str, is_vault: bool = True, **kwargs)-> str:
+        var_data = Helper.get_temp_var_name()
+        var_secret = Helper.get_temp_var_name()
+        filter_suffix = 'vault' if is_vault else 'unvault'
+        variable = '{{ ' + f"{var_data} | ansible.builtin.{filter_suffix}({var_secret})" + ' }}'
+        
+        kwargs = dict(kwargs)
+        Data.set(kwargs, f'extra_vars.{var_data}', data)
+        Data.set(kwargs, f'extra_vars.{var_secret}', secret)
+        Data.set(kwargs, f'remove_extra_vars', True)
+        
+        return Helper.ansible_template(templar, variable, **kwargs)
+    
+    @staticmethod
+    def ansible_vault(templar, data: str, secret: str, **kwargs)-> str:        
+        return Helper.to_ansible_vault(templar, data, secret, True, **kwargs)
+
+    @staticmethod
+    def ansible_unvault(templar, data: str, secret: str, **kwargs)-> str:        
+        return Helper.to_ansible_vault(templar, data, secret, False, **kwargs)
+
+    @staticmethod
     def b64_encode(data)-> str:
         data = Helper.to_text(data)
         return base64.b64encode(data.encode("utf-8"))
@@ -1525,6 +1589,12 @@ class Helper:
                 ret.append(item)
 
         return ret
+
+    @staticmethod
+    def fs_get(path: Union[pathlib.Path, str], **kwargs)-> str:
+        path = pathlib.Path(path)
+
+        return path.read_text(**kwargs)
     
     @staticmethod
     def normalise_data_key(*args: str) -> str:
@@ -1576,13 +1646,17 @@ class Helper:
         Helper.fs_unlock(file)
     
     @staticmethod
-    def fs_remove(file_) -> None:
-        if Validate.file_exists(file_):
-            os.remove(file_)
+    def fs_remove(path: Union[pathlib.Path, str], **kwargs) -> None:
+        path = pathlib.Path(path)
+        if path.exists():
+            if path.is_dir():
+                path.rmdir()
+            else:
+                path.unlink(**kwargs)
     
     @staticmethod
-    def fs_delete(file_) -> None:
-        Helper.fs_remove(file_)
+    def fs_delete(path: Union[pathlib.Path, str], **kwargs) -> None:
+        Helper.fs_remove(path, **kwargs)
     
     @staticmethod
     def to_md5(data) -> str:
@@ -2664,6 +2738,10 @@ class Validate:
                 return True
         
         return False
+    
+    @staticmethod
+    def str_ansible_vault(haystack: str)-> bool:        
+        return haystack.strip().startswith('$ANSIBLE_VAULT;')
 
     @staticmethod
     def str_contains(haystack: str, *args, **kwargs)-> bool:
@@ -2804,8 +2882,8 @@ class Validate:
         return isinstance(data, tuple)
     
     @staticmethod
-    def is_iterable(data, **kwargs) -> bool:
-        return Validate.is_sequence(data, **kwargs)
+    def is_iterable(data) -> bool:
+        return isinstance(data, Iterable)
     
     @staticmethod
     def is_dict(data):

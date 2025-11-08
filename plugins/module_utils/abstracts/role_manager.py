@@ -16,17 +16,33 @@ _CONF = {
 }
 
 class RoleManager(ABC):
-    def __init__(self, args: Mapping = {}, vars: Mapping = {}):
+    def __init__(self, args: Mapping = {}, vars: Mapping = {}, module: Optional[ActionBase|LookupBase] = None):
         self._container = {}
         self._meta = {'conf': _CONF.copy(), '_': {}}
+        
         self._action_module: Optional[ActionBase] = None
         self._lookup_module: Optional[LookupBase] = None
+        if isinstance(module, ActionBase):
+            self._action_module = module
+        elif isinstance(module, LookupBase):
+            self._lookup_module = module
+        
         self.set_op(args, vars)
         self.cache: Fluent = Fluent()
 
         if self._has_cache_file_path():
             self.cache = Cache.load(self._get_cache_file_path())
             self._meta_set('conf.cache.loaded', True)
+    
+    def get_result(self):
+        op_name = self.op('')
+        if Validate.has_method(self, op_name):
+            getattr(self, op_name)()
+
+        if self.is_cache_loaded():
+            self.cache.save()
+
+        return {'result': self._('ret', {})}
     
     def _get_value(self, container, key = '', default = None)-> Any:
         return Data.get(container, key, default) if Validate.filled(key) else container
@@ -188,7 +204,12 @@ class RoleManager(ABC):
         self._meta_set('vars', dict(vars).copy())
         self._meta_set('_.tags.run', set(list(self.vars('ansible_run_tags', [])) + self.args('tags.run', []))) #type: ignore
         self._meta_set('_.tags.skip', set(list(self.vars('ansible_skip_tags', [])) + self.args('tags.skip', []))) #type: ignore
-    
+        
+        role_name = self.__class__.__name__
+        if role_name != 'RoleManager':
+            role_name = Str.case_snake(str(role_name).strip()).strip().strip('_')
+            self._meta_set('role.name', role_name)
+
     def tag_run_has(self, *terms: str, **kwargs)->bool:
         return Validate.contains(self.meta('_.tags.run', []), *terms, **kwargs)
     
@@ -196,7 +217,10 @@ class RoleManager(ABC):
         return Validate.contains(self.meta('_.tags.skip', []), *terms, **kwargs)
     
     def mod_eligible(self, mod):
-        return self.tag_run_has('all', mod) and not self.tag_skip_has(mod)
+        return self.tag_eligible(mod)
+    
+    def tag_eligible(self, tag):
+        return self.tag_run_has('all', tag) and not self.tag_skip_has(tag)
     
     @staticmethod
     def item_eligible(item: Mapping)-> bool:
@@ -210,45 +234,66 @@ class RoleManager(ABC):
             host = self.host()
         return Helper.first_filled(self.host_vars(host, '_domain'), self.vars('_domain'), 'blrm')
     
-    def get_role_cfg(self, **kwargs)-> Fluent:
+    def _resolve_role_cfg(self, **kwargs)-> None:
         role_name = self.meta('role.name', '')
         if Validate.blank(role_name):
-            return Fluent()
+            return
         
-        role_cfg = self.meta('role.cfg', {})
-        if Validate.filled(role_cfg):
-            return Fluent(role_cfg)
-        
+        host = self.host()
         role_name = str(role_name).strip().strip('_').strip()
+        role_cfg = {
+            'main': {},
+            'host': {},
+            'all': {}
+        }
 
-        role_var_keys = Data.where(
+        host_role_var_keys = Data.where(
+            list(self.host_vars(host=host, default = {}).keys()),
+            lambda var_name: str(var_name).startswith(f'{role_name}__')
+        )
+
+        for var_name in host_role_var_keys:
+            cfg_key = Str.chop_start(var_name, f'{role_name}__')
+            Data.set(role_cfg, f'host.{cfg_key}', self._template(self.host_vars(host=host, key=var_name)))
+
+        main_role_var_keys = Data.where(
             list(self.vars(default = {}).keys()),
             lambda var_name: str(var_name).startswith(f'{role_name}__')
         )
 
-        cfg = {}
-        for var_name in role_var_keys:
-            cfg_key = Str.chop_start(var_name, 'crypto__')
-            cfg[cfg_key] = self._template(self.vars(var_name))
+        for var_name in main_role_var_keys:
+            cfg_key = Str.chop_start(var_name, f'{role_name}__')
+            Data.set(role_cfg, f'main.{cfg_key}', self._template(self.vars(key=var_name)))
         
-        self._meta_set('role.cfg', Helper.copy(cfg))
+        role_cfg['all'] = Data.combine(role_cfg['main'], role_cfg['host'], recursive=True)
+        
+        self._meta_set('role.cfg', Helper.copy(role_cfg))
 
-        return Fluent(cfg)
+    def get_role_cfg(self, sub: str = 'all')-> Fluent:
+        if Validate.blank(self.meta('role.cfg', {})):
+            self._resolve_role_cfg()
+        
+        key_suffix = f'.{sub}' if sub in ['host', 'main', 'all'] else ''
+        return Fluent(self.meta(f'role.cfg{key_suffix}', {}))
     
     def _template(self, data, **kwargs)-> Any:
         if Validate.blank(data):
             return data
         
+        # if not str(Helper.to_text(data)).startswith('{{'):
+        #     return data
+
         module = self.get_module()
         if not module:
             raise RuntimeError('No module found to access templar')
         
-        return module._templar.template(data, **kwargs) #type: ignore
+        return Helper.ansible_template(module._templar, data, **kwargs) #type: ignore
     
     def _lookup(self, name: str, *args, **kwargs):
         if not self._action_module:
             raise RuntimeError('Action module does not exist to perform this')
         
+        flat_ret = kwargs.pop('flat_ret', False)
         lookup = Data.get(self._container, f'lookup.{name}')
         if Validate.blank(lookup):
             from ansible.plugins.loader import lookup_loader
@@ -264,7 +309,11 @@ class RoleManager(ABC):
         kwargs = dict(kwargs)
         kwargs['variables'] = Helper.copy(self.vars())
 
-        return lookup.run(args, **kwargs)
+        ret = lookup.run(args, **kwargs)
+        if Validate.truthy(flat_ret) and Validate.is_iterable(ret):
+            ret = list(ret)[0]
+
+        return ret
     
     def _exec_cmd(self, *args, **kwargs):
         if not self._action_module:

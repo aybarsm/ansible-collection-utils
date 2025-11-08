@@ -1,6 +1,8 @@
 from __future__ import annotations
 from ansible.module_utils.basic import AnsibleModule
 import json
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Validate
+
 def main():
     module = AnsibleModule(
         argument_spec={
@@ -37,8 +39,14 @@ def main():
 
     if rc != 0:
         module.fail_json(stderr)
+    
+    is_changed = method in ['create', 'set', 'delete']
+    if Validate.filled(stdout) and Validate.str_is_json(stdout):
+        result = json.loads(stdout)
+    else:
+        result = {}
 
-    module.exit_json(**{'data': json.loads(stdout)})
+    module.exit_json(**{'changed': is_changed, 'result': result})
 
 if __name__ == '__main__':
     main()
