@@ -2,6 +2,20 @@ from __future__ import annotations
 from ansible.module_utils.basic import AnsibleModule
 import json
 
+def is_str_blank(data: str)-> bool:
+    return data.strip() == ''
+
+def is_str_json(data: str)-> bool:
+    data = str(data).strip()
+    if is_str_blank(data):
+        return False
+    
+    try:
+        json.loads(data)
+        return True
+    except Exception as e:
+        return False
+
 def main():
     module = AnsibleModule(
         argument_spec={
@@ -42,13 +56,18 @@ def main():
     is_changed = method in ['create', 'set', 'delete']
     
     stdout = str(stdout).strip()
-    if stdout != '':
-        try:
+    result = None
+    if not is_str_blank(stdout):
+        if is_str_json(stdout):
             result = json.loads(stdout)
-        except Exception as e:
-            module.fail_json(f'Invalid JSON response: {e}')
-    else:
-        result = {}
+        else:
+            for line in stdout.split('\n'):
+                if is_str_json(line):
+                    result = json.loads(line)
+                    break
+    
+    if result == None:
+        result = stdout
 
     module.exit_json(**{'changed': is_changed, 'result': result})
 
