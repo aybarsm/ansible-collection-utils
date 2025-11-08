@@ -1,12 +1,9 @@
 from __future__ import annotations
-from ast import Call
 from http.client import HTTPResponse
-from multiprocessing import Value
 import sys, re, json, yaml, inspect, pathlib, os, io, datetime, random, uuid, string, tempfile, importlib, hashlib, urllib.parse, math, time, errno, copy, base64
 import rich.pretty, rich.console, jinja2, cerberus
 from typing import Callable, Union, Any, Optional, Iterable
 from collections.abc import Mapping, MutableMapping, Sequence, MutableSequence
-from ansible.plugins.action import ActionBase
 
 _CACHE_MODULE = None
 
