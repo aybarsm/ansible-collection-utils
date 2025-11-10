@@ -410,6 +410,14 @@ class DataQuery:
 
 class Data:
     @staticmethod
+    def filled(data: Mapping|Sequence, key: str, **kwargs) -> bool:
+        return Validate.filled(Data.get(data, key, **kwargs))
+    
+    @staticmethod
+    def blank(data: Mapping|Sequence, key: str, **kwargs) -> bool:
+        return Validate.blank(Data.get(data, key, **kwargs))
+    
+    @staticmethod
     def where(data: Mapping|Sequence, callback: Optional[Callable] = None, default: Any = None, **kwargs) -> Any:
         is_negate = kwargs.pop('negate', False)
         is_first = kwargs.pop('first', False)
@@ -1040,6 +1048,212 @@ class Data:
 
 class Helper:
     @staticmethod
+    def to_file_hosts(items: list[dict[str,str]], **kwargs)-> list[str]:
+        err_duplicates = kwargs.pop('error_on_duplicates', True)
+
+        ret = []
+        meta = {'ips': [], 'names': []}
+        stages = []
+        last_type = None
+
+        for entry in items:
+                if 'raw' in entry:
+                    if last_type == 'entry' or last_type == None:
+                        stages.append({'type': 'raw', 'lines': []})
+                    
+                    stages[-1]['lines'].append(entry.get('raw'))
+                    last_type = 'raw'
+                    continue
+
+                ip = str(Data.get(entry, 'ip', '')).strip()
+                
+                if ip in meta['names']:
+                    if err_duplicates:
+                        raise ValueError(f'Duplicate value for [{ip}] IP in hosts file')
+                    else:
+                        continue
+
+                meta['ips'].append(ip)
+                ip_prefix = 'IPv' + ('4' if Validate.is_ip_v4(ip) else '6')
+                fqdn = str(Data.get(entry, 'fqdn', '')).strip()
+                hostname = str(Data.get(entry, 'hostname', '')).strip()
+
+                line = [ip]
+                
+                if Validate.filled(fqdn):
+                    if f'{ip_prefix}:{fqdn}' in meta['names']:
+                        if err_duplicates:
+                            raise ValueError(f'Duplicate value for {ip_prefix} [{fqdn}] FQDN in hosts file')
+                        else:
+                            continue
+                    meta['names'].append(f'{ip_prefix}:{fqdn}')
+                    line.append(fqdn)
+                    
+                
+                if Validate.filled(hostname):
+                    if f'{ip_prefix}:{hostname}' in meta['names']:
+                        if err_duplicates:
+                            raise ValueError(f'Duplicate value for {ip_prefix} [{hostname}] hostname in hosts file')
+                        else:
+                            continue
+                    meta['names'].append(f'{ip_prefix}:{hostname}')
+                    line.append(hostname)
+                
+                if last_type == 'raw' or last_type == None:
+                    stages.append({'type': 'entry', 'lines': []})
+
+                stages[-1]['lines'].append(' '.join(line))
+                last_type = 'entry'
+        
+        for stage in stages:
+            stage_lines = list(stage['lines'])
+            
+            if stage['type'] == 'entry':
+                stage_lines.sort()
+            
+            ret.extend(stage_lines)
+        
+        return ret
+    
+    @staticmethod
+    def to_file_known_hosts(items: list[dict[str,str]], **kwargs)-> list[str]:
+        ret = []
+        stages = []
+        last_type = None
+
+        for entry in items:
+                if 'raw' in entry:
+                    if last_type == 'entry' or last_type == None:
+                        stages.append({'type': 'raw', 'lines': []})
+                    
+                    stages[-1]['lines'].append(entry.get('raw'))
+                    last_type = 'raw'
+                    continue
+                
+                host_ = entry.get('host', '')
+                if Validate.filled(host_):
+                    line = [host_]
+                else:
+                    line = ['|'.join(['|1', entry.get('hmac_key', ''), entry.get('hash', '')])]
+
+                line.extend([entry.get('type', ''), entry.get('key', '')])
+                
+                if last_type == 'raw' or last_type == None:
+                    stages.append({'type': 'entry', 'lines': []})
+
+                stages[-1]['lines'].append(' '.join(line))
+                last_type = 'entry'
+        
+        for stage in stages:
+            stage_lines = list(stage['lines'])
+            
+            if stage['type'] == 'entry':
+                stage_lines.sort()
+            
+            ret.extend(stage_lines)
+        
+        return ret
+    
+    @staticmethod
+    def from_file_hosts(file_content: str)-> list[dict[str,str]]:
+        ret = []
+
+        for line in iter(str(file_content).splitlines()):
+            normalised = re.sub(r'\s+', ' ', str(line).strip())
+            segments = list(normalised.split(maxsplit=2))
+            ip = Data.get(segments, '0')
+            fqdn = Data.get(segments, '1')
+            hostname = Data.get(segments, '2')
+
+            if not Validate.is_ip(ip) or not Validate.filled(fqdn):
+                ret.append({'raw': line})
+                continue
+
+            item = {'ip': ip}
+            if Validate.filled(fqdn) and Validate.filled(hostname):
+                item['fqdn'] = fqdn
+                item['hostname'] = hostname
+            else:
+                item['hostname'] = fqdn
+            
+            ret.append(item)
+        
+        return ret
+    
+    @staticmethod
+    def from_file_known_hosts(file_content: str)-> list[dict[str,str]]:
+        ret = []
+
+        for line in iter(str(file_content).splitlines()):
+            normalised = re.sub(r'\s+', ' ', str(line).strip())
+            segments = list(normalised.split(maxsplit=2))
+            hash_ = str(Data.get(segments, '0', ''))
+            type_ = str(Data.get(segments, '1', ''))
+            key_ = str(Data.get(segments, '2', ''))
+
+            if Validate.blank(hash_) or Validate.blank(type_) or Validate.blank(key_) or not type_.startswith('ssh-'):
+                ret.append({'raw': line})
+                continue
+
+            if hash_.startswith('|1|'):
+                hash_segments = list(Str.chop_start(hash_, '|1|').split(sep='|', maxsplit=2))
+                hmac_key = str(Data.get(hash_segments, '0', ''))
+                hmac_hash = str(Data.get(hash_segments, '1', ''))
+                if Validate.blank(hmac_key) or Validate.blank(hmac_hash):
+                    raise ValueError(f'Unable to resolve known_hosts hash [{hash_}]')
+
+                item = {
+                    'hmac_key': hmac_key,
+                    'hash': hmac_hash,
+                }
+            else:
+                item = {
+                    'host': hash_
+                }
+            
+            item['type'] = type_
+            item['key'] = key_
+            ret.append(item)
+        
+        return ret
+    
+    @staticmethod
+    def to_hash_host_key(host_: str, type_: str, key_: str, **kwargs)-> dict|str:
+        import hmac
+        as_entry = Validate.truthy(kwargs.pop('as_entry', False))
+
+        key = f'{type_.strip()} {key_.strip()}'
+        hmac_key = os.urandom(20)
+        hashed_host = hmac.new(hmac_key, Helper.to_bytes(host_), hashlib.sha1).digest() #type: ignore
+        
+        hmac_key = Helper.to_native(base64.b64encode(hmac_key))
+        hashed_host = Helper.to_native(base64.b64encode(hashed_host))
+        
+        if as_entry:
+            return {'hmac_key': hmac_key, 'hash': hashed_host}
+        
+        parts = key.strip().split()
+        # @ indicates the optional marker field used for @cert-authority or @revoked
+        i = 1 if parts[0][0] == '@' else 0
+        parts[i] = '|1|%s|%s' % (hmac_key, hashed_host)
+        return ' '.join(parts)
+    
+    @staticmethod
+    def to_known_host_entry(host_: str, type_: str, key_: str, **kwargs):
+        is_hashed = Validate.truthy(kwargs.pop('hashed', False))
+        
+        if is_hashed:
+            ret = Helper.to_hash_host_key(host_, type_, key_, as_entry=True)
+            Data.set(ret, '_meta.host', host_)
+        else:
+            ret = {'host': host_}
+        
+        ret['key'] = key_
+        ret['type'] = type_
+
+        return ret
+
+    @staticmethod
     def get_uid()-> int:
         return os.getuid()
     
@@ -1497,8 +1711,16 @@ class Helper:
         return ret
     
     @staticmethod
-    def data_key(key: str = '')-> str:
-        return re.sub(r'\.+', '.', key).strip('.')
+    def data_key(*args: str, **kwargs)-> str:
+        include_blanks = Validate.truthy(kwargs.pop('blanks', False))
+        ret = []
+        
+        for key in args:
+            key = re.sub(r'\.+', '.', key).strip('.')
+            if include_blanks or Validate.filled(key):
+                ret.append(key)
+        
+        return '.'.join(ret)
     
     @staticmethod
     def to_toml(data: Mapping, **kwargs)-> str:
@@ -1735,6 +1957,14 @@ class Helper:
     @staticmethod
     def fs_read(path: pathlib.Path | str, **kwargs)-> str:
         return pathlib.Path(path).read_text(**kwargs)
+    
+    @staticmethod
+    def json_parse(content: str, **kwargs) -> dict | list:
+        return json.loads(content, **kwargs)
+    
+    @staticmethod
+    def yaml_parse(content: str) -> dict | list:
+        return yaml.safe_load(content)
     
     @staticmethod
     def json_load(path: pathlib.Path | str, **kwargs) -> dict | list:
@@ -2127,6 +2357,15 @@ class Helper:
             ret = str(ret).strip().strip("'").strip().strip('"').strip()
 
         return ret
+
+    @staticmethod
+    def to_native(*args, **kwargs):
+        return Helper.to_text(*args, **kwargs)
+
+    @staticmethod
+    def to_bytes(*args, **kwargs):
+        from ansible.module_utils.common.text.converters import to_bytes
+        return to_bytes(*args, **kwargs)
 
     # @staticmethod
     # def from_ansible_tagged_object(data, **kwargs):
@@ -2676,6 +2915,23 @@ class Str:
         return data
 
 class Validate:
+    @staticmethod
+    def hmac_compare(hash_a, hash_b)-> bool:
+        import hmac
+        
+        return hmac.compare_digest(hash_a, hash_b)
+    
+    @staticmethod
+    def is_host_matches_host_hash(hmac_key: str, hmac_hash: str, *args: str)-> bool:
+        import hmac
+        
+        for host in args:
+            computed_hash = hmac.new(base64.b64decode(hmac_key), Helper.to_bytes(host), hashlib.sha1).digest() #type: ignore
+            if hmac.compare_digest(computed_hash, base64.b64decode(hmac_hash)):
+                return True
+        
+        return False
+    
     @staticmethod
     def is_item_exec(data: Mapping)-> bool:
         return not Validate.is_truthy(Data.get('_skip', False)) and not Validate.is_falsy(Data.get('_keep', True))
@@ -3331,7 +3587,7 @@ class Validate:
         if is_cli and Validate.is_string(patterns):
             patterns = Str.to_cli(patterns)
         
-        if Validate.is_blank(patterns):
+        if Validate.blank(patterns):
             return True
 
         for pattern in Helper.to_iterable(patterns):
@@ -3519,6 +3775,18 @@ class Fluent():
     def set(self, key: str, value: Any)-> dict:
         Data.pydash().set_(self.data, key, value)
         return self.data
+    
+    def increase(self, key: str, start: int|float = 0, step: int|float = 1)-> int | float:
+        current = self.get(key, start)
+        current += step
+        self.set(key, current)
+        return current
+    
+    def decrease(self, key: str, start: int|float = 0, step: int|float = 1)-> int | float:
+        current = self.get(key, start)
+        current -= step
+        self.set(key, current)
+        return current
     
     def forget(self, key: str)-> dict:
         Data.pydash().unset(self.data, key)

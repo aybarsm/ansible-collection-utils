@@ -1,0 +1,58 @@
+from __future__ import annotations
+from ansible.plugins.action import ActionBase
+from ansible.errors import AnsibleActionFail
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Validator, Validate, Data, Helper
+
+def _get_validation_schema()-> dict:
+    return {
+        'exec': {
+            'type': 'dict',
+            'required': True,
+            'empty': False,
+            'allow_unknown': True,
+            'keysrules': {
+                'type': 'string', 
+                'regex': '^[a-z0-9_]+\\.[a-z0-9_]+\\.[a-z0-9_]+$',
+            },
+            'valuesrules': {
+                'type': 'list',
+                'required': True,
+                'empty': False,
+                'schema': {
+                    'type': 'dict',
+                    'required': True,
+                    'empty': False,
+                    'allow_unknown': True,
+                },
+            },
+        },
+    }
+
+class ActionModule(ActionBase):
+    def run(self, tmp=None, task_vars={}):
+        task_args = Helper.yaml_parse(Helper.to_native(self._templar.template(self._task.args.copy())))
+        
+
+        v = Validator(_get_validation_schema()) # type: ignore
+        if v.validate(task_args) != True: # type: ignore
+            raise AnsibleActionFail(v.error_message()) # type: ignore
+        
+        ret = {}
+
+        for module_, exec_ in task_args['exec'].items(): # type: ignore
+            if module_ not in ret:
+                ret[module_] = []
+
+            for args_ in exec_:
+                result = self._execute_module(
+                    module_name=module_,
+                    module_args=args_,
+                    task_vars=task_vars
+                )
+
+                ret[module_].append(result)
+
+                if Validate.truthy(Data.get(result, 'failed')):
+                    raise AnsibleActionFail(Data.get(result, 'msg'))
+        
+        return {'result': ret}
