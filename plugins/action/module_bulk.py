@@ -44,11 +44,18 @@ class ActionModule(ActionBase):
                 ret[module_] = []
 
             for args_ in exec_:
+                args_meta = Data.only_with(args_, meta=True)
+                args_ = Data.all_except(args_, meta=True)
+
                 result = self._execute_module(
                     module_name=module_,
                     module_args=args_,
                     task_vars=task_vars
                 )
+
+                if Validate.filled(args_meta):
+                    invocation_args = Data.get(result, 'invocation.module_args', {})
+                    Data.set(result, 'invocation.module_args', Data.combine(args_meta, invocation_args, recursive=True))
 
                 ret[module_].append(result)
 
