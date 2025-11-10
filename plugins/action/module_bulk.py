@@ -38,7 +38,7 @@ class ActionModule(ActionBase):
             raise AnsibleActionFail(v.error_message()) # type: ignore
         
         ret = {}
-
+        is_changed = False
         for module_, exec_ in task_args['exec'].items(): # type: ignore
             if module_ not in ret:
                 ret[module_] = []
@@ -58,8 +58,9 @@ class ActionModule(ActionBase):
                     Data.set(result, 'invocation.module_args', Data.combine(args_meta, invocation_args, recursive=True))
 
                 ret[module_].append(result)
+                is_changed = Validate.truthy(Data.get(result, 'changed'))
 
                 if Validate.truthy(Data.get(result, 'failed')):
-                    raise AnsibleActionFail(Data.get(result, 'msg'))
+                    raise AnsibleActionFail(f'[{module_}]: {Data.get(result, 'msg', '')}')
         
-        return {'result': ret}
+        return {'changed': is_changed, 'result': ret}
