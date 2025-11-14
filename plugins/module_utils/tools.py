@@ -3689,6 +3689,86 @@ class Validate:
             return False
 
 class Validator(cerberus.Validator):
+    def _check_blank_filled_conditional(
+        self,
+        value: Any,
+        foreign_field: str, 
+        foreign_value: Any, 
+        mod: str, 
+        expect_filled: bool,
+        field: str = '',
+    )-> Optional[str]:
+        mod = mod.lower()
+
+        if mod not in ['unless', 'when']:
+            raise ValueError(f'[Rule: Conditional Blank/Filled] - Unknown mod [{mod}]. Available: when, unless')
+        
+        doc_value = list(self._lookup_field(Str.start(str(foreign_field).strip(), '^')))[-1] #type: ignore
+        expect_blank = not expect_filled
+        expected_value = doc_value == foreign_value
+        not_expected_value = not expected_value
+
+        error_message = [
+            'Must be',
+            ('filled' if expect_filled else 'blank'),
+            mod,
+            f'[{foreign_field}]',
+            'field set to',
+            f'[{Helper.to_text(foreign_value)}]'
+        ]
+        error_message = ' '.join(error_message)
+        
+        if (mod == 'when' and expected_value) or (mod == 'unless' and not_expected_value):
+            if (expect_filled and not Validate.filled(value)) or (expect_blank and not Validate.blank(value)):
+                return error_message
+        
+        return None
+
+    def _exec_filled_blank_conditional(self, constraint: Mapping, field: str, value: Any, mod: str, filled: bool, **kwargs)-> None:        
+        # if field in constraint:
+        #     raise ValueError(f'[Rule: Conditional Empty] - Field [{field}] itself cannot be included in constraints.')
+        
+        for field_, value_ in constraint.items():
+            error_message = self._check_blank_filled_conditional(value, field_, value_, mod, filled, field)
+            if error_message != None:
+                self._error(field, error_message) #type: ignore
+                break
+    
+    def _validate_filled_when(self, constraint: Mapping, field: str, value: Any):
+        """{'type': 'dict', 'empty': False}"""
+        self._exec_filled_blank_conditional(constraint, field, value, 'when', True)
+    
+    def _validate_filled_unless(self, constraint: Mapping, field: str, value: Any):
+        """{'type': 'dict', 'empty': False}"""
+        self._exec_filled_blank_conditional(constraint, field, value, 'unless', True)
+    
+    def _validate_blank_when(self, constraint: Mapping, field: str, value: Any):
+        """{'type': 'dict', 'empty': False}"""
+        self._exec_filled_blank_conditional(constraint, field, value, 'when', False)
+
+    def _validate_blank_unless(self, constraint: Mapping, field: str, value: Any):
+        """{'type': 'dict', 'empty': False}"""
+        self._exec_filled_blank_conditional(constraint, field, value, 'unless', False)
+    
+    def _validate_filled_one_of(self, constraint: Iterable, field: str, value: Any):
+        """{'type': 'list', 'empty': False, 'items': [{'type': 'string'}]}"""
+        if field in constraint:
+            raise ValueError(f'[Rule: Filled One Of] - Field [{field}] itself cannot be included in constraints.')
+        
+        is_filled = Validate.filled(value)
+        has_foreign_filled = False
+        for foreign_field in constraint:
+            lookup_field = Str.start(str(foreign_field).strip(), '^')
+            lookup = list(self._lookup_field(lookup_field)) #type: ignore
+            foreign_value = lookup[-1]
+        
+            if is_filled and Validate.filled(foreign_value):
+                self._error(field, f'Cannot be filled when [{foreign_field}] is filled') #type: ignore
+                has_foreign_filled = True
+        
+        if not is_filled and has_foreign_filled == False:
+            self._error(field, f'Must be filled when [{', '.join(constraint)}] {'is' if len(constraint) == 1 else 'are'} blank') #type: ignore
+    
     def _validate_path_exists(self, constraint, field, value):
         """{'type': 'boolean'}"""
         if constraint is True and not Validate.path_exists(value):
