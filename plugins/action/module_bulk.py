@@ -26,16 +26,22 @@ def _get_validation_schema()-> dict:
                 },
             },
         },
+        'async': {
+            'type': 'boolean',
+            'required': False,
+            'default': False,
+        }
     }
 
 class ActionModule(ActionBase):
     def run(self, tmp=None, task_vars={}):
         task_args = Helper.yaml_parse(Helper.to_native(self._templar.template(self._task.args.copy())))
         
-
         v = Validator(_get_validation_schema()) # type: ignore
         if v.validate(task_args) != True: # type: ignore
             raise AnsibleActionFail(v.error_message()) # type: ignore
+        
+        task_args = v.normalized(task_args) # type: ignore
         
         ret = {}
         is_changed = False

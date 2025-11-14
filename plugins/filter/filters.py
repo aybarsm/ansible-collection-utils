@@ -48,4 +48,6 @@ class FilterModule(object):
             'keys': Data.keys,
             'to_conf': Helper.to_conf,
             'dictsort': Helper.dictsort,
+            'data_where': Data.where,
+            'data_to_dot': Data.dot,
         }

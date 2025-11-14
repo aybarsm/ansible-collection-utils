@@ -418,7 +418,7 @@ class Data:
         return Validate.blank(Data.get(data, key, **kwargs))
     
     @staticmethod
-    def where(data: Mapping|Sequence, callback: Optional[Callable] = None, default: Any = None, **kwargs) -> Any:
+    def where(data: Mapping|Iterable, callback: Optional[Callable|Mapping] = None, default: Any = None, **kwargs) -> Any:
         is_negate = kwargs.pop('negate', False)
         is_first = kwargs.pop('first', False)
         is_last = kwargs.pop('last', False)
@@ -427,27 +427,31 @@ class Data:
         if is_first == True and is_last == True:
             raise ValueError('First and last cannot be searched at the same time.')
         
-        is_seq = Validate.is_sequence(data)
-        data = list(data) if is_seq else dict(data)
+        is_iter = Validate.is_iterable(data)
+        data = list(data) if is_iter else dict(data)
 
         if Validate.blank(data):
             return default
+        
+        if is_iter and Validate.is_mapping(callback):
+            callback_map = Helper.copy(callback)
+            callback = Helper.mapping_to_callable(callback_map, **kwargs)
 
-        if is_first and is_seq and not callback:
+        if is_first and is_iter and not callback:
             return data[0]
-        elif is_first and not is_seq and not callback:
+        elif is_first and not is_iter and not callback:
             first_key = list(data.keys())[0] #type: ignore
             return data[first_key]
         else:
-            ret = [] if is_seq else {}
-            iterate = enumerate(data) if is_seq else data.items() #type: ignore
+            ret = [] if is_iter else {}
+            iterate = enumerate(data) if is_iter else data.items() #type: ignore
             for key, value in iterate:
                 res = Helper.callback(callback, value, key)
                 if is_negate:
                     res = not res
                 
                 if res == True:
-                    if is_seq:
+                    if is_iter:
                         if is_key:
                             ret.append(key) #type: ignore
                         else:
@@ -462,7 +466,7 @@ class Data:
             return default
         
         if is_first or is_last:
-            if not is_seq:
+            if not is_iter:
                 ret_keys = ret.keys() #type: ignore
                 return ret[ret_keys[0]] if is_first else ret[ret_keys[-1]] #type: ignore
             else:
@@ -793,6 +797,10 @@ class Data:
         return ret
 
     @staticmethod
+    def pick(data: Mapping | Iterable[dict], *args) -> dict | Iterable[dict]:
+        return Data.pydash().pick(data, *args)
+
+    @staticmethod
     def only_with(data: Mapping | Sequence[dict], *args, **kwargs) -> Sequence[dict] | list[dict] | dict:
         Validate.require(['dict', 'iterable_of_dicts'], data, 'data')
         Validate.require(['iterable_of_strings'], args, 'args')
@@ -1047,6 +1055,16 @@ class Data:
         return list(ret)
 
 class Helper:
+    @staticmethod
+    def mapping_to_callable(data: Mapping, **kwargs)-> Callable:
+        no_dot = kwargs.pop('no_dot', False)
+        data = dict(data)
+        
+        if no_dot:
+            return lambda entry: all([key in entry and entry[key] == val for key, val in data.items()])
+        else:
+            return lambda entry: all([Data.has(entry, key) and Data.get(entry, key) == val for key, val in data.items()])
+
     @staticmethod
     def to_file_hosts(items: list[dict[str,str]], **kwargs)-> list[str]:
         err_duplicates = kwargs.pop('error_on_duplicates', True)
@@ -2934,7 +2952,7 @@ class Validate:
     
     @staticmethod
     def is_item_exec(data: Mapping)-> bool:
-        return not Validate.is_truthy(Data.get('_skip', False)) and not Validate.is_falsy(Data.get('_keep', True))
+        return not Validate.is_truthy(Data.get(data, '_skip', False)) and not Validate.is_falsy(Data.get(data, '_keep', True))
     
     @staticmethod
     def is_plugin_lookup(data)-> bool:
@@ -3576,7 +3594,7 @@ class Validate:
         return Validate.str_is_regex(haystack, patterns, *args, **kwargs)
 
     @staticmethod
-    def str_is_regex(haystack: str, patterns: Sequence, *args, **kwargs):
+    def str_is_regex(haystack: str|Iterable[str], patterns: str|Iterable[str], *args, **kwargs):
         import re
         is_cli = kwargs.get('cli', False)
         is_all = kwargs.get('all', False)
@@ -3589,20 +3607,21 @@ class Validate:
         
         if Validate.blank(patterns):
             return True
+        
+        for entry in Helper.to_iterable(haystack):
+            for pattern in Helper.to_iterable(patterns):
+                if is_escape:
+                    pattern = re.escape(pattern)
+                
+                if is_prepare:
+                    pattern = Str.wrap(pattern, '^', '$')
+                
+                res = re.match(rf"{pattern}", entry)
 
-        for pattern in Helper.to_iterable(patterns):
-            if is_escape:
-                pattern = re.escape(pattern)
-            
-            if is_prepare:
-                pattern = Str.wrap(pattern, '^', '$')
-            
-            res = re.match(rf"{pattern}", haystack)
-
-            if not is_all and res:
-                return True
-            elif is_all and not res:
-                return False
+                if not is_all and res:
+                    return True
+                elif is_all and not res:
+                    return False
         
         return is_all
     
@@ -3862,13 +3881,3 @@ class Cache:
         cache.on_save = lambda data: Helper.json_save(data, file_path, overwrite=True)
 
         return cache
-
-class Aggregator:
-    DataQuery = DataQuery
-    Data = Data
-    Helper = Helper
-    Str = Str
-    Validate = Validate
-    Validator = Validator
-    Cache = Cache
-    Fluent = Fluent
