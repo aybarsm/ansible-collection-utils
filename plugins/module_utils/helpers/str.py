@@ -2,9 +2,11 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator i
     __factory
 )
 
-#BEGIN: Locate
+Factory = __factory()
+
+### BEGIN: Locate
 def find(haystack: str, needle: str, reverse: bool = False, before: bool = True, **kwargs) -> str:
-    ph = __factory().placeholder(mod='hashed')
+    ph = Factory.placeholder(mod='hashed')
     default = str(kwargs.pop('default', ph))
 
     index = haystack.rfind(needle) if reverse else haystack.find(needle)
@@ -22,9 +24,9 @@ def after(haystack, needle, **kwargs) -> str:
 
 def after_last(haystack, needle, **kwargs) -> str:
     return find(haystack, needle, reverse = True, before = False, **kwargs)
-#END: Locate
+### END: Locate
 
-#BEGIN: Manipulate
+### BEGIN: Manipulate
 def _start_or_finish(haystack: str, needle: str, start: bool)-> str:
     if haystack.strip() == '' or needle.strip() == '' or (start and haystack.startswith(needle)) or (not start and haystack.endswith(needle)):
         return haystack
@@ -59,13 +61,13 @@ def escape_quotes(haystack: str, double: bool = True)-> str:
         return re.sub(r'(?<!\\)"', r'\"', haystack)
     else:
         return re.sub(r"(?<!\\)'", r"\'", haystack)
-#END: Manipulate
+### END: Manipulate
 
-#BEGIN: Cases
+### BEGIN: Cases
 def case_snake(data: str) -> str:
     import re
     ret = data.replace('-', ' ')
     ret = re.sub(r'([A-Z]+)', r' \1', ret)
     ret = re.sub(r'([A-Z][a-z]+)', r' \1', ret)
     return '_'.join(ret.split()).lower()
-#END: Cases
+### END: Cases

@@ -4,6 +4,9 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator i
     __CONF, __convert, __utils,
 )
 
+Convert = __convert()
+Utils = __utils()
+
 ### BEGIN: Data
 def is_blank(data: T.Any)-> bool:
     if is_string(data) and data.strip() == '':
@@ -33,10 +36,10 @@ def filled(data: T.Any, **kwargs)-> bool:
     return is_filled(data) and (not is_filled(type_) or is_type_name(data, type_))
 
 def is_truthy(data: T.Any)-> bool:
-    return __convert().to_string(data).lower() in ('y', 'yes', 'on', 'true', '1', '1.0', 1, 1.0)
+    return Convert.to_string(data).lower() in ('y', 'yes', 'on', 'true', '1', '1.0', 1, 1.0)
 
 def is_falsy(data: T.Any)-> bool:
-    return __convert().to_string(data).lower() in ('n', 'no', 'off', 'false', '0', '0.0', 0, 0.0)
+    return Convert.to_string(data).lower() in ('n', 'no', 'off', 'false', '0', '0.0', 0, 0.0)
 
 def truthy(data: T.Any)-> bool:
     return is_truthy(data)
@@ -147,14 +150,14 @@ def is_http_response(data: T.Any)-> bool:
     return is_object(data) and isinstance(data, http.client.HTTPResponse)
 
 def is_type_name(data: T.Any, *of: str)-> bool:
-    for type_ in __convert().to_iterable(of):
-        if __convert().to_type_name(data) == type_:
+    for type_ in Convert.to_iterable(of):
+        if Convert.to_type_name(data) == type_:
             return True
     
     return False
 
 def is_type_module(data: T.Any, of: str)-> bool:
-    return __convert().to_type_module(data) == of
+    return Convert.to_type_module(data) == of
 
 def is_type_of(data: T.Any, check: str)-> bool:
     import re
@@ -244,9 +247,9 @@ def require_mutable_mappings(a, b):
         myvars = []
         for x in [a, b]:
             try:
-                myvars.append(__utils().json_dump(x))
+                myvars.append(Utils.json_dump(x))
             except Exception:
-                myvars.append(__convert().to_text(x))
+                myvars.append(Convert.to_text(x))
         raise ValueError("failed to combine variables, expected dicts but got a '{0}' and a '{1}': \n{2}\n{3}".format(
             a.__class__.__name__, b.__class__.__name__, myvars[0], myvars[1])
         )
@@ -263,7 +266,7 @@ def str_is_json(
     type_: T.Literal['any', 'mapping', 'sequence'] = 'any'
 )-> bool:
     try:
-        parsed = __utils().json_parse(data)
+        parsed = Utils.json_parse(data)
         ret = is_type(parsed, type_)
     except (Exception):
         ret = False
@@ -275,7 +278,7 @@ def str_is_yaml(
     type_: T.Literal['any', 'mapping', 'sequence'] = 'any'
 )-> bool:
     try:
-        parsed = __utils().yaml_parse(data)
+        parsed = Utils.yaml_parse(data)
         ret = is_type(parsed, type_)
     except (Exception):
         ret = False
@@ -316,10 +319,10 @@ def object_has_method(obj, method: str)-> bool:
 
 ### BEGIN: IP
 def __to_ip_address(data: T.Any):
-    return __convert().to_ip_address(__convert().to_string(data), default=False)
+    return Convert.to_ip_address(Convert.to_string(data), default=False)
 
 def __to_ip_network(data: T.Any):
-    return __convert().to_ip_network(__convert().to_string(data), default=False)
+    return Convert.to_ip_network(Convert.to_string(data), default=False)
 
 def is_ip(data: T.Any)-> bool:
     return __to_ip_address(data) != False
@@ -376,14 +379,14 @@ def is_host_matches_host_hash(hmac_key: str, hmac_hash: str, *args: str)-> bool:
 ### END: Crypto
 
 ### BEGIN: FS
-def fs_path_exists(path: T.Union[PathlibPath, str], **kwargs)-> bool:
+def fs_path_exists(path: PathlibPath|str, **kwargs)-> bool:
     return PathlibPath(path).exists(**kwargs)
 
-def fs_file_exists(path: T.Union[PathlibPath, str], **kwargs)-> bool:
+def fs_file_exists(path: PathlibPath|str, **kwargs)-> bool:
     path = PathlibPath(path)
     return path.exists(**kwargs) and path.is_file(**kwargs)
 
-def fs_dir_exists(path: T.Union[PathlibPath, str], **kwargs)-> bool:
+def fs_dir_exists(path: PathlibPath|str, **kwargs)-> bool:
     path = PathlibPath(path)
     return path.exists(**kwargs) and path.is_dir(**kwargs)
 ### END: FS
@@ -398,7 +401,7 @@ def is_ansible_omitted(data: T.Any)-> bool:
     return is_string(data) and str(data).startswith('__omit_place_holder__')
 
 def is_ansible_undefined(data: T.Any)-> bool:
-    return is_object(data) and __convert().to_type_name(data).startswith('AnsibleUndefined')
+    return is_object(data) and Convert.to_type_name(data).startswith('AnsibleUndefined')
 
 def is_ansible_defined(data: T.Any)-> bool:
     return not is_ansible_undefined(data)

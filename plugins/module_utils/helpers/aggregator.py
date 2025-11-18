@@ -26,7 +26,11 @@ def __pathlib():
     import pathlib
     return pathlib
 
-#BEGIN: Helpers
+### BEGIN: Helpers
+def __ansible():
+    import ansible_collections.aybarsm.utils.plugins.module_utils.helpers.ansible as HelperAnsible
+    return HelperAnsible
+
 def __convert():
     import ansible_collections.aybarsm.utils.plugins.module_utils.helpers.convert as HelperConvert
     return HelperConvert
@@ -58,7 +62,7 @@ def __validate():
 def __validator():
     import ansible_collections.aybarsm.utils.plugins.module_utils.helpers.validator as HelperValidator
     return HelperValidator
-#END: Helpers
+### END: Helpers
 
 __CONF = {
     'jinja': {
