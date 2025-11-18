@@ -2,7 +2,7 @@ from __future__ import annotations
 from http.client import HTTPResponse
 import sys, re, json, yaml, inspect, pathlib, os, io, datetime, random, uuid, string, tempfile, importlib, hashlib, urllib.parse, math, time, errno, copy, base64
 import rich.pretty, rich.console, jinja2, cerberus
-from typing import Callable, Union, Any, Optional, Iterable
+from typing import Callable, Union, Any, Optional, Iterable, Literal
 from collections.abc import Mapping, MutableMapping, Sequence, MutableSequence
 
 _CACHE_MODULE = None
@@ -801,7 +801,7 @@ class Data:
         return Data.pydash().pick(data, *args)
 
     @staticmethod
-    def only_with(data: Mapping | Sequence[dict], *args, **kwargs) -> Sequence[dict] | list[dict] | dict:
+    def only_with(data: Mapping | Iterable[dict], *args, **kwargs) -> Iterable[dict] | list[dict] | dict:
         Validate.require(['dict', 'iterable_of_dicts'], data, 'data')
         Validate.require(['iterable_of_strings'], args, 'args')
 
@@ -856,7 +856,7 @@ class Data:
         return ret[0] if is_mapping else ret
     
     @staticmethod
-    def all_except(data: Mapping | Sequence[dict], *args, **kwargs) -> Sequence[dict] | list[dict] | dict:
+    def all_except(data: Mapping | Iterable[dict], *args, **kwargs) -> Iterable[dict] | list[dict] | dict:
         Validate.require(['dict', 'iterable_of_dicts'], data, 'data')
         Validate.require(['iterable_of_strings'], args, 'args')
 
@@ -1981,7 +1981,7 @@ class Helper:
         return json.loads(content, **kwargs)
     
     @staticmethod
-    def yaml_parse(content: str) -> dict | list:
+    def yaml_parse(content: str) -> Mapping|list:
         return yaml.safe_load(content)
     
     @staticmethod
@@ -3054,7 +3054,7 @@ class Validate:
 
     @staticmethod
     def is_truthy(data)-> bool:
-        return Helper.to_string(data).lower() in ('y', 'yes', 'on', '1', 'true', 't', 1, 1.0)
+        return Helper.to_string(data).lower() in ('y', 'yes', 'on', 'true', '1', '1.0', 1, 1.0)
     
     @staticmethod
     def truthy(data)-> bool:
@@ -3062,11 +3062,15 @@ class Validate:
     
     @staticmethod
     def is_falsy(data)-> bool:
-        return Helper.to_string(data).lower() in ('n', 'no', 'off', '0', 'false', 'f', 0, 0.0)
+        return Helper.to_string(data).lower() in ('n', 'no', 'off', 'false', '0', '0.0', 0, 0.0)
     
     @staticmethod
     def falsy(data)-> bool:
         return Validate.is_falsy(data)
+    
+    @staticmethod
+    def truthy_or_falsy(data)-> bool:
+        return Validate.is_truthy(data) or Validate.is_falsy(data)
     
     @staticmethod
     def is_exception(data)-> bool:
@@ -3689,6 +3693,48 @@ class Validate:
             return False
 
 class Validator(cerberus.Validator):
+    _CONF = {
+        'regex': {
+            'ipv4': re.compile(r'^([01]?\d\d?|2[0-4]\d|25[0-5])(?:\.(?:[01]?\d\d?|2[0-4]\d|25[0-5])){3}(?:\/[1-9]|\/[0-2]\d|\/3[0-2])?$'),
+            'ipv4_address': re.compile(r'^([01]?\d\d?|2[0-4]\d|25[0-5])(?:\.(?:[01]?\d\d?|2[0-4]\d|25[0-5])){3}$'),
+            'ipv4_subnet': re.compile(r'^([01]?\d\d?|2[0-4]\d|25[0-5])(?:\.(?:[01]?\d\d?|2[0-4]\d|25[0-5])){3}\/(?:[1-9]|[0-2]\d|3[0-2])$'),
+            'ipv6': re.compile(r'^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))(?:\/[1-9]|\/[1-9][1-9]|\/1[0-2][0-8])?$'),
+            'ipv6_address': re.compile(r'^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$'),
+            'ipv6_subnet': re.compile(r'^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))\/(?:[1-9]|[1-9][1-9]|1[0-2][0-8])$'),
+            'mac_address': re.compile(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$'),
+        }
+    }
+    def __init__(self, *args, **kwargs):
+        
+        if Validate.blank(args):
+            args = [
+                kwargs.pop('schema', {}),
+                kwargs.pop('ignore_none_values', False),
+                kwargs.pop('allow_unknown', False),
+                kwargs.pop('require_all', False),
+                kwargs.pop('purge_unknown', False),
+                kwargs.pop('purge_readonly', False),
+            ]
+
+        self.mandatory_validations = kwargs.pop('mandatory_validations', self.mandatory_validations)
+        self.priority_validations = kwargs.pop('priority_validations', self.priority_validations)
+        
+        super().__init__(*args, **kwargs)
+
+    def _lookup_path(self, path: str, prefix: str = '^')-> set:
+        path = path.strip()
+        prefix = prefix.strip()
+        if Validate.filled(prefix):
+            path = Str.start(path, prefix)
+        
+        return self._lookup_field(path) #type: ignore
+    
+    def _lookup_value(self, path: str, prefix: str = '^')-> Any:        
+        return self._lookup_path(path, prefix)[-1] #type: ignore
+    
+    def _lookup_key(self, path: str, prefix: str = '^')-> Any:        
+        return self._lookup_path(path, prefix)[0] #type: ignore
+        
     def _check_blank_filled_conditional(
         self,
         value: Any,
@@ -3703,7 +3749,9 @@ class Validator(cerberus.Validator):
         if mod not in ['unless', 'when']:
             raise ValueError(f'[Rule: Conditional Blank/Filled] - Unknown mod [{mod}]. Available: when, unless')
         
-        doc_value = list(self._lookup_field(Str.start(str(foreign_field).strip(), '^')))[-1] #type: ignore
+        # Helper.dump(self._remaining_rules)
+
+        doc_value = self._lookup_value(foreign_field)
         expect_blank = not expect_filled
         expected_value = doc_value == foreign_value
         not_expected_value = not expected_value
@@ -3723,11 +3771,19 @@ class Validator(cerberus.Validator):
                 return error_message
         
         return None
+    
+    # def validate(self, document, schema=None, update=False, normalize=True):
+    #     Helper.dump(self._remaining_rules)
+    #     return super().validate(document, schema, update, normalize)
 
-    def _exec_filled_blank_conditional(self, constraint: Mapping, field: str, value: Any, mod: str, filled: bool, **kwargs)-> None:        
-        # if field in constraint:
-        #     raise ValueError(f'[Rule: Conditional Empty] - Field [{field}] itself cannot be included in constraints.')
-        
+    def _exec_filled_blank_conditional(self, constraint: Mapping, field: str, value: Any, mod: str, filled: bool, **kwargs)-> None:
+        if constraint == None:
+            return
+        Helper.dump({
+            'exec': locals(),
+            'rules': self.rules,
+            'remaining_rules': self._remaining_rules,
+        })
         for field_, value_ in constraint.items():
             error_message = self._check_blank_filled_conditional(value, field_, value_, mod, filled, field)
             if error_message != None:
@@ -3735,39 +3791,20 @@ class Validator(cerberus.Validator):
                 break
     
     def _validate_filled_when(self, constraint: Mapping, field: str, value: Any):
-        """{'type': 'dict', 'empty': False}"""
+        """{'type': 'dict', 'empty': False, 'default': {}}"""
         self._exec_filled_blank_conditional(constraint, field, value, 'when', True)
     
     def _validate_filled_unless(self, constraint: Mapping, field: str, value: Any):
-        """{'type': 'dict', 'empty': False}"""
+        """{'type': 'dict', 'empty': False, 'default': {}}"""
         self._exec_filled_blank_conditional(constraint, field, value, 'unless', True)
     
     def _validate_blank_when(self, constraint: Mapping, field: str, value: Any):
-        """{'type': 'dict', 'empty': False}"""
+        """{'type': 'dict', 'empty': False, 'default': {}}"""
         self._exec_filled_blank_conditional(constraint, field, value, 'when', False)
 
     def _validate_blank_unless(self, constraint: Mapping, field: str, value: Any):
-        """{'type': 'dict', 'empty': False}"""
+        """{'type': 'dict', 'empty': False, 'default': {}}"""
         self._exec_filled_blank_conditional(constraint, field, value, 'unless', False)
-    
-    def _validate_filled_one_of(self, constraint: Iterable, field: str, value: Any):
-        """{'type': 'list', 'empty': False, 'items': [{'type': 'string'}]}"""
-        if field in constraint:
-            raise ValueError(f'[Rule: Filled One Of] - Field [{field}] itself cannot be included in constraints.')
-        
-        is_filled = Validate.filled(value)
-        has_foreign_filled = False
-        for foreign_field in constraint:
-            lookup_field = Str.start(str(foreign_field).strip(), '^')
-            lookup = list(self._lookup_field(lookup_field)) #type: ignore
-            foreign_value = lookup[-1]
-        
-            if is_filled and Validate.filled(foreign_value):
-                self._error(field, f'Cannot be filled when [{foreign_field}] is filled') #type: ignore
-                has_foreign_filled = True
-        
-        if not is_filled and has_foreign_filled == False:
-            self._error(field, f'Must be filled when [{', '.join(constraint)}] {'is' if len(constraint) == 1 else 'are'} blank') #type: ignore
     
     def _validate_path_exists(self, constraint, field, value):
         """{'type': 'boolean'}"""
@@ -3790,26 +3827,85 @@ class Validator(cerberus.Validator):
         elif constraint is False and Validate.dir_exists(value):
             self._error(field, f"Must be a [{value}] missing directory") #type: ignore
     
-    def _validate_ip(self, constraint, field, value):
-        """{'type': 'boolean'}"""
-        if constraint is True and not Validate.is_ip(value):
-            self._error(field, f"[{value}] Must be an IP address") #type: ignore
-        elif constraint is False and Validate.is_ip(value):
-            self._error(field, f"[{value}] cannot be an IP address") #type: ignore
+    # def _validate_ip(self, constraint, field, value):
+    #     """{'type': 'boolean'}"""
+    #     if constraint is True and not Validate.is_ip(value):
+    #         self._error(field, f"[{value}] Must be an IP address") #type: ignore
+    #     elif constraint is False and Validate.is_ip(value):
+    #         self._error(field, f"[{value}] cannot be an IP address") #type: ignore
     
-    def _validate_ipv4(self, constraint, field, value):
-        """{'type': 'boolean'}"""
-        if constraint is True and not Validate.is_ip_v4(value):
-            self._error(field, f"[{value}] Must be an IPv4 address") #type: ignore
-        elif constraint is False and Validate.is_ip_v4(value):
-            self._error(field, f"[{value}] cannot be an IPv4 address") #type: ignore
+    # def _validate_ipv4(self, constraint, field, value):
+    #     """{'type': 'boolean'}"""
+    #     if constraint is True and not Validate.is_ip_v4(value):
+    #         self._error(field, f"[{value}] Must be an IPv4 address") #type: ignore
+    #     elif constraint is False and Validate.is_ip_v4(value):
+    #         self._error(field, f"[{value}] cannot be an IPv4 address") #type: ignore
     
-    def _validate_ipv6(self, constraint, field, value):
-        """{'type': 'boolean'}"""
-        if constraint is True and not Validate.is_ip_v4(value):
-            self._error(field, f"[{value}] Must be an IPv6 address") #type: ignore
-        elif constraint is False and Validate.is_ip_v4(value):
-            self._error(field, f"[{value}] cannot be an IPv6 address") #type: ignore
+    # def _validate_ipv6(self, constraint, field, value):
+    #     """{'type': 'boolean'}"""
+    #     if constraint is True and not Validate.is_ip_v4(value):
+    #         self._error(field, f"[{value}] Must be an IPv6 address") #type: ignore
+    #     elif constraint is False and Validate.is_ip_v4(value):
+    #         self._error(field, f"[{value}] cannot be an IPv6 address") #type: ignore
+    
+    def _exec_validate_regex(self, value, key_: str)-> bool:
+        if not isinstance(value, str):
+            return False
+        
+        return bool(self._CONF['regex'][key_].match(value))
+        
+    def _exec_validate_type_ip(self, value, version: Literal[4, 6, 46], type_: Literal['address', 'subnet', ''] = '')-> bool:
+        if not isinstance(value, str):
+            return False
+        
+        suffix = f'_{type_}' if Validate.filled(type_) else ''
+        keys = [f'ipv4{suffix}', f'ipv6{suffix}'] if version == 46 else [f'ipv{str(version)}{suffix}']
+        
+        for key_ in keys:
+            if self._exec_validate_regex(value, key_):
+                return True
+            
+        return False
+    
+    def _validate_type_ipv4(self, value):
+        """ Enables 'type': 'ipv4' in schema """
+        return self._exec_validate_type_ip(value, 4)
+    
+    def _validate_type_ipv4_address(self, value):
+        """ Enables 'type': 'ipv4_address' in schema """
+        return self._exec_validate_type_ip(value, 4, 'address')
+
+    def _validate_type_ipv4_subnet(self, value):
+        """ Enables 'type': 'ipv4_subnet' in schema """
+        return self._exec_validate_type_ip(value, 4, 'subnet')
+    
+    def _validate_type_ipv6(self, value):
+        """ Enables 'type': 'ipv6' in schema """
+        return self._exec_validate_type_ip(value, 6)
+    
+    def _validate_type_ipv6_address(self, value):
+        """ Enables 'type': 'ipv6_address' in schema """
+        return self._exec_validate_type_ip(value, 6, 'address')
+
+    def _validate_type_ipv6_subnet(self, value):
+        """ Enables 'type': 'ipv6_subnet' in schema """
+        return self._exec_validate_type_ip(value, 6, 'subnet')
+    
+    def _validate_type_ip(self, value):
+        """ Enables 'type': 'ip' in schema """
+        return self._exec_validate_type_ip(value, 46)
+    
+    def _validate_type_ip_address(self, value):
+        """ Enables 'type': 'ip_address' in schema """
+        return self._exec_validate_type_ip(value, 46, 'address')
+    
+    def _validate_type_ip_subnet(self, value):
+        """ Enables 'type': 'ip_address' in schema """
+        return self._exec_validate_type_ip(value, 46, 'subnet')
+    
+    def _validate_type_mac_address(self, value):
+        """ Enables 'type': 'mac_address' in schema """
+        return self._exec_validate_regex(value, 'mac_address')
     
     def _validate_unique_field(self, constraint, field, value):
         """ {'type': ['string', 'list']} """

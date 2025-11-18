@@ -8,3 +8,4 @@ dependencies:
     - rich
     - luadata
     - tomlkit
+    - deepdiff

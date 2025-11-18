@@ -1,7 +1,8 @@
-from typing import Any, Optional, Mapping
+import typing as T
 from abc import ABC, abstractmethod
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Validate, Data, Cache, Str, Helper, Validator, Fluent
-from ansible_collections.aybarsm.utils.plugins.module_utils.channel import Channel
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.fluent import Fluent
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.validator import Validator
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Convert, Data, Str, Validate, Utils
 from ansible.plugins.action import ActionBase
 from ansible.plugins.lookup import LookupBase
 
@@ -16,12 +17,17 @@ _CONF = {
 }
 
 class RoleManager(ABC):
-    def __init__(self, args: Mapping = {}, vars: Mapping = {}, module: Optional[ActionBase|LookupBase] = None):
+    def __init__(
+        self, 
+        args: T.Mapping[str, T.Any] = {}, 
+        vars: T.Mapping[str, T.Any] = {}, 
+        module: T.Optional[ActionBase|LookupBase] = None
+    ):
         self._container = {}
         self._meta = {'conf': _CONF.copy(), '_': {}}
         
-        self._action_module: Optional[ActionBase] = None
-        self._lookup_module: Optional[LookupBase] = None
+        self._action_module: T.Optional[ActionBase] = None
+        self._lookup_module: T.Optional[LookupBase] = None
         if isinstance(module, ActionBase):
             self._action_module = module
         elif isinstance(module, LookupBase):
@@ -30,13 +36,13 @@ class RoleManager(ABC):
         self.set_op(args, vars)
         self.cache: Fluent = Fluent()
 
-        if self._has_cache_file_path():
-            self.cache = Cache.load(self._get_cache_file_path())
-            self._meta_set('conf.cache.loaded', True)
+        # if self._has_cache_file_path():
+        #     self.cache = Cache.load(self._get_cache_file_path())
+        #     self._meta_set('conf.cache.loaded', True)
     
     def get_result(self):
         op_name = self.op('')
-        if Validate.has_method(self, op_name):
+        if Validate.object_has_method(self, op_name):
             getattr(self, op_name)()
 
         if self.is_cache_loaded():
@@ -44,7 +50,7 @@ class RoleManager(ABC):
 
         return {'result': self._('ret', {})}
     
-    def _get_value(self, container, key = '', default = None)-> Any:
+    def _get_value(self, container, key = '', default = None)-> T.Any:
         return Data.get(container, key, default) if Validate.filled(key) else container
     
     def _has_key(self, container, key = '')-> bool:
@@ -57,7 +63,7 @@ class RoleManager(ABC):
         return self._get_value(self._meta, key, default)
     
     def _meta_set(self, key, value):
-        Data.set(self._meta, key, value)
+        Data.set_(self._meta, key, value)
     
     def _meta_forget(self, key):
         Data.forget(self._meta, key)
@@ -82,21 +88,21 @@ class RoleManager(ABC):
     
     @staticmethod
     def _key(key: str = ''):
-        return Helper.data_key(key.strip('.').strip('_').strip('.'))
+        return Convert.to_data_key(key.strip('.').strip('_').strip('.'))
 
-    def _(self, key = '', default = None)-> Any:
+    def _(self, key = '', default = None)-> T.Any:
         return self._get_value(self._meta['_'], self._key(key), default)
 
-    def _set(self, key, value: Any)-> Any:
-        return Data.set(self._meta['_'], self._key(key), value)
+    def _set(self, key, value: T.Any)-> T.Any:
+        return Data.set_(self._meta['_'], self._key(key), value)
     
-    def _forget(self, key)-> Any:
+    def _forget(self, key)-> T.Any:
         return Data.forget(self._meta['_'], self._key(key))
     
-    def _append(self, key, value: Any, **kwargs)-> Any:
+    def _append(self, key, value: T.Any, **kwargs)-> T.Any:
         return Data.append(self._meta['_'], self._key(key), value, **kwargs)
 
-    def _prepend(self, key, value: Any, **kwargs)-> Any:
+    def _prepend(self, key, value: T.Any, **kwargs)-> T.Any:
         return Data.prepend(self._meta['_'], self._key(key), value, **kwargs)
     
     def _has(self, key)-> bool:
@@ -108,10 +114,10 @@ class RoleManager(ABC):
     def _blank(self, key)-> bool:
         return Validate.blank(self._(key))
 
-    def op(self, default: Any = None)-> Any:
+    def op(self, default: T.Any = None)-> T.Any:
         return self.args('op', default)
 
-    def host(self, default: Any = None)-> Any:
+    def host(self, default: T.Any = None)-> T.Any:
         return self.vars('inventory_hostname', default)
 
     def host_vars(self, host: str = '', key = '', default = None):
@@ -126,7 +132,7 @@ class RoleManager(ABC):
     def host_ansible_facts(self, host: str = '', key = '', default = None):
         if Validate.blank(host):
             host = self.host()
-        return self.vars(Str.start(Helper.data_key(key), f'hostvars.{host}.ansible_facts.'), default)
+        return self.vars(Str.start(Convert.to_data_key(key), f'hostvars.{host}.ansible_facts.'), default)
     
     def host_role_vars(self, host, key, default = None):
         meta_key = f'hosts.{host}.{key}'
@@ -140,11 +146,11 @@ class RoleManager(ABC):
         
         ret = self.host_vars(host, key, default) #type: ignore
         
-        Data.set(self._meta, meta_key, ret)
+        Data.set_(self._meta, meta_key, ret)
 
         return ret
 
-    def host_arg_vars(self, var: str, **kwargs)-> Any:
+    def host_arg_vars(self, var: str, **kwargs)-> T.Any:
         default = kwargs.pop('default', None)
         var = self.args(f'vars.{var}', '')
         if Validate.blank(var):
@@ -156,11 +162,11 @@ class RoleManager(ABC):
         if Validate.filled(append):
             key_parts += list(append)
 
-        key = Helper.normalise_data_key(*key_parts)
+        key = Convert.to_data_key(*key_parts)
 
         return self.vars(key, default)
     
-    def play_batch(self, default: Any = None)-> Any:
+    def play_batch(self, default: T.Any = None)-> T.Any:
         return self.vars('ansible_play_batch', default)
     
     def inventory(self, **kwargs)-> list:
@@ -186,19 +192,18 @@ class RoleManager(ABC):
     def _get_cache_file_path(self)-> str:
         return self.args('play.cache_file', '')
     
-    def set_op(self, args: Mapping = {}, vars: Mapping = {}):
+    def set_op(self, args: T.Mapping = {}, vars: T.Mapping = {}):
         op = args.get('op', '')
         if Validate.blank(op):
             raise ValueError('Operation argument op value cannot be blank')
         
-        args = Helper.to_safe_json(args)
+        args = Convert.to_safe_json(args) #type: ignore
         schema = self._get_validation_schema_operation(args, vars)
-        # Helper.dump(schema)
         if Validate.filled(schema):
-            v = Validator(schema, allow_unknown = True) # type: ignore
-            if v.validate(args) != True: # type: ignore
-                raise ValueError(v.error_message()) # type: ignore
-            args = v.normalized(args) # type: ignore
+            v = Validator(schema, allow_unknown = True)
+            if v.validate(args) != True:
+                raise ValueError(v.error_message())
+            args = v.normalized(args)
 
         self._meta_set('args', dict(args).copy())
         self._meta_set('vars', dict(vars).copy())
@@ -223,7 +228,7 @@ class RoleManager(ABC):
         return self.tag_run_has('all', tag) and not self.tag_skip_has(tag)
     
     @staticmethod
-    def item_eligible(item: Mapping)-> bool:
+    def item_eligible(item: T.Mapping)-> bool:
         return Data.get(item, '_skip', False) != True and Data.get(item, '_keep', True) != False
     
     def is_host_in_play_batch(self, host: str)-> bool:
@@ -232,7 +237,12 @@ class RoleManager(ABC):
     def domain(self, host: str = '')-> str:
         if Validate.blank(host):
             host = self.host()
-        return Helper.first_filled(self.host_vars(host, '_domain'), self.vars('_domain'), 'blrm')
+        
+        return Data.first_filled(
+            self.host_vars(host, '_domain'), 
+            self.vars('_domain'), 
+            'blrm'
+        )
     
     def _resolve_role_cfg(self, **kwargs)-> None:
         role_name = self.meta('role.name', '')
@@ -254,7 +264,11 @@ class RoleManager(ABC):
 
         for var_name in host_role_var_keys:
             cfg_key = Str.chop_start(var_name, f'{role_name}__')
-            Data.set(role_cfg, f'host.{cfg_key}', self._template(self.host_vars(host=host, key=var_name)))
+            Data.set_(
+                role_cfg, 
+                f'host.{cfg_key}', 
+                self._template(self.host_vars(host=host, key=var_name))
+            )
 
         main_role_var_keys = Data.where(
             list(self.vars(default = {}).keys()),
@@ -263,11 +277,11 @@ class RoleManager(ABC):
 
         for var_name in main_role_var_keys:
             cfg_key = Str.chop_start(var_name, f'{role_name}__')
-            Data.set(role_cfg, f'main.{cfg_key}', self._template(self.vars(key=var_name)))
+            Data.set_(role_cfg, f'main.{cfg_key}', self._template(self.vars(key=var_name)))
         
         role_cfg['all'] = Data.combine(role_cfg['main'], role_cfg['host'], recursive=True)
         
-        self._meta_set('role.cfg', Helper.copy(role_cfg))
+        self._meta_set('role.cfg', Convert.as_copied(role_cfg))
 
     def get_role_cfg(self, sub: str = 'all')-> Fluent:
         if Validate.blank(self.meta('role.cfg', {})):
@@ -276,18 +290,15 @@ class RoleManager(ABC):
         key_suffix = f'.{sub}' if sub in ['host', 'main', 'all'] else ''
         return Fluent(self.meta(f'role.cfg{key_suffix}', {}))
     
-    def _template(self, data, **kwargs)-> Any:
+    def _template(self, data, **kwargs)-> T.Any:
         if Validate.blank(data):
             return data
-        
-        # if not str(Helper.to_text(data)).startswith('{{'):
-        #     return data
 
         module = self.get_module()
         if not module:
             raise RuntimeError('No module found to access templar')
         
-        return Helper.ansible_template(module._templar, data, **kwargs) #type: ignore
+        return Convert.from_ansible_template(module._templar, data, **kwargs) #type: ignore
     
     def _lookup(self, name: str, *args, **kwargs):
         if not self._action_module:
@@ -303,11 +314,11 @@ class RoleManager(ABC):
                 templar=self._action_module._templar,
             )
 
-            Data.set(self._container, f'lookup.{name}', Helper.copy(lookup))
+            Data.set_(self._container, f'lookup.{name}', Convert.as_copied(lookup))
         
         args = list(args)
         kwargs = dict(kwargs)
-        kwargs['variables'] = Helper.copy(self.vars())
+        kwargs['variables'] = Convert.as_copied(self.vars())
 
         ret = lookup.run(args, **kwargs)
         if Validate.truthy(flat_ret) and Validate.is_iterable(ret):
@@ -330,13 +341,13 @@ class RoleManager(ABC):
 
         return self._action_module._execute_module(**kwargs)
 
-    def _async_status(self, job: Mapping, **kwargs):
+    def _async_status(self, job: T.Mapping, **kwargs):
         if not self._action_module:
             raise RuntimeError('Action module does not exist to perform this')
         
         is_cleanup = kwargs.pop('is_cleanup', False)
         jid = Data.get(job, 'ansible_job_id')
-        async_dir = Helper.dirname(Data.get(job, 'results_file'))
+        async_dir = Utils.fs_dirname(Data.get(job, 'results_file'))
 
         kwargs = dict(kwargs)
         kwargs['module_name'] = 'ansible.builtin.async_status'
@@ -350,15 +361,15 @@ class RoleManager(ABC):
 
         return self._exec_module(**kwargs)
     
-    def _async_cleanup(self, job: Mapping, **kwargs):
+    def _async_cleanup(self, job: T.Mapping, **kwargs):
         kwargs['is_cleanup'] = True
 
         return self._async_status(job, **kwargs)
 
     def set_cache(self, cache: Fluent)-> None:
-        self.cache = Helper.copy(cache)
+        self.cache = Convert.as_copied(cache)
     
-    def get_action_module(self)-> Optional[ActionBase]:
+    def get_action_module(self)-> T.Optional[ActionBase]:
         return self._action_module
 
     def set_action_module(self, module: ActionBase)-> None:
@@ -367,7 +378,7 @@ class RoleManager(ABC):
     def has_action_module(self)-> bool:
         return Validate.filled(self._action_module)
     
-    def get_lookup_module(self)-> Optional[LookupBase]:
+    def get_lookup_module(self)-> T.Optional[LookupBase]:
         return self._lookup_module
 
     def set_lookup_module(self, module: LookupBase)-> None:
@@ -376,7 +387,7 @@ class RoleManager(ABC):
     def has_lookup_module(self)-> bool:
         return Validate.filled(self._lookup_module)
     
-    def get_module(self)-> Optional[ActionBase|LookupBase]:
+    def get_module(self)-> T.Optional[ActionBase|LookupBase]:
         if self._action_module:
             return self._action_module
         elif self._lookup_module:
