@@ -70,6 +70,9 @@ def contains(data: T.Union[T.Sequence, T.Mapping[T.Any, T.Any]], *args, **kwargs
     ret = [item in data for item in args]
     
     return all(ret) if is_all else any(ret)
+
+def is_item_exec(data: T.Mapping)-> bool:
+    return not truthy(Data.get(data, '_skip', False)) and not falsy(Data.get(data, '_keep', True))
 ### END: Data
 
 ### BEGIN: Type
@@ -325,50 +328,12 @@ def str_contains(data: str, *args: str, **kwargs: T.Mapping[str, bool])-> bool:
 
     return all(ret)
 
-def str_contains_non_alphanum(haystack: str)-> bool:
+def str_contains_non_alphanum(data: str)-> bool:
     import re
-    return re.search(r'[^A-Za-z0-9]', haystack) != None
+    return re.search(r'[^A-Za-z0-9]', data) != None
 
-def str_is_regex_match(
-    haystack: str|T.Sequence[str],
-    patterns: str|T.Sequence[str],
-    *args,
-    **kwargs,
-)-> bool:
-    import re
-    is_cli = kwargs.get('cli', False)
-    is_all = kwargs.get('all', False)
-    is_escape = kwargs.get('escape', False)
-    is_prepare = kwargs.get('prepare', False)
-    
-    haystack = Convert.to_iterable(haystack)
-    patterns = Convert.to_iterable(patterns)
-    
-    if blank(patterns):
-        return True
-    
-    if is_cli:
-        patterns = Data.flatten(Data.map(
-            patterns,
-            lambda entry: Convert.from_cli(entry, iterable=True, stripped=True)
-        ))
-    
-    for entry in Convert.to_iterable(haystack):
-        for pattern in Convert.to_iterable(patterns):
-            if is_escape:
-                pattern = re.escape(pattern)
-            
-            if is_prepare:
-                pattern = Str.wrap(pattern, '^', '$')
-            
-            res = re.match(rf"{pattern}", entry)
-
-            if not is_all and res:
-                return True
-            elif is_all and not res:
-                return False
-    
-    return is_all
+def str_matches(data, patterns, **kwargs)-> bool:
+    return filled(Str.matches(data, patterns, **kwargs))
 ### END: String
 
 ### BEGIN: Integer

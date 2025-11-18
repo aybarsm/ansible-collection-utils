@@ -1,9 +1,10 @@
 import typing as T
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __convert, __factory, __validate
+    __convert, __data, __factory, __validate
 )
 
 Convert = __convert()
+Data = __data()
 Factory = __factory()
 Validate = __validate()
 
@@ -28,8 +29,55 @@ def after(data: str, needle: str, **kwargs)-> str:
 def after_last(data: str, needle: str, **kwargs)-> str:
     return find(data, needle, reverse = True, before = False, **kwargs)
 
-def matches(data: str|T.Sequence[str], patterns: str|T.Sequence[str], **kwargs)-> list[str]:
-    return [entry for entry in Convert.to_iterable(data) if Validate.str_is_regex_match(entry, patterns, **kwargs)]
+def matches(data: str|T.Sequence[str], patterns: str|T.Sequence[str], **kwargs)-> list[str]|str:
+    import re
+    is_cli = kwargs.get('cli', False) == True
+    is_all = kwargs.get('all', False) == True
+    is_prepare = kwargs.get('prepare', False) == True
+    is_escape_data = kwargs.get('escape_data', False) == True
+    is_escape_pattern = kwargs.get('escape_pattern', False) == True
+    is_first = kwargs.get('first', False) == True
+    
+    data = Convert.to_iterable(data)
+    patterns = Convert.to_iterable(patterns)
+    
+    if Validate.blank(patterns):
+        return []
+    
+    if is_cli:
+        patterns = Data.flatten(Data.map(
+            patterns,
+            lambda entry: Convert.from_cli(entry, iterable=True, stripped=True)
+        ))
+    
+    ret = []
+
+    for idx, entry in enumerate(data):
+        if is_escape_data:
+            entry = re.escape(entry)
+        
+        for pattern in patterns:
+            if is_escape_pattern:
+                pattern = re.escape(pattern)
+            
+            if is_prepare:
+                pattern = wrap(pattern, '^', '$')
+            
+            res = re.match(rf"{pattern}", entry) != None
+
+            if not is_all and res:
+                ret.append(data[idx])
+                break
+            elif is_all and not res:
+                break
+        
+        if is_first and Validate.filled(ret):
+            break
+    
+    if is_first and Validate.filled(ret):
+        return ret[0]
+
+    return ret
 ### END: Locate
 
 ### BEGIN: Manipulate
