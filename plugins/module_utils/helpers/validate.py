@@ -1,10 +1,12 @@
 import typing as T
 from pathlib import Path as PathlibPath
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __CONF, __convert, __utils,
+    __CONF, __convert, __data, __str, __utils,
 )
 
 Convert = __convert()
+Data = __data()
+Str = __str()
 Utils = __utils()
 
 ### BEGIN: Data
@@ -247,7 +249,7 @@ def require_mutable_mappings(a, b):
         myvars = []
         for x in [a, b]:
             try:
-                myvars.append(Utils.json_dump(x))
+                myvars.append(Convert.to_json(x))
             except Exception:
                 myvars.append(Convert.to_text(x))
         raise ValueError("failed to combine variables, expected dicts but got a '{0}' and a '{1}': \n{2}\n{3}".format(
@@ -257,7 +259,7 @@ def require_mutable_mappings(a, b):
 
 
 ### BEGIN: String
-def is_str_int(data: str)-> bool:
+def str_is_int(data: str)-> bool:
     import re
     return re.match(r"^[-]?[0-9]+$", data) != None
 
@@ -266,7 +268,7 @@ def str_is_json(
     type_: T.Literal['any', 'mapping', 'sequence'] = 'any'
 )-> bool:
     try:
-        parsed = Utils.json_parse(data)
+        parsed = Convert.from_json(data)
         ret = is_type(parsed, type_)
     except (Exception):
         ret = False
@@ -278,7 +280,31 @@ def str_is_yaml(
     type_: T.Literal['any', 'mapping', 'sequence'] = 'any'
 )-> bool:
     try:
-        parsed = Utils.yaml_parse(data)
+        parsed = Convert.from_yaml(data)
+        ret = is_type(parsed, type_)
+    except (Exception):
+        ret = False
+    
+    return ret
+
+def str_is_lua(
+    data: str, 
+    type_: T.Literal['any', 'mapping', 'sequence'] = 'any'
+)-> bool:
+    try:
+        parsed = Convert.from_lua(data)
+        ret = is_type(parsed, type_)
+    except (Exception):
+        ret = False
+    
+    return ret
+
+def str_is_toml(
+    data: str, 
+    type_: T.Literal['any', 'mapping', 'sequence'] = 'any'
+)-> bool:
+    try:
+        parsed = Convert.from_toml(data)
         ret = is_type(parsed, type_)
     except (Exception):
         ret = False
@@ -302,6 +328,47 @@ def str_contains(data: str, *args: str, **kwargs: T.Mapping[str, bool])-> bool:
 def str_contains_non_alphanum(haystack: str)-> bool:
     import re
     return re.search(r'[^A-Za-z0-9]', haystack) != None
+
+def str_is_regex_match(
+    haystack: str|T.Sequence[str],
+    patterns: str|T.Sequence[str],
+    *args,
+    **kwargs,
+)-> bool:
+    import re
+    is_cli = kwargs.get('cli', False)
+    is_all = kwargs.get('all', False)
+    is_escape = kwargs.get('escape', False)
+    is_prepare = kwargs.get('prepare', False)
+    
+    haystack = Convert.to_iterable(haystack)
+    patterns = Convert.to_iterable(patterns)
+    
+    if blank(patterns):
+        return True
+    
+    if is_cli:
+        patterns = Data.flatten(Data.map(
+            patterns,
+            lambda entry: Convert.from_cli(entry, iterable=True, stripped=True)
+        ))
+    
+    for entry in Convert.to_iterable(haystack):
+        for pattern in Convert.to_iterable(patterns):
+            if is_escape:
+                pattern = re.escape(pattern)
+            
+            if is_prepare:
+                pattern = Str.wrap(pattern, '^', '$')
+            
+            res = re.match(rf"{pattern}", entry)
+
+            if not is_all and res:
+                return True
+            elif is_all and not res:
+                return False
+    
+    return is_all
 ### END: String
 
 ### BEGIN: Integer

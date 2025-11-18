@@ -1,5 +1,7 @@
 import typing as T
 from pathlib import Path as PathlibPath
+
+from pydash import method
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
     __convert, __data, __validate, __inspect
 )
@@ -29,19 +31,8 @@ def dd(*args, **kwargs):
     exit(0)
 
 ### BEGIN: Json
-def json_parse(data: str, **kwargs)-> dict|list:
-    import json
-    return json.loads(data, **kwargs)
-
-def json_dump(
-    data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], 
-    **kwargs,
-)-> str:
-    import json
-    return json.dumps(data, **kwargs)
-
 def json_load(path: PathlibPath|str, **kwargs)-> dict|list:
-    return json_parse(fs_read(path), **kwargs)
+    return Convert.from_json(fs_read(path), **kwargs)
 
 def json_save(data, path: PathlibPath|str, **kwargs) -> None:
         path = PathlibPath(path)
@@ -53,29 +44,15 @@ def json_save(data, path: PathlibPath|str, **kwargs) -> None:
         kwargs_path = Data.only_with(kwargs, 'encoding', 'errors')
         kwargs_json = Data.all_except(kwargs, 'encoding', 'errors', 'newline')
         
-        data = yaml_parse(Convert.to_text(data))
+        data = Convert.from_yaml(Convert.to_text(data))
 
         if Validate.is_mapping(data):
-            data = json_dump(dict(data), **kwargs_json) #type: ignore
+            data = Convert.to_json(dict(data), **kwargs_json) #type: ignore
         elif Validate.is_sequence(data):
-            data = json_dump(list(data), **kwargs_json) #type: ignore
+            data = Convert.to_json(list(data), **kwargs_json) #type: ignore
         
         fs_write(path, str(data), **kwargs_path) #type: ignore
 ### END: Json
-
-### BEGIN: Yaml
-@staticmethod
-def yaml_parse(data: str)-> dict|list:
-    import yaml
-    return yaml.unsafe_load(data)
-
-def yaml_dump(
-    data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], 
-    **kwargs,
-)-> str:
-    import yaml
-    return yaml.dump(data, **kwargs)
-### END: Yaml
 
 ### BEGIN: Callable
 def callable_signature(callback: T.Callable):
@@ -149,20 +126,53 @@ def fs_write(path: PathlibPath|str, data: str|bytes, **kwargs)-> None:
         path.write_text(str(data), **kwargs)
     else:
         path.write_bytes(data, **kwargs) #type: ignore
+
+def fs_top_level_dirs(paths: str|T.Sequence[str], *args: str)-> list[str]:
+    import os
+
+    paths = list(paths)
+    if Validate.filled(args):
+        paths.extend(args)
+    
+    paths = list(set(paths))
+
+    if Validate.blank(paths):
+        return []
+
+    ret = []
+
+    norm_paths = sorted(set(os.path.normpath(p) for p in paths), key=lambda p: p.count(os.sep), reverse=True)
+    for path in norm_paths:
+        if not any(os.path.commonpath([path, existing]) == path for existing in ret):
+            ret.append(path)
+
+    return ret
 ### END: FS
 
 ### BEGIN: Net
-def as_validated_ip_segments(data, on_invalid: T.Optional[T.Callable] = None, **kwargs)-> list:
-    ret = Data.map(Convert.to_iterable(data), lambda ip_: Helper.ip_as_segments(ip_))
+def net_subnets_collapse(data: T.Sequence[str], **kwargs) -> list:
+    only = kwargs.pop('only', '')
+    proto = kwargs.pop('proto', '')
 
-    if Validate.filled(ret) and Validate.filled(on_invalid):
-        for idx, item in enumerate(ret):
-            if Data.get(item, 'ctrl.valid') == True:
-                continue
-            
-            e = Helper.callback(on_invalid, item, idx)
-            if Validate.is_exception(e):
-                raise e
+    only_private = only in ['pri', 'private']
+    only_public = only in ['pub', 'public']
+    only_v4 = proto in ['4', 'v4', 4]
+    only_v6 = proto in ['6', 'v6', 6]
+    
+    ret = []
+
+    for subnet in data:
+        addr = Convert.as_ip_address(subnet)
         
-    return list(ret)
+        if (only_private and Validate.is_ip_public(addr)) or (only_public and Validate.is_ip_private(addr)):
+            continue
+
+        if (only_v4 and Validate.is_ip_v6(addr)) or (only_v6 and Validate.is_ip_v4(addr)):
+            continue
+
+        supernets = list(set(data) - set([subnet]))
+        if not any([Validate.is_subnet_of(subnet, supernet) for supernet in supernets]):
+            ret.append(subnet)
+
+    return list(set(ret))
 ### BEGIN: Net

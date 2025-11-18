@@ -1,29 +1,35 @@
+import typing as T
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __factory
+    __convert, __factory, __validate
 )
 
+Convert = __convert()
 Factory = __factory()
+Validate = __validate()
 
 ### BEGIN: Locate
-def find(haystack: str, needle: str, reverse: bool = False, before: bool = True, **kwargs) -> str:
+def find(data: str, needle: str, reverse: bool = False, before: bool = True, **kwargs) -> str:
     ph = Factory.placeholder(mod='hashed')
     default = str(kwargs.pop('default', ph))
 
-    index = haystack.rfind(needle) if reverse else haystack.find(needle)
-    ret = str(haystack if index == -1 else (haystack[:index] if before else haystack[index + len(needle):]))
-    return default if default != ph and ret == haystack else ret
+    index = data.rfind(needle) if reverse else data.find(needle)
+    ret = str(data if index == -1 else (data[:index] if before else data[index + len(needle):]))
+    return default if default != ph and ret == data else ret
 
-def before(haystack: str, needle: str, **kwargs) -> str:
-    return find(haystack, needle, **kwargs)
+def before(data: str, needle: str, **kwargs)-> str:
+    return find(data, needle, **kwargs)
 
-def before_last(haystack, needle, **kwargs) -> str:
-    return find(haystack, needle, reverse = True, **kwargs)
+def before_last(data: str, needle: str, **kwargs)-> str:
+    return find(data, needle, reverse = True, **kwargs)
 
-def after(haystack, needle, **kwargs) -> str:
-    return find(haystack, needle, reverse = False, before = False, **kwargs)
+def after(data: str, needle: str, **kwargs)-> str:
+    return find(data, needle, reverse = False, before = False, **kwargs)
 
-def after_last(haystack, needle, **kwargs) -> str:
-    return find(haystack, needle, reverse = True, before = False, **kwargs)
+def after_last(data: str, needle: str, **kwargs)-> str:
+    return find(data, needle, reverse = True, before = False, **kwargs)
+
+def matches(data: str|T.Sequence[str], patterns: str|T.Sequence[str], **kwargs)-> list[str]:
+    return [entry for entry in Convert.to_iterable(data) if Validate.str_is_regex_match(entry, patterns, **kwargs)]
 ### END: Locate
 
 ### BEGIN: Manipulate
@@ -43,6 +49,9 @@ def wrap(haystack: str, prefix: str, suffix: str)-> str:
     haystack = start(haystack, prefix)
     return finish(haystack, suffix)
 
+def quote(haystack: str, single: bool = True)-> str:
+    return wrap(haystack, ("'" if single else '"'), ("'" if single else '"'))
+
 def chop_start(data: str, *args: str)-> str:
     for n in args:
         if data.startswith(n):
@@ -61,6 +70,10 @@ def escape_quotes(haystack: str, double: bool = True)-> str:
         return re.sub(r'(?<!\\)"', r'\"', haystack)
     else:
         return re.sub(r"(?<!\\)'", r"\'", haystack)
+
+def remove_empty_lines(data: str) -> str:
+    import re
+    return re.sub(r'(\n\s*){2,}', '\n', re.sub(r'^\s*[\r\n]+|[\r\n]+\s*\Z', '', data))
 ### END: Manipulate
 
 ### BEGIN: Cases

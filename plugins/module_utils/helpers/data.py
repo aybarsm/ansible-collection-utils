@@ -481,6 +481,35 @@ def combine(*args, **kwargs):
 
     return result
 
+def combine_match(
+    data: str,
+    items: T.Union[T.Mapping[str, T.Any], T.Sequence[T.Mapping[str, T.Any]]], 
+    attribute: str,
+    *args, 
+    **kwargs
+):
+    import re
+    is_prepare = kwargs.pop('prepare', False)
+    ret = []
+
+    for item in Convert.to_iterable(items):
+        pattern = get(item, attribute)
+        if not Validate.is_string(pattern) or Validate.blank(pattern):
+            continue
+            
+        if is_prepare:
+            pattern = Str.wrap(pattern, '^', '$')
+            
+        if re.match(rf"{pattern}", data):
+            ret.append(item)
+    
+    if Validate.filled(args):
+        ret.extend(list(args))
+    
+    ret = [Convert.to_safe_json(item) if Validate.is_ansible_mapping(item) else item for item in ret]
+
+    return combine(*ret, **kwargs)
+
 def map(
     data: T.Sequence[T.Any], 
     callback: T.Callable, 
@@ -508,6 +537,59 @@ def unique_by(
             unique_hashes.append(unique_hash)
     
     return ret
+
+def keys(
+    data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]],
+    **kwargs
+)-> T.Any:
+    ret = []
+    is_mapping = Validate.is_mapping(data)
+    replace = kwargs.pop('replace', {})
+    
+    no_dot = kwargs.pop('no_dot', False)
+    ph = Factory.placeholder(mod='hashed')
+
+    for item in Convert.to_iterable(data):
+        item_new = Convert.as_copied(item)
+    
+        for replacement in replace.get('keys', []):
+            if not Validate.is_sequence(replacement) or len(replacement) < 2:
+                raise ValueError('Key replacement requires at least 2 elements')
+        
+            key_from = replacement[0]
+            key_to = replacement[1]
+            if key_from == key_to:
+                continue
+
+            key_default = ph
+            key_exists = (no_dot and key_from in item_new) or (not no_dot and has(item_new, key_from))
+
+            if len(replacement) > 2:
+                key_default = replacement[2]
+
+            value_new = key_default
+            if key_exists and no_dot:
+                value_new = item_new[key_from]
+            elif key_exists and not no_dot:
+                value_new = get(item_new, key_from)
+            
+            if value_new == ph:
+                continue
+
+            if no_dot:
+                item_new[key_to] = value_new
+            else:
+                set_(item_new, key_to, value_new)
+
+            if key_exists and not Validate.is_falsy(replace.get('remove_replaced', True)):
+                if no_dot:
+                    del item_new[key_from]
+                else:
+                    forget(item_new, key_from)
+            
+        ret.append(item_new)
+
+    return ret[0] if is_mapping else ret
 
 # def dot_sort_keys(
 #         data: T.Union[T.Sequence[str], T.Mapping[str, T.Any]],

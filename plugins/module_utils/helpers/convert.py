@@ -110,6 +110,52 @@ def to_url_encode(data: T.Mapping[str, T.Any], **kwargs)-> str:
     
     return urllib.parse.urlencode(data, **kwargs)
 
+def to_querystring(data, keyAttr, valAttr=None, assignChar='=', joinChar='&', recurse=None, recurseIndentSteps=0, recurseIndentChar=' ', repeatJoinCharOnMainLevels=False):
+    data = to_iterable(data)
+
+    result = []
+
+    def _to_querystring(innerData, level = 0):
+        indent = recurseIndentChar * (level * recurseIndentSteps)
+        for item in innerData:
+            if keyAttr in item:
+                if repeatJoinCharOnMainLevels and level == 0:
+                    result.append('')
+                if valAttr and valAttr in item:
+                    result.append(f"{indent}{item[keyAttr]}{assignChar}{item[valAttr]}")
+                else:
+                    result.append(f"{indent}{item[keyAttr]}")
+
+                if recurse and recurse in item and item[recurse]:
+                    _to_querystring(item[recurse], level + 1)
+
+    _to_querystring(data)
+
+    return joinChar.join(result).strip(joinChar)
+
+def to_list_of_dicts(data, defaults={}, *args, **kwargs):
+    no_dot = kwargs.get('no_dot', False)
+    combines = kwargs.pop('combine', [])
+    combine_args = kwargs.pop('combine_args', {})
+    data_keys = list(data.keys())
+    ret = []
+
+    for idx_item in range(0, len(data[data_keys[0]])):
+        new_item = defaults.copy()
+
+        if Validate.filled(combines) and Validate.filled(Data.get(combines, str(idx_item))):
+            new_item = Data.combine(new_item, Data.get(combines, str(idx_item)), **combine_args)
+
+        for data_key in data_keys:
+            if no_dot:
+                new_item[data_key] = data[data_key][idx_item]
+            else:
+                Data.set_(new_item, data_key, data[data_key][idx_item])
+
+        ret.append(new_item)
+
+    return ret
+
 ### BEGIN: Ansible
 def to_text(*args, **kwargs)-> str:
     from ansible.module_utils.common.text.converters import to_text
@@ -133,7 +179,7 @@ def to_bytes(*args, **kwargs):
     return to_bytes(*args, **kwargs)
 
 def from_ansible_template(templar, variable, **kwargs)-> T.Any:
-    from ansible.template import is_trusted_as_template, trust_as_template 
+    from ansible.template import is_trusted_as_template, trust_as_template
     extra_vars = kwargs.pop('extra_vars', {})
     remove_extra_vars = kwargs.pop('remove_extra_vars', True)
 
@@ -150,6 +196,24 @@ def from_ansible_template(templar, variable, **kwargs)-> T.Any:
             del templar.available_variables[var_key]
     
     return ret
+
+def from_cli(data, *args, **kwargs):
+    data = to_string(data)
+    as_iterable = kwargs.get('iterable', False)
+    as_stripped = kwargs.get('stripped', False)
+    
+    ret = data.strip().strip('\'"')
+
+    if Validate.str_is_json(data):
+        return from_json(data)
+    elif Validate.str_is_yaml(data):
+        return from_yaml(data)
+    elif as_iterable and Validate.contains(ret, ','):
+        return [x for x in ','.split((ret if as_stripped else data)) if x]
+    elif as_iterable:
+        return to_iterable((ret if as_stripped else data))
+    else:
+        return to_iterable(ret if as_stripped else data) if as_iterable else (ret if as_stripped else data)
 ### END: Ansible
 
 ### BEGIN: Type
@@ -184,6 +248,33 @@ def to_ip_network(data, **kwargs):
             raise e
         
         return default
+
+def as_ip_address(data: str, **kwargs)-> str:
+    ph = Factory.placeholder(mod='hashed')
+    default = kwargs.pop('default', ph)
+    
+    addr = Str.before(data, '/')
+    proto = 'v4' if Validate.is_ip_v4(addr) else ('v6' if Validate.is_ip_v6(addr) else None)
+
+    if Validate.blank(proto):
+        return default if default != ph else data
+            
+    from_network = kwargs.pop('from_network', True)
+
+    if not Validate.is_falsy(from_network):
+        if Validate.is_ip_v4(addr) and Str.after_last(addr, '.') == '0':
+            return Str.before_last(addr, '.') + '.1'
+        elif Validate.is_ip_v6(addr):
+            if addr.endswith('::'):
+                return Str.before_last(addr, '::') + '::1'
+            elif addr.endswith('::0'):
+                return Str.before_last(addr, '::0') + '::1'
+            elif addr.endswith(':0'):
+                return Str.before_last(addr, ':0') + ':1'
+            elif addr.endswith(':'):
+                return Str.before_last(addr, ':') + ':1'
+    
+    return addr
 
 def as_ip_segments(data: str)-> dict:
     type_ = Ansible.utils_ipaddr(data, 'type')
@@ -267,4 +358,96 @@ def as_ip_segments_validated(data, on_invalid: T.Optional[T.Callable] = None, **
                     raise e
         
     return list(ret)
+
+def as_ip_merged_cidrs(value, action="merge"):
+    import netaddr
+    if not hasattr(value, "__iter__"):
+        raise ValueError("cidr_merge: expected iterable, got " + repr(value))
+
+    if action == "merge":
+        try:
+            return [str(ip) for ip in netaddr.cidr_merge(value)]
+        except Exception as e:
+            raise ValueError("cidr_merge: error in netaddr:\n%s" % e)
+
+    elif action == "span":
+        # spanning_cidr needs at least two values
+        if len(value) == 0:
+            return None
+        elif len(value) == 1:
+            try:
+                return str(netaddr.IPNetwork(value[0]))
+            except Exception as e:
+                raise ValueError("cidr_merge: error in netaddr:\n%s" % e)
+        else:
+            try:
+                return str(netaddr.spanning_cidr(value))
+            except Exception as e:
+                raise ValueError("cidr_merge: error in netaddr:\n%s" % e)
+    elif action == "collapse":
+        networks = list(set([netaddr.IPNetwork(ip) for ip in value]))
+        ret = [
+            net for net in networks
+            if not any(
+                (net != other) and (net.first >= other.first and net.last <= other.last)
+                for other in networks
+            )
+        ]
+
+        return [str(net_) for net_ in ret]
+
+    else:
+        raise ValueError("cidr_merge: invalid action '%s'" % action)
 ### END: Net
+
+### BEGIN: Hash
+def to_hash_scrypt(data: str, **kwargs)-> str:
+    from passlib.hash import scrypt
+    return scrypt.hash(data, **kwargs)
+### END: Hash
+
+### BEGIN: Json
+def from_json(data: str, **kwargs)-> dict|list:
+    import json
+    return json.loads(data, **kwargs)
+
+def to_json(
+    data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], 
+    **kwargs,
+)-> str:
+    import json
+    return json.dumps(data, **kwargs)
+### END: Json
+
+### BEGIN: Yaml
+def from_yaml(data: str)-> dict|list:
+    import yaml
+    return yaml.unsafe_load(data)
+
+def to_yaml(
+    data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], 
+    **kwargs,
+)-> str:
+    import yaml
+    return yaml.dump(data, **kwargs)
+### END: Yaml
+
+### BEGIN: Lua
+def from_lua(data: str, **kwargs)-> dict|list:
+    import luadata
+    return luadata.unserialize(data, **kwargs)
+
+def to_lua(data: T.Mapping|T.Sequence, **kwargs)-> str:
+    import luadata
+    return luadata.serialize(data, **kwargs)
+### END: Lua
+
+### BEGIN: Toml
+def from_toml(data: str)-> dict|list:
+    from tomlkit import parse
+    return parse(data)
+
+def to_toml(data: T.Mapping, **kwargs)-> str:
+    from tomlkit import dumps
+    return dumps(data, **kwargs)
+### END: Toml
