@@ -1,3 +1,4 @@
+import enum
 import typing as T
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
     __convert, __factory, __str, __utils, __validate, __pydash
@@ -12,8 +13,38 @@ Validate = __validate()
 def collections():
     return __pydash().collections
 
-def get(data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], key: str, default: T.Any = None)-> T.Any:
-    return __pydash().get(data, key, default)
+def get(data: T.Iterable[T.Any], key: int|str, default: T.Any = None)-> T.Any:
+    if not str(key) == '*' and not Validate.str_contains(str(key), '.*', '*.'):
+        return __pydash().get(data, key, default)
+    
+    skip_ = []
+    ret = Convert.as_copied(data)
+    segments = str(key).strip('.').split('.')
+    for idx_, segment in enumerate(segments):
+        if idx_ in skip_:
+            continue
+        
+        if segment == '*' and len(segments) > 1 and idx_ < len(segments) - 1 and segments[idx_ + 1] != '*' and Validate.is_iterable_of_not_mappings(ret):
+            _flatten = flatten(ret, levels=1)
+            if Validate.is_iterable_of_mappings(_flatten):
+                ret = _flatten
+
+            ret = pluck(ret, segments[idx_ + 1])
+            skip_.append(idx_ + 1)
+        elif segment == '*' and Validate.is_mapping(ret):
+            ret = list(dict(ret).values())
+        elif segment != '*' and Validate.is_iterable_of_mappings(ret):
+            ret = pluck(ret, segment)
+        elif segment != '*' and Validate.is_mapping(ret):
+            ret = Convert.as_copied(__pydash().get(ret, segment))       
+        elif segment == '*':
+            ret = flatten(ret, levels=1)
+        
+        if idx_ <= len(segments) - 1 and not Validate.is_iterable(ret):
+            ret = default
+            break
+
+    return ret
 
 def set_(data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], key: str, value: T.Any)-> T.Any:
     return __pydash().set_(data, key, value) #type: ignore
@@ -27,7 +58,7 @@ def forget(data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], *args: str
     
     return data #type: ignore
 
-def pluck(data, key):
+def pluck(data, key: int|str):
     return __pydash().pluck(data, key)
 
 def invert(data):
@@ -36,19 +67,30 @@ def invert(data):
 def flip(data):
     return invert(data)
 
-def difference(a: T.Sequence[T.Any], b: T.Sequence[T.Any], *args: T.Sequence[T.Any]) -> list:
+def walk(data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], callback = T.Callable):
+    return collections().map_(data, callback)
+
+def walk_values_deep(data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], callback = T.Callable):
+    return __pydash().map_values_deep(data, callback)
+
+def _sequence_a_b(a: T.Sequence[T.Any], b: T.Sequence[T.Any], callback: T.Callable, *args: T.Sequence[T.Any])-> list:
     if not Validate.is_sequence(a) or not Validate.is_sequence(b):
         raise ValueError('Invalid sequence type')
     
-    ret = set(a) - set(b)
-
+    ret = Utils.call(callback, a, b)
     for seq in args:
         if not Validate.is_sequence(seq):
             raise ValueError('Invalid sequence type')
         
-        ret = set(ret) - set(seq)
+        ret = Utils.call(callback, ret, seq)
     
     return list(ret)
+
+def difference(a: T.Sequence[T.Any], b: T.Sequence[T.Any], *args: T.Sequence[T.Any])-> list:
+    return _sequence_a_b(a, b, lambda seq_a, seq_b: set(seq_a) - set(seq_b), *args) #type: ignore
+
+def intersect(a: T.Sequence, b: T.Sequence, *args: T.Sequence)-> list:
+    return _sequence_a_b(a, b, lambda seq_a, seq_b: set(seq_a) & set(seq_b), *args) #type: ignore
 
 def append(
     data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]],
@@ -56,7 +98,11 @@ def append(
     value: T.Any,
     **kwargs
 )-> T.Any:
-    current = list(get(data, key, []))
+    if Validate.is_mapping(data) or Validate.filled(key):
+        current = list(get(data, key, []))
+    else:
+        current = list(data)
+    
     is_extend = kwargs.pop('extend', False)
     is_unique = kwargs.pop('unique', False)
     is_sorted = kwargs.pop('sort', False)
@@ -72,7 +118,12 @@ def append(
     if is_sorted:
         current = list(sorted(current))
     
-    return set_(data, key, current.copy())
+    if Validate.is_mapping(data) or Validate.filled(key):
+        set_(data, key, current.copy())
+    else:
+        data = current.copy()
+
+    return data
 
 def prepend(
     data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]],
@@ -80,7 +131,11 @@ def prepend(
     value: T.Any,
     **kwargs
 )-> T.Any:
-    current = list(get(data, key, []))
+    if Validate.is_mapping(data) or Validate.filled(key):
+        current = list(get(data, key, []))
+    else:
+        current = list(data)
+        
     is_extend = kwargs.pop('extend', False)
     is_unique = kwargs.pop('unique', False)
     is_sorted = kwargs.pop('sort', False)
@@ -97,7 +152,12 @@ def prepend(
     if is_sorted:
         current = list(sorted(current))
     
-    return set_(data, key, current.copy())
+    if Validate.is_mapping(data) or Validate.filled(key):
+        set_(data, key, current.copy())
+    else:
+        data = current.copy()
+
+    return data
 
 def dot(data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], prepend='', **kwargs)-> dict:
     is_main = Validate.blank(prepend)
@@ -146,7 +206,7 @@ def undot(data: T.Mapping)-> dict:
             set_(ret, key, undot(value))
         elif '.' not in str(key):
             ret[key] = value
-        elif Validate.is_str_int(Str.after_last(key, '.')):
+        elif Validate.str_is_int(Str.after_last(key, '.')):
             primary = Str.before_last(key, '.')
             pattern = '^' + re.escape(primary) + '\\.(\\d+)$'
             pattern = re.compile(pattern)
@@ -164,17 +224,18 @@ def undot(data: T.Mapping)-> dict:
     
     return ret
 
-def dot_sort_keys(
+def sort_keys_char_count(
     data: T.Union[T.Sequence[str], T.Mapping[str, T.Any]],
+    char: str,
     **kwargs
 )-> dict|list:
     
     asc = kwargs.pop('asc', True)
     raw = kwargs.pop('raw', False)
     if Validate.is_mapping(data):
-        ret = sorted(dict(data).items(), key=lambda item: item[0].count('.')) #type: ignore
+        ret = sorted(dict(data).items(), key=lambda item: item[0].count(char)) #type: ignore
     else:
-        ret = sorted([item for item in list(data)], key=lambda s: s.count('.'))
+        ret = sorted([item for item in list(data)], key=lambda s: s.count(char))
 
     if not asc:
         ret = reversed(ret)
@@ -187,6 +248,12 @@ def dot_sort_keys(
     else:
         return list(ret)
 
+def dot_sort_keys(
+    data: T.Union[T.Sequence[str], T.Mapping[str, T.Any]],
+    **kwargs
+)-> dict|list:
+    return sort_keys_char_count(data, '.', **kwargs)
+
 def filled(data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], key: str, **kwargs)-> bool:
     return Validate.filled(get(data, key, **kwargs))
 
@@ -198,7 +265,7 @@ def where(
     callback: T.Optional[T.Union[T.Callable, T.Mapping[str, T.Any]]] = None, 
     default: T.Any = None, 
     **kwargs: T.Mapping[str, bool],
-)-> T.Any:
+) -> T.Any:
     is_negate = kwargs.pop('negate', False)
     is_first = kwargs.pop('first', False)
     is_last = kwargs.pop('last', False)
@@ -212,48 +279,51 @@ def where(
     
     if is_filled and is_blank:
         raise ValueError('Filled and blank cannot be searched at the same time.')
-    
-    is_iter = Validate.is_sequence(data)
-    data = list(data) if is_iter else dict(data)
 
     if Validate.blank(data):
         return default
     
-    if is_iter and Validate.is_mapping(callback):
-        callback = Convert.from_mapping_to_callable(callback, **kwargs) #type: ignore
+    is_mapping = Validate.is_mapping(data)
+    data = Convert.to_iterable(data)    
+    if Validate.is_mapping(callback):
+        callback = Convert.from_mapping_to_callable(dict(callback), **kwargs) #type: ignore
+    
+    if is_first and not callback:
+        if not is_mapping:
+            return data[0]
+        else:
+           return data[list(data[0].keys())[0]]
+    
+    ret = []
 
-    if is_first and is_iter and not callback:
-        return data[0]
-    elif is_first and not is_iter and not callback:
-        first_key = list(data.keys())[0] #type: ignore
-        return data[first_key]
-    else:
-        ret = [] if is_iter else {}
-        iterate = enumerate(data) if is_iter else data.items() #type: ignore
-        for key, value in iterate:
-            res = Utils.call(callback, value, key) #type: ignore
-            if is_negate:
-                res = not res
+    for key_, val_ in data[0].items() if is_mapping else enumerate(data):
+        res = Utils.call(callback, val_, key_) #type: ignore
+        if is_negate:
+            res = not res
+        
+        if res != True:
+            continue
+        
+        if is_key:
+            ret.append(key_)
+        elif not is_mapping:
+            ret.append(val_)
+        else:
+            if Validate.blank(ret):
+                ret.append({})
             
-            if res == True:
-                if is_iter:
-                    if is_key:
-                        ret.append(key) #type: ignore
-                    else:
-                        ret.append(value) #type: ignore
-                else:
-                    ret[key] = value
-                
-                if is_first:
-                    break
+            ret[0][key_] = val_
+        
+        if is_first:
+            break
 
     if Validate.blank(ret):
         return default
     
     if is_first or is_last:
-        if not is_iter:
-            ret_keys = ret.keys() #type: ignore
-            return ret[ret_keys[0]] if is_first else ret[ret_keys[-1]] #type: ignore
+        if is_mapping and not is_key:
+            keys_ = list(ret[0].keys())
+            return ret[0][keys_[0]] if is_first else ret[0][keys_[-1]]
         else:
             return ret[0] if is_first else ret[-1]
 
@@ -590,6 +660,27 @@ def keys(
         ret.append(item_new)
 
     return ret[0] if is_mapping else ret
+
+# def walk_recursive(
+#     data: T.Mapping[T.Any, T.Any]|T.Sequence[T.Any],
+#     callback = T.Callable
+# )-> dict|list:
+#     if Validate.is_mapping(data):
+#         ret = {}
+#         for key_, value_ in dict(data).items():
+#             if Validate.is_mapping(data) or Validate.is_sequence(value_):
+#                 ret[key_] = walk_recursive(value_, callback)
+#             else:
+#                 ret[key_] = Utils.call(callback, value_, key_)
+#     elif Validate.is_sequence(data):
+#         ret = []
+#         for idx_, value_ in enumerate(list(data)):
+#             if Validate.is_mapping(data) or Validate.is_sequence(value_):
+#                 ret.append(walk_recursive(value_, callback))
+#             else:
+#                 ret.append(Utils.call(callback, value_, idx_))
+
+#     return ret
 
 # def dot_sort_keys(
 #         data: T.Union[T.Sequence[str], T.Mapping[str, T.Any]],

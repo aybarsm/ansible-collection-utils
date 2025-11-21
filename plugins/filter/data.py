@@ -1,9 +1,17 @@
 from __future__ import annotations
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Data
+from jinja2 import pass_context
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.data_query import DataQuery
+
+@pass_context
+def data_query(context, data, query, *bindings, **kwargs):
+    return DataQuery(context, data, query, *bindings, **kwargs).get_results()
 
 class FilterModule(object):
-    def filters(self):        
+    def filters(self):
+        from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Data
+        
         return {
+            'data_query': data_query,
             'data_only_with': Data.only_with,
             'data_all_except': Data.all_except,
             'data_combine_match': Data.combine_match,

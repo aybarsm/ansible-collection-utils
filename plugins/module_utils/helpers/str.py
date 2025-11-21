@@ -100,6 +100,11 @@ def wrap(haystack: str, prefix: str, suffix: str)-> str:
 def quote(haystack: str, single: bool = True)-> str:
     return wrap(haystack, ("'" if single else '"'), ("'" if single else '"'))
 
+def chop_both(data: str, *args: str)-> str:
+    for n in args:
+        data = chop_end(chop_start(data, n), n)
+    return data
+
 def chop_start(data: str, *args: str)-> str:
     for n in args:
         if data.startswith(n):
@@ -122,7 +127,58 @@ def escape_quotes(haystack: str, double: bool = True)-> str:
 def remove_empty_lines(data: str) -> str:
     import re
     return re.sub(r'(\n\s*){2,}', '\n', re.sub(r'^\s*[\r\n]+|[\r\n]+\s*\Z', '', data))
+
+def pad(data: T.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+    padding = kwargs.pop('pad')
+    if padding not in ['left', 'right', 'both']:
+        raise ValueError(f'Invalid padding type [{padding}]. Available: left, right, both')
+
+    count = max([count, 0])
+    data = str(Convert.to_text(data))
+    is_strip = kwargs.pop('strip', True)
+    is_dent = kwargs.pop('dent', False)
+
+    if not Validate.is_falsy(is_strip):
+        data = data.strip()
+            
+    if Validate.is_truthy(is_dent):
+        padding = 'left' if padding == 'right' else ('right' if padding == 'left' else padding)
+        count += len(data)
+    
+    if padding == 'left':
+        return str(data).ljust(count, char)
+    elif padding == 'right':
+        return str(data).rjust(count, char)
+    else:
+        return str(data).center(count, char)
+
+def ljust(data: T.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+    kwargs['pad'] = 'left'
+    return pad(data, count, char, **kwargs)
+
+def rjust(data: T.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+    kwargs['pad'] = 'right'
+    return pad(data, count, char, **kwargs)
+
+def center(data: T.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+    kwargs['pad'] = 'both'
+    return pad(data, count, char, **kwargs)
+
+def pad_left(data: T.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+    return ljust(data, count, char, **kwargs)
+
+def pad_right(data: T.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+    return rjust(data, count, char, **kwargs)
+
+def pad_both(data: T.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+    return rjust(data, count, char, **kwargs)
 ### END: Manipulate
+
+### BEGIN: Factory
+def repeat(data: str, times: int = 1, as_list: bool = False) -> list[str]|str:
+    ret = [data for _ in range(max(times, 1))]
+    return ret if as_list else ''.join(ret)
+### END: Factory
 
 ### BEGIN: Cases
 def case_snake(data: str) -> str:

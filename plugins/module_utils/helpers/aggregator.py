@@ -27,9 +27,16 @@ def __pathlib():
     return pathlib
 
 ### BEGIN: Helpers
+def __conf():
+    return _CONF
+
 def __ansible():
     import ansible_collections.aybarsm.utils.plugins.module_utils.helpers.ansible as HelperAnsible
     return HelperAnsible
+
+def __collection():
+    from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.collection import Collection
+    return Collection
 
 def __convert():
     import ansible_collections.aybarsm.utils.plugins.module_utils.helpers.convert as HelperConvert
@@ -39,13 +46,17 @@ def __data():
     import ansible_collections.aybarsm.utils.plugins.module_utils.helpers.data as HelperData
     return HelperData
 
+def __data_query():
+    from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.data_query import DataQuery
+    return DataQuery
+
 def __factory():
     import ansible_collections.aybarsm.utils.plugins.module_utils.helpers.factory as HelperFactory
     return HelperFactory
 
 def __fluent():
-    import ansible_collections.aybarsm.utils.plugins.module_utils.helpers.fluent as HelperFluent
-    return HelperFluent
+    from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.fluent import Fluent
+    return Fluent
 
 def __str():
     import ansible_collections.aybarsm.utils.plugins.module_utils.helpers.str as HelperStr
@@ -60,11 +71,30 @@ def __validate():
     return HelperValidate
 
 def __validator():
-    import ansible_collections.aybarsm.utils.plugins.module_utils.helpers.validator as HelperValidator
-    return HelperValidator
+    from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.validator import Validator
+    return Validator
 ### END: Helpers
 
-__CONF = {
+_CONF = {
+    'data_query': {
+        'defaults': {
+            'bindings': {
+                'named': {
+                    '_true': True,
+                    '_false': False,
+                },
+            },
+        },
+        'test': {
+            'prefixes': {
+                'a.b.': "ansible.builtin.",
+                'a.u.': "ansible.utils.",
+                'c.g.': "community.general.",
+                'ayb.a.': 'aybarsm.all.',
+                'ayb.u.': 'aybarsm.utils.',
+            },
+        },
+    },
     'jinja': {
         "prefixes": {
             "a.b.": "ansible.builtin.",

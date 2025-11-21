@@ -1,17 +1,18 @@
 import typing as T
 from pathlib import Path as PathlibPath
-
+import datetime
 from pydash import method
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __convert, __data, __validate, __inspect
+    __convert, __data, __factory, __validate, __inspect
 )
 
 Convert = __convert()
 Data = __data()
+Factory = __factory()
 Validate = __validate()
 
 def dump(*args, **kwargs):
-    import rich, rich.pretty
+    import rich, rich.pretty, rich.console
     if Validate.is_ansible_env():
         import io
         from ansible.utils.display import Display
@@ -175,4 +176,104 @@ def net_subnets_collapse(data: T.Sequence[str], **kwargs) -> list:
             ret.append(subnet)
 
     return list(set(ret))
-### BEGIN: Net
+### END: Net
+
+### BEGIN: Date Time
+def datetime_add_or_remove_timezone(
+    timestamp: datetime.datetime, *, with_timezone: bool
+) -> datetime.datetime:
+    return (
+        Helper.ensure_utc_timezone(timestamp) if with_timezone else Helper.remove_timezone(timestamp)
+    )
+### END: Date Time
+
+### BEGIN: Crypto
+def crypto_convert_relative_to_datetime(
+    relative_time_string: str,
+    *,
+    with_timezone: bool = False,
+    now: datetime.datetime | None = None,
+) -> datetime.datetime | None:
+    import re
+    parsed_result = re.match(
+        r"^(?P<prefix>[+-])((?P<weeks>\d+)[wW])?((?P<days>\d+)[dD])?((?P<hours>\d+)[hH])?((?P<minutes>\d+)[mM])?((?P<seconds>\d+)[sS]?)?$",
+        relative_time_string,
+    )
+
+    if parsed_result is None or len(relative_time_string) == 1:
+        # not matched or only a single "+" or "-"
+        return None
+
+    offset = datetime.timedelta(0)
+    if parsed_result.group("weeks") is not None:
+        offset += datetime.timedelta(weeks=int(parsed_result.group("weeks")))
+    if parsed_result.group("days") is not None:
+        offset += datetime.timedelta(days=int(parsed_result.group("days")))
+    if parsed_result.group("hours") is not None:
+        offset += datetime.timedelta(hours=int(parsed_result.group("hours")))
+    if parsed_result.group("minutes") is not None:
+        offset += datetime.timedelta(minutes=int(parsed_result.group("minutes")))
+    if parsed_result.group("seconds") is not None:
+        offset += datetime.timedelta(seconds=int(parsed_result.group("seconds")))
+
+    if now is None:
+        now = Factory.ts() #type: ignore
+    else:
+        now = datetime_add_or_remove_timezone(now, with_timezone=with_timezone)
+
+    if parsed_result.group("prefix") == "+":
+        return now + offset #type: ignore
+    return now - offset #type: ignore
+
+def crypto_get_relative_time_option(
+    input_string: str,
+    *,
+    input_name: str,
+    with_timezone: bool = False,
+    now: datetime.datetime | None = None,
+) -> datetime.datetime:
+    """
+    Return an absolute timespec if a relative timespec or an ASN1 formatted
+    string is provided.
+
+    The return value will be a datetime object.
+    """
+    result = Convert.to_text(input_string)
+    if result is None:
+        raise ValueError(
+            f'The timespec "{input_string}" for {input_name} is not valid'
+        )
+    # Relative time
+    if result.startswith("+") or result.startswith("-"):
+        res = crypto_convert_relative_to_datetime(result, with_timezone=with_timezone, now=now)
+        if res is None:
+            raise ValueError(
+                f'The timespec "{input_string}" for {input_name} is invalid'
+            )
+        return res
+    # Absolute time
+    for date_fmt, length in [
+        (
+            "%Y%m%d%H%M%SZ",
+            15,
+        ),  # this also parses '202401020304Z', but as datetime(2024, 1, 2, 3, 0, 4)
+        ("%Y%m%d%H%MZ", 13),
+        (
+            "%Y%m%d%H%M%S%z",
+            14 + 5,
+        ),  # this also parses '202401020304+0000', but as datetime(2024, 1, 2, 3, 0, 4, tzinfo=...)
+        ("%Y%m%d%H%M%z", 12 + 5),
+    ]:
+        if len(result) != length:
+            continue
+        try:
+            res = datetime.datetime.strptime(result, date_fmt)
+        except ValueError:
+            pass
+        else:
+            return datetime_add_or_remove_timezone(res, with_timezone=with_timezone)
+
+    raise ValueError(
+        f'The time spec "{input_string}" for {input_name} is invalid'
+    )
+### END: Crypto

@@ -1,7 +1,7 @@
 import typing as T
 from pathlib import Path as PathlibPath
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __CONF, __convert, __data, __str, __utils,
+    _CONF, __convert, __data, __str, __utils,
 )
 
 Convert = __convert()
@@ -65,11 +65,19 @@ def is_deepcopyable(data):
     except Exception:
         return False
 
-def contains(data: T.Union[T.Sequence, T.Mapping[T.Any, T.Any]], *args, **kwargs)-> bool:
-    is_all = kwargs.get('all', False)
-    ret = [item in data for item in args]
-    
-    return all(ret) if is_all else any(ret)
+def contains(data: T.Union[T.Sequence, T.Mapping[T.Any, T.Any]], *args: str|int, **kwargs)-> bool:
+    is_all = kwargs.pop('all', False) == True
+    no_dot = kwargs.pop('no_dot', True) == False
+
+    for key_ in args:
+        res = Data.has(data, key_) if not no_dot else key_ in data
+        
+        if res and not is_all:
+            return True
+        elif not res and is_all:
+            return False
+
+    return True if is_all else False
 
 def is_item_exec(data: T.Mapping)-> bool:
     return not truthy(Data.get(data, '_skip', False)) and not falsy(Data.get(data, '_keep', True))
@@ -109,8 +117,23 @@ def is_iterable(data, include_strings: bool = False, include_bytes = False)-> bo
     
     return isinstance(data, T.Iterable)
 
+def is_enumeratable(data: T.Any) -> bool:
+    return isinstance(data, (list, tuple, list))
+
+def is_enumeratable_of_mappings(data: T.Any) -> bool:
+    return is_enumeratable(data) and all(is_mapping(item) for item in data)
+
 def is_mapping(data: T.Any)-> bool:
     return isinstance(data, T.Mapping)
+
+def is_mapping_of_mappings(data: T.Any)-> bool:
+    return is_mapping(data) and all(is_mapping(item) for item in data.values())
+
+def is_iterable_of_mappings(data: T.Any)-> bool:
+    return is_iterable(data) and all(is_mapping(item) for item in data)
+
+def is_iterable_of_not_mappings(data: T.Any)-> bool:
+    return is_iterable(data) and all(not is_mapping(item) for item in data)
 
 def is_dict(data: T.Any)-> bool:
     return isinstance(data, dict)
@@ -262,6 +285,29 @@ def require_mutable_mappings(a, b):
 
 
 ### BEGIN: String
+def str_wrapped(data: str, wrapper: str)-> bool:
+    return data.startswith(wrapper) and data.endswith(wrapper)
+
+def str_starts(data: str, *args: str)-> bool:
+    if blank(args):
+        return False
+    
+    for needle in args:
+        if data.startswith(needle):
+            return True
+    
+    return False
+
+def str_ends(data: str, *args: str)-> bool:
+    if blank(args):
+        return False
+    
+    for needle in args:
+        if data.endswith(needle):
+            return True
+    
+    return False
+
 def str_is_int(data: str)-> bool:
     import re
     return re.match(r"^[-]?[0-9]+$", data) != None
@@ -319,20 +365,20 @@ def str_contains(data: str, *args: str, **kwargs: T.Mapping[str, bool])-> bool:
         return False
     
     is_all = kwargs.pop('all', False)
-    ret = []
     for needle in args:
-        if needle in data:
-            ret.append(True)
-            if not is_all:
-                break
+        res = str(needle) in data
+        if res and not is_all:
+            return True
+        elif not res and is_all:
+            return False
 
-    return all(ret)
+    return True if is_all else False
 
 def str_contains_non_alphanum(data: str)-> bool:
     import re
     return re.search(r'[^A-Za-z0-9]', data) != None
 
-def str_matches(data, patterns, **kwargs)-> bool:
+def str_matches(data: str|T.Sequence[str], patterns, **kwargs)-> bool:
     return filled(Str.matches(data, patterns, **kwargs))
 ### END: String
 
@@ -494,5 +540,5 @@ def is_ansible_tagged_dict(data: T.Any)-> bool:
 
 def is_ansible_env()-> bool:
     import sys
-    return any(mod in sys.modules for mod in __CONF['validate']['ansible']['entrypoints'])
+    return any(mod in sys.modules for mod in _CONF['validate']['ansible']['entrypoints'])
 ### END: Ansible

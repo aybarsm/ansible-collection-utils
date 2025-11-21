@@ -39,7 +39,7 @@ def as_ts_mod(ts: datetime.datetime, mod: str)-> str|int:
         raise ValueError(f'Unknown TS mod [{mod}]')
 
 def to_iterable(data)-> list:
-    return list(data) if Validate.is_sequence(data) else [data]
+    return list(data) if isinstance(data, (list, set, tuple)) else [data]
 
 def as_copied(data):
     import copy
@@ -80,9 +80,9 @@ def to_safe_json(data):
     if Validate.is_bytes(data):
         return to_safe_json(to_text(data))
     elif Validate.is_string(data) and Validate.str_is_json(data):
-        return to_safe_json(Utils.json_parse(data))
+        return to_safe_json(from_json(data))
     elif Validate.is_string(data) and Validate.str_is_yaml(data):
-        return to_safe_json(Utils.yaml_parse(data))
+        return to_safe_json(from_yaml(data))
     elif isinstance(data, (str, int, float, bool)) or data is None:
         return data
     elif Validate.is_ansible_mapping(data):
@@ -109,6 +109,10 @@ def to_url_encode(data: T.Mapping[str, T.Any], **kwargs)-> str:
             data[key] = 'true' if data[key] else 'false'
     
     return urllib.parse.urlencode(data, **kwargs)
+
+def from_qs(data: str, **kwargs) -> dict:
+    from urllib.parse import parse_qs
+    return parse_qs(data, **kwargs)
 
 def to_querystring(data, keyAttr, valAttr=None, assignChar='=', joinChar='&', recurse=None, recurseIndentSteps=0, recurseIndentChar=' ', repeatJoinCharOnMainLevels=False):
     data = to_iterable(data)
@@ -178,25 +182,6 @@ def to_bytes(*args, **kwargs):
     from ansible.module_utils.common.text.converters import to_bytes
     return to_bytes(*args, **kwargs)
 
-def from_ansible_template(templar, variable, **kwargs)-> T.Any:
-    from ansible.template import is_trusted_as_template, trust_as_template
-    extra_vars = kwargs.pop('extra_vars', {})
-    remove_extra_vars = kwargs.pop('remove_extra_vars', True)
-
-    if Validate.is_string(variable) and not is_trusted_as_template(variable):
-        variable = trust_as_template(variable)
-    
-    for var_key, var_value in extra_vars.items():
-        templar.available_variables[var_key] = var_value
-    
-    ret = templar.template(variable, **kwargs)
-    
-    if not Validate.falsy(remove_extra_vars):
-        for var_key, var_value in extra_vars.items():
-            del templar.available_variables[var_key]
-    
-    return ret
-
 def from_cli(data, *args, **kwargs):
     data = to_string(data)
     as_iterable = kwargs.get('iterable', False)
@@ -214,6 +199,58 @@ def from_cli(data, *args, **kwargs):
         return to_iterable((ret if as_stripped else data))
     else:
         return to_iterable(ret if as_stripped else data) if as_iterable else (ret if as_stripped else data)
+
+def from_ansible_template(templar, variable, **kwargs)-> T.Any:
+    from ansible.template import is_trusted_as_template, trust_as_template
+    extra_vars = kwargs.pop('extra_vars', {})
+    remove_extra_vars = kwargs.pop('remove_extra_vars', True)
+
+    if Validate.is_string(variable) and not is_trusted_as_template(variable):
+        variable = trust_as_template(variable)
+    
+    for var_key, var_value in extra_vars.items():
+        templar.available_variables[var_key] = var_value
+    
+    if Validate.is_data(variable):
+        ret = Data.walk_values_deep(variable, lambda value_: templar.template(value_, **kwargs))
+    else:
+        ret = templar.template(variable, **kwargs)
+    
+    if not Validate.falsy(remove_extra_vars):
+        for var_key, var_value in extra_vars.items():
+            del templar.available_variables[var_key]
+    
+    return ret
+
+def from_ansible(data: T.Any)-> T.Any:
+    if Validate.is_mapping(data) or Validate.is_sequence(data):
+        return from_yaml(to_native(data))
+    
+    return data
+
+def to_items(
+    data: T.Sequence[T.Any]|T.Mapping[T.Any, T.Any],
+    key_name: str = 'key',
+    value_name: str = 'value',
+)-> list[dict[str, T.Any]]:
+    iteratee = enumerate(to_iterable(data)) if Validate.is_loopable(data) else dict(data).items()
+    return [{key_name: key_, value_name: val_} for key_, val_ in iteratee]
+
+def from_items(
+    data: T.Sequence[T.Mapping[str, T.Any]],
+    key_name: str = 'key',
+    value_name: str = 'value',
+    **kwargs,
+)-> dict[str, T.Any]:
+    default_key_prefix = kwargs.pop('default_key_prefix', 'unknown')
+    default_value = kwargs.pop('default_value')
+    default_key = f'{default_key_prefix}_{Factory.placeholder(mod='hashed')}'
+    
+    ret = {}
+    for item in data:
+        Data.set_(ret, Data.get(item, key_name, default_key), Data.get(item, value_name, default_value))
+
+    return ret
 ### END: Ansible
 
 ### BEGIN: Type
@@ -451,3 +488,71 @@ def to_toml(data: T.Mapping, **kwargs)-> str:
     from tomlkit import dumps
     return dumps(data, **kwargs)
 ### END: Toml
+
+### BEGIN: Toml
+def from_base64(data: T.Any, **kwargs)-> str|bytes:
+    import base64
+    decode_as = kwargs.pop('decode', 'utf-8')
+
+    ret = base64.b64decode(to_text(data), **kwargs)
+
+    if Validate.filled(decode_as):
+        return ret.decode(decode_as)
+    
+    return ret
+
+def to_base64(data: T.Any, **kwargs)-> str|bytes:
+    import base64
+    decode_as = kwargs.pop('decode', 'utf-8')
+    encode_as = kwargs.pop('encode', 'utf-8')
+    
+    data = str(to_text(data))
+    if Validate.filled(encode_as):
+        data = data.encode(encode_as)
+    
+    ret = base64.b64encode(data, **kwargs)
+
+    if Validate.filled(decode_as):
+        return ret.decode(decode_as)
+
+    return ret
+### END: Toml
+
+### BEGIN: Roles
+def from_file_known_hosts(file_content: str)-> list[dict[str,str]]:
+    import re
+    ret = []
+
+    for line in iter(str(file_content).splitlines()):
+        normalised = re.sub(r'\s+', ' ', str(line).strip())
+        segments = list(normalised.split(maxsplit=2))
+        hash_ = str(Data.get(segments, '0', ''))
+        type_ = str(Data.get(segments, '1', ''))
+        key_ = str(Data.get(segments, '2', ''))
+
+        if Validate.blank(hash_) or Validate.blank(type_) or Validate.blank(key_) or not type_.startswith('ssh-'):
+            ret.append({'raw': line})
+            continue
+
+        if hash_.startswith('|1|'):
+            hash_segments = list(Str.chop_start(hash_, '|1|').split(sep='|', maxsplit=2))
+            hmac_key = str(Data.get(hash_segments, '0', ''))
+            hmac_hash = str(Data.get(hash_segments, '1', ''))
+            if Validate.blank(hmac_key) or Validate.blank(hmac_hash):
+                raise ValueError(f'Unable to resolve known_hosts hash [{hash_}]')
+
+            item = {
+                'hmac_key': hmac_key,
+                'hash': hmac_hash,
+            }
+        else:
+            item = {
+                'host': hash_
+            }
+        
+        item['type'] = type_
+        item['key'] = key_
+        ret.append(item)
+    
+    return ret
+### END: Roles

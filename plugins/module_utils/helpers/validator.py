@@ -1,6 +1,6 @@
 import typing as T
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __CONF, __cerberus, __convert, __data, __str, __validate
+    _CONF, __cerberus, __convert, __data, __str, __validate
 )
 
 Convert = __convert()
@@ -131,7 +131,7 @@ class Validator(BaseValidator):
         if not isinstance(value, str):
             return False
         
-        return bool(__CONF['regex'][key_].match(value))
+        return bool(_CONF['regex'][key_].match(value))
         
     def _exec_validate_type_ip(self, value, version: T.Literal[4, 6, 46], type_: T.Literal['address', 'subnet', ''] = '')-> bool:
         if not isinstance(value, str):

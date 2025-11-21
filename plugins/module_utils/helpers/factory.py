@@ -58,7 +58,7 @@ def fs_path_tmp(file: str, *args, **kwargs)-> str:
 def play_meta(vars: T.Mapping, **kwargs)-> dict:
     import urllib, urllib.parse
     make_cache = kwargs.pop('make_cache', False)
-    timestamp_ = ts()
+    ts_ = ts()
 
     play_hosts = ','.join(vars.get('ansible_play_hosts_all', []))
     play_batch = ','.join(vars.get('ansible_play_batch', []))
@@ -69,7 +69,7 @@ def play_meta(vars: T.Mapping, **kwargs)-> dict:
         'pbd': vars.get('playbook_dir', 'N/A'),
         'pbn': vars.get('ansible_play_name', 'N/A'),
         'pb': 'N/A' if Validate.blank(play_batch) else play_batch,
-        'ts': Helper.ts_mod(ts, 'long_safe'), #type: ignore
+        'ts': Convert.as_ts_mod(ts_, 'long_safe'), #type: ignore
     }
 
     kwargs['encoding'] = kwargs.get('encoding', 'utf-8')
@@ -81,12 +81,12 @@ def play_meta(vars: T.Mapping, **kwargs)-> dict:
             'hash': Convert.to_md5(play_id),
         },
         'ts': {
-            'raw': timestamp_,
-            'str': Convert.as_ts_mod(timestamp_, 'str'), #type: ignore
-            'safe': Convert.as_ts_mod(timestamp_, 'safe'), #type: ignore
-            'long': Convert.as_ts_mod(timestamp_, 'long'), #type: ignore
-            'long_safe': Convert.as_ts_mod(timestamp_, 'long_safe'), #type: ignore
-            'timestamp': Convert.as_ts_mod(timestamp_, 'timestamp'), #type: ignore
+            'raw': ts_,
+            'str': Convert.as_ts_mod(ts_, 'str'), #type: ignore
+            'safe': Convert.as_ts_mod(ts_, 'safe'), #type: ignore
+            'long': Convert.as_ts_mod(ts_, 'long'), #type: ignore
+            'long_safe': Convert.as_ts_mod(ts_, 'long_safe'), #type: ignore
+            'timestamp': Convert.as_ts_mod(ts_, 'timestamp'), #type: ignore
         },
         'placeholder': placeholder(mod='hash'),
         'cache_file': fs_path_tmp(f'play_{Convert.to_md5(play_id)}.json'),

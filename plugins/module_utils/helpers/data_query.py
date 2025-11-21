@@ -1,0 +1,425 @@
+import typing as T
+import re
+from jinja2.runtime import Context
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
+    _CONF, __ansible, __convert, __data, __factory, __str, __utils, __validate
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.fluent import Fluent
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.collection import Collection
+
+Ansible = __ansible()
+Convert = __convert()
+Data = __data()
+Factory = __factory()
+Str = __str()
+Utils = __utils()
+Validate = __validate()
+
+class DataQuery:
+    def __init__(
+        self,
+        context: T.Optional[Context] = None,
+        data: T.Sequence[T.Any] = [],
+        query: str = '',
+        *bindings: T.Any,
+        **kwargs: T.Any,
+    ):
+        self.cfg: Fluent = Fluent(_CONF['data_query'])
+        self.context: T.Optional[Context] = None
+        self.data: T.Sequence[T.Any] = []
+        self.query: str = ''
+        self.bindings_positional: list[T.Any] = []
+        self.bindings_named: dict[str, T.Any] = {}
+        self.operators_and: list[str] = []
+        self.operators_or: list[str] = []
+        self.tokens: Fluent = Fluent()
+
+        self.set_context(context)
+        self.set_data(data)
+
+        bindings_named = {}
+        for key_, val_ in kwargs.items():
+            key_ = str(key_)
+            if key_.startswith('_'):
+                self.cfg.set(f'settings.{key_.strip('_')}', val_)
+            else:
+                bindings_named[key_.strip(':')] = val_
+        
+        self.set_query(
+            query, 
+            list(bindings), 
+            bindings_named,
+            self.cfg.get('settings.operators_and', ['and', 'AND', '&&']),
+            self.cfg.get('settings.operators_or', ['or', 'OR', '||']),
+        )
+    
+    def resolve_tokens(self):
+        self.tokens = Fluent()
+        self.cfg.set('tokens', {'depth': 0, 'top': 1})
+
+        segments = self.get_query_segments()
+
+        for idx, segment in enumerate(segments):
+            if (self.is_token_segment_operator(segment) or segment in ['(', ')']) and self.should_token_batch_finalise():
+                self._token_batch_finalise()
+            
+            if idx == 0 or idx == len(segments) - 1:
+                continue
+
+            if segment == '(':
+                self.cfg.increase('tokens.depth')
+            elif segment == ')':
+                self.cfg.decrease('tokens.depth')
+                if self.cfg.get('tokens.depth') == 0:
+                    self.cfg.increase('tokens.top')                
+            elif self.is_token_segment_operator(segment):
+                self._token_batch_condition(segment)
+            else:
+                self._resolve_token_segment(segment)
+            
+            # if self.should_token_batch_finalise(idx, segments):
+            #     self._token_batch_finalise(token_key)
+
+        # if self.should_token_batch_finalise(idx, segments):
+        #     self._token_batch_finalise(token_key)
+        # if self.tokens.has('0.cond'):
+        #     self._token_batch_finalise()
+    
+    def _token_batch_condition(self, operator: str) -> None:
+        token_key = self._get_token_segment_key()
+        if not self.tokens.has(f'{token_key}.cond'):
+            self.tokens.set(
+                f'{token_key}.cond',
+                ('all' if self.is_token_segment_operator_and(operator) else 'any')
+            )
+            token_key_hash = self._get_token_segment_key(mod='hash')
+            alt_key = self._get_token_segment_alt_key()
+            self.cfg.set(
+                f'tokens.alt_keys.{alt_key}',
+                {'token_key': token_key, 'found': self.cfg.get(f'debug.found_alt_keys.{token_key_hash}')}
+            )
+    
+    def _token_batch_finalise(self) -> None:
+        token_key = self._get_token_segment_key()
+
+        self.tokens.append(
+            f'{token_key}.tests',
+            self._resolve_token_test_batch()
+        )   
+        
+        self.cfg.set('tokens.batch', {})
+    
+    def _get_token_segment_key(self, **kwargs) -> str:
+        mod = kwargs.pop('mod', '')
+
+        depth = self.cfg.get('tokens.depth')
+        if depth == 0:
+            ret = ['0']
+        else:
+            ret = [str(self.cfg.get('tokens.top'))]
+            if depth - 1 > 0:
+                ret.extend(Str.repeat('sub', depth - 1, True))
+
+        ret = '.'.join(ret)
+
+        if mod in ['hash', 'hashed']:
+            ret = Convert.to_md5(ret)
+
+        return ret
+
+    def _get_token_segment_alt_key(self) -> str:
+        depth = self.cfg.get('tokens.depth')
+        if depth == 0:
+            return '0'
+        
+        current_top = str(self.cfg.get('tokens.top'))
+        if depth - 1 <= 0:
+            return current_top
+
+        token_key_hash = self._get_token_segment_key(mod='hash')
+        pattern = [current_top]
+        pattern.extend(Str.repeat('\\d+', depth-1, True))
+        pattern = '_'.join(pattern)
+        
+        keys = list(sorted(Data.where(
+            list(dict(self.cfg.get('tokens.alt_keys', {})).keys()),
+            lambda key__: Validate.str_matches(key__, pattern, prepare=True),
+            [],
+        )))
+
+        self.cfg.set(f'debug.found_alt_keys.{token_key_hash}', keys)
+
+        if Validate.filled(keys):
+            key_segments = str(keys[-1]).split('_')
+            key_segments[-1] = str(int(key_segments[-1]) + 1)
+            return '_'.join(key_segments)
+        
+        ret = [current_top]
+        ret.extend(Str.repeat('0', depth - 1, True))
+
+        return '_'.join(ret)
+
+    def _resolve_token_segment(self, segment: str) -> None:
+        item = self._resolve_token_segment_item(segment)
+        
+        if not self.is_extra_args(item):
+           self.cfg.append('tokens.batch.args', item)
+           return
+        
+        qs_ = Convert.from_qs(Str.chop_both(item, '`'), keep_blank_values=True)
+        for key_, val_ in qs_.items():
+            val_ = Data.first(Convert.to_iterable(val_))
+            if self.is_binding(key_) and Validate.filled(val_):
+                raise ValueError('Extra arguments bound to bindings cannot have value.')
+            
+            key_item = self._resolve_token_segment_item(key_)
+            if Validate.blank(val_):
+                self.cfg.append('tokens.batch.args', key_item)
+                continue
+
+            self.cfg.set(
+                f'tokens.batch.kwargs.{key_item}', 
+                self._resolve_token_segment_item(val_)
+            )
+
+    def _resolve_token_segment_item(self, segment: str) -> T.Any:
+        if self.is_b_pos(segment):
+            ret = self.bindings_positional[self.cfg.get('b_pos', 0)]
+            self.cfg.increase('b_pos')
+        elif self.is_b_named(segment):
+            ret = self.bindings_named[segment.lstrip(':')]
+        else:
+           ret = segment
+        
+        return ret
+    
+    def _resolve_token_test_batch(self) -> dict:
+        ret = {
+            'negate': False,
+            'args': list(self.cfg.get('tokens.batch.args', [])),
+            'kwargs': dict(self.cfg.get('tokens.batch.kwargs', {})),
+            '_meta': {
+                'top': self.cfg.get('tokens.top'),
+                'depth': self.cfg.get('tokens.depth'),
+            }
+        }
+
+        if not self.is_mod_attr():
+            ret['args'].insert(0, 'value')
+        # else:
+        #     ret['args'][0] = Convert.to_data_key('value', ret['args'][0])
+        
+        if len(ret['args']) < 2:
+            raise ValueError(f'Test not found in query syntax: {Convert.to_text(ret)}')
+
+        if ret['args'][1] == 'not':
+            ret['negate'] = True
+            ret['args'] = [arg_ for idx_, arg_ in enumerate(ret['args']) if idx_ != 1]
+        
+        # ret['args'][1] = self._resolve_token_test_fqn(ret['args'][1])
+            
+        return ret
+    
+    def _resolve_token_test_fqn(self, test: str) -> str:
+        if '.' not in test:
+            return Convert.to_data_key('ansible.builtin.', test)
+        else:
+            for prefix, namespace in dict(self.cfg.get('test.prefixes', {})).items():
+                if test.startswith(prefix):
+                    test = Convert.to_data_key(namespace, Str.chop_start(test, prefix))
+                    break
+
+        if test.count('.') != 2:
+            raise ValueError(f'Invalid test fqn [{test}]')
+        
+        return test
+    
+    def set_context(self, context: T.Optional[Context]) -> None:
+        self.context = context
+    
+    def set_data(self, data: T.Sequence[T.Any]) -> None:
+        self.data = data
+    
+    def set_query(
+        self, 
+        query: str,
+        bindings_positional: list[T.Any] = [],
+        bindings_named: dict[str, T.Any] = {},
+        operators_and: list[str] = [], 
+        operators_or: list[str] = []
+    ) -> None:
+        self.__set_operators(operators_and, operators_or)
+        query = query.strip()
+        
+        if query.count('(') != query.count(')'):
+            raise ValueError('Invalid query syntax: Number of parentheses not matching.')
+
+        if not Validate.is_int_even(query.count('`')):
+            raise ValueError('Invalid query syntax: Number of backticks not even.')
+        
+        pattern_operators = re.compile(rf'\\s+({'|'.join([re.escape(oper) for oper in self.operators_and + operators_or])})\\s+')
+        pattern_query_parenthese = re.compile(r'\\(\\s*([a-z][a-z0-9_.]*\\s+[a-z][a-z0-9_.]*(?:\\s+(?:\\?|\\:[a-z][a-z0-9_]*))?)\\s*\\)')
+        bindings_named = Data.combine(self.cfg.get('defaults.bindings.named', {}), bindings_named)
+
+        query = re.sub(r'\)', ') ', query)
+        query = re.sub(r'\(', '( ', query)
+        query = re.sub(r'\(([A-Za-z0-9])', '( \\1', query)
+        query = re.sub(r'([A-Za-z0-9?])\)', '\\1 )', query)
+        query = re.sub(r'\:+([A-Za-z0-9_]+?)', ':\\1', query)
+        query = re.sub(r'\`+', '`', query)
+        query = pattern_operators.sub(r' \1 ', query)
+        query = re.sub(r'\s+', r' ', query.strip())
+        
+        while True:
+            new_query = pattern_query_parenthese.sub(r'\1', query)
+            if new_query == query:
+                break
+            query = new_query
+        
+        query = '( ' + query + ' )'
+
+        if query.count('?') != len(bindings_positional):
+            raise ValueError('Invalid number of positional bindings')
+        
+        b_named = list(set(re.findall(r'[\(+|\s]?:+([A-Za-z0-9_]+)[\)+|\s]?', query)))
+        
+        if not Validate.contains(bindings_named, *b_named, all = True):
+            raise ValueError('Missing named bindings')
+        
+        self.query = query
+        self.bindings_positional = bindings_positional
+        self.bindings_named = bindings_named
+        self.resolve_tokens()
+    
+    def __set_operators(self, operators_and: list[str] = [], operators_or: list[str] = []) -> None:
+        opposites_ = {'and': 'or', 'or': 'and'}
+        for type_, operators in {'and': operators_and, 'or': operators_or}.items():
+            if Validate.blank(operators):
+                continue
+
+            opposite_ = opposites_[type_]
+            intersect = Data.intersect(operators, getattr(self, f'operators_{opposite_}'))
+            if Validate.filled(intersect):
+                raise ValueError(f'{type_.upper()} operators [{', '.join(intersect)}] already exist as `{opposite_.upper()}` operators.')
+            
+            current = getattr(self, f'operators_{type_}')
+            if Validate.filled(Data.difference(operators, current)):
+                setattr(self, f'operators_{type_}', operators)
+    
+    def get_results(self) -> T.Any:
+        if not self.context:
+            raise RuntimeError('Context is not set to execute to tests')
+        
+        ret_default = self.get_default_return()
+        if Validate.blank(self.data):
+            return ret_default
+
+        unpacked = self.get_unpacked_data()
+        ret = Convert.as_copied(unpacked)
+
+        for entry in self.get_tokens().values():
+            for test in Data.get(entry, 'tests', []):
+                args = Data.get(Data.prepend(test, 'args', [ret, self.context], extend=True), 'args', [])
+                kwargs = Data.get(test, 'kwargs', {})
+
+                if test['negate'] == True:
+                    ret = Ansible.filter_rejectattr(*args, **kwargs)
+                else:
+                    ret = Ansible.filter_selectattr(*args, **kwargs)
+
+        
+        if Validate.filled(ret):
+            ret = Data.pluck(ret, 'value')
+                
+
+
+        #         if entry['cond'] == 'all':
+                    
+                
+        #             if Validate.blank(ret):
+        #                 break
+            
+        #     if Validate.blank(ret):
+        #         break
+        
+        # if Validate.blank(ret):
+        #     ret = ret_default
+        # elif Validate.truthy(self.cfg.get('settings.unique')):
+        #     ret = list(set(ret))
+
+        return ret
+    
+    def get_query_segments(self) -> list:
+        return self.query.split(' ')
+    
+    def get_query_segments_example(self) -> list[str]:
+        import random
+        return [segment if segment in ['(', ')'] else Factory.random_string(random.randint(3, 8)) for segment in self.get_query_segments()]
+
+    def get_tokens(self) -> dict:
+        return Data.sort_keys_char_count(self.tokens.all(), '_') #type: ignore
+    
+    # def get_token_data_keys(self) -> list:
+    #     return list(set(self.tokens.get('*.tests.*.args.*.0', []))) if self.is_mod_attr() else []
+    
+    def get_default_return(self) -> T.Any:
+        if self.cfg.get('settings.default'):
+            return self.cfg.get('settings.default')
+        elif self.is_mod_attr() and self.is_first_result():
+            return {}
+        else:
+            return []
+    
+    def get_unpacked_data(self) -> list:
+        return Convert.to_items(Convert.as_copied(self.data))
+    
+    def is_first_result(self) -> bool:
+        return Validate.truthy(self.cfg.get('settings.first'))
+    
+    def is_mod_attr(self) -> bool:
+        return Validate.is_enumeratable_of_mappings(self.data)
+    
+    def is_token_segment_operator_and(self, segment: str) -> bool:
+        return segment in self.operators_and
+    
+    def is_token_segment_operator_or(self, segment: str) -> bool:
+        return segment in self.operators_or
+
+    def is_token_segment_operator(self, segment: str) -> bool:
+        return self.is_token_segment_operator_and(segment) or self.is_token_segment_operator_or(segment)
+    
+    def has_token_batch_args(self) -> bool:
+        return self.cfg.filled('tokens.batch.args')
+    
+    def has_token_batch_kwargs(self) -> bool:
+        return self.cfg.filled('tokens.batch.kwargs')
+
+    def should_token_batch_finalise(self) -> bool:
+        return self.has_token_batch_args() or self.has_token_batch_kwargs()
+
+    # def should_token_batch_finalise(self, idx: int, segments: list[str]) -> bool:
+    #     has_cache = self.has_token_batch_args() or self.has_token_batch_kwargs()
+    #     if not has_cache:
+    #         return False
+        
+    #     if idx == len(segments) - 1:
+    #         return True
+
+    #     segment = segments[idx]
+    #     return self.is_token_segment_operator(segment)
+
+    @staticmethod
+    def is_extra_args(item: T.Any) -> bool:
+        return Validate.is_string(item) and Validate.str_wrapped(item, '`')
+
+    @staticmethod
+    def is_binding(item: T.Any) -> bool:
+        return Validate.is_string(item) and (item == '?' or item.startswith(':'))
+    
+    @staticmethod
+    def is_b_pos(item: T.Any) -> bool:
+        return DataQuery.is_binding(item) and item == '?'
+    
+    @staticmethod
+    def is_b_named(item: T.Any) -> bool:
+        return DataQuery.is_binding(item) and item.startswith(':')
