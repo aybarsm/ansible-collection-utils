@@ -61,7 +61,7 @@ class DataQuery:
         segments = self.get_query_segments()
         for idx, segment in enumerate(segments):
             if (self.is_token_segment_operator(segment) or segment in ['(', ')']) and self.should_token_batch_finalise():
-                self._token_batch_finalise()
+                self._token_batch_finalise(self.tokens.get('_meta.stack.key'))
 
             if segment == '(':
                 if idx == 0:
@@ -75,17 +75,14 @@ class DataQuery:
                     
                     stack.append({'idx': parent['next'], 'next': 0})
                     parent['next'] += 1
-                    
-                self.tokens.set('_meta.key', '_'.join(str(n['idx']) for n in stack))
             elif segment == ')':
                 stack.pop()
                 
                 if Validate.blank(stack):
                     stack.append(master)
-
-                self.tokens.set('_meta.key', '_'.join(str(n['idx']) for n in stack))
             
             if segment in ['(', ')']:
+                self.tokens.set('_meta.stack.key', '_'.join(str(n['idx']) for n in stack))
                 continue
             
             if self.is_token_segment_operator(segment):
@@ -98,17 +95,17 @@ class DataQuery:
                 continue
 
             self._resolve_token_segment(segment)
+        
+        self.tokens.forget('_meta')
     
-    def _token_batch_finalise(self) -> None:
-        token_key = self.tokens.get('_meta.key')
-
+    def _token_batch_finalise(self, stack_key: str) -> None:
         self.tokens.append(
-            f'{token_key}.tests',
+            f'{stack_key}.tests',
             self._resolve_token_test_batch()
         )
 
-        if self.tokens.blank(f'{token_key}.cond') and self.tokens.filled('_meta.batch.cond'):
-            self.tokens.set(f'{token_key}.cond', self.tokens.get('_meta.batch.cond'))
+        if self.tokens.blank(f'{stack_key}.cond') and self.tokens.filled('_meta.batch.cond'):
+            self.tokens.set(f'{stack_key}.cond', self.tokens.get('_meta.batch.cond'))
         
         self.tokens.set('_meta.batch', {})
 
@@ -155,8 +152,8 @@ class DataQuery:
 
         if not self.is_mod_attr():
             ret['args'].insert(0, 'value')
-        # else:
-        #     ret['args'][0] = Convert.to_data_key('value', ret['args'][0])
+        else:
+            ret['args'][0] = Convert.to_data_key('value', ret['args'][0])
         
         if len(ret['args']) < 2:
             raise ValueError(f'Test not found in query syntax: {Convert.to_text(ret)}')
@@ -165,7 +162,7 @@ class DataQuery:
             ret['negate'] = True
             ret['args'] = [arg_ for idx_, arg_ in enumerate(ret['args']) if idx_ != 1]
         
-        # ret['args'][1] = self._resolve_token_test_fqn(ret['args'][1])
+        ret['args'][1] = self._resolve_token_test_fqn(ret['args'][1])
             
         return ret
     
