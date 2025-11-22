@@ -64,7 +64,6 @@ class DataQuery:
             if (self.is_token_segment_operator(segment) or segment in ['(', ')']) and self.should_token_batch_finalise():
                 self._token_batch_finalise()
 
-
             if segment == '(':
                 if idx == 0:
                     stack = [master]
@@ -113,68 +112,6 @@ class DataQuery:
             self.tokens.set(f'{token_key}.cond', self.cfg.get('tokens.batch.cond'))
         
         self.cfg.set('tokens.batch', {})
-    
-    def _resolve_token_segment_key(self) -> str:
-        depth = self.cfg.get('tokens.depth')
-        current_top = str(self.cfg.get('tokens.top'))
-        if depth == -1:
-            ret = ['0']
-        else:
-            ret = [current_top]
-            
-            if depth > 0:
-                for _ in range(0, depth):
-                    ret.append(str(self.cfg.get(f'tokens.stacks.{current_top}.{str(_)}', 0)))
-                
-                self.cfg.increase(f'tokens.stacks.{current_top}.{str(depth)}')
-
-        ret = '_'.join(ret)
-
-        return ret
-
-    def _get_token_segment_alt_key_meta(self) -> dict:
-        ret = {
-            'key': None,
-            'segments': [],
-            'pattern': None,
-            'keys': {
-                'all': [],
-                'found': [],
-                'rel': None,
-            },
-        }
-
-        depth = int(self.cfg.get('tokens.depth', 0))
-
-        if depth == 0:
-            ret['segments'] = ['0'] 
-        else:
-            current_top = str(self.cfg.get('tokens.top'))
-            if depth - 1 <= 0:
-                ret['segments'] = [current_top]
-            else:
-                ret['pattern'] = [current_top]
-                ret['pattern'].extend(Str.repeat('\\d+', depth-1, True))
-                ret['pattern'] = '_'.join(ret['pattern'])
-                
-                ret['keys']['all'] = self.tokens.get('_meta.alt_keys', [])
-                ret['keys']['found'] = list(sorted(Data.where(
-                    ret['keys']['all'],
-                    lambda key__: Validate.str_matches(key__, ret['pattern'], prepare=True),
-                    [],
-                )))
-
-                if Validate.filled(ret['keys']['found']):
-                    ret['keys']['rel'] = ret['keys']['found'][-1]
-                    ret['segments'] = str(ret['keys']['rel'][-1]).split('_')
-                    ret['segments'][-1] = str(int(ret['segments'][-1]) + 1)
-                else:
-                    ret['segments'] = [current_top]
-                    ret['segments'].extend(Str.repeat('0', depth - 1, True))
-
-        ret['key'] = '_'.join(ret['segments'])
-        
-        return ret
 
     def _resolve_token_segment(self, segment: str) -> None:
         item = self._resolve_token_segment_item(segment)
@@ -215,11 +152,6 @@ class DataQuery:
             'negate': False,
             'args': list(self.cfg.get('tokens.batch.args', [])),
             'kwargs': dict(self.cfg.get('tokens.batch.kwargs', {})),
-            '_meta': {
-                'key': self.cfg.get('tokens.key'),
-                'top': self.cfg.get('tokens.top'),
-                'depth': self.cfg.get('tokens.depth'),
-            }
         }
 
         if not self.is_mod_attr():
