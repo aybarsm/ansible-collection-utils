@@ -5,7 +5,6 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator i
     _CONF, __ansible, __convert, __data, __factory, __str, __utils, __validate
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.fluent import Fluent
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.collection import Collection
 
 Ansible = __ansible()
 Convert = __convert()
@@ -60,8 +59,9 @@ class DataQuery:
 
         segments = self.get_query_segments()
         for idx, segment in enumerate(segments):
+            stack_key = self.tokens.get('_meta.stack.key')
             if (self.is_token_segment_operator(segment) or segment in ['(', ')']) and self.should_token_batch_finalise():
-                self._token_batch_finalise(self.tokens.get('_meta.stack.key'))
+                self._token_batch_finalise(stack_key)
 
             if segment == '(':
                 if idx == 0:
@@ -82,13 +82,19 @@ class DataQuery:
                     stack.append(master)
             
             if segment in ['(', ')']:
-                self.tokens.set('_meta.stack.key', '_'.join(str(n['idx']) for n in stack))
+                key_segments = [str(n['idx']) for n in stack]
+                
+                if len(key_segments) > 1:
+                    key_segments = [key_segments[0]] + Data.flatten(Utils.product(['subs'], key_segments[1:]))
+
+                self.tokens.set('_meta.stack.key', '.'.join(key_segments))
+                # self.tokens.set('_meta.stack.key', '_'.join(str(n['idx']) for n in stack))
                 continue
             
             if self.is_token_segment_operator(segment):
-                if self.tokens.blank(f'_meta.batch.cond'):
+                if not self.tokens.has(f'{stack_key}.cond'):
                     self.tokens.set(
-                        '_meta.batch.cond',
+                        f'{stack_key}.cond',
                         ('all' if self.is_token_segment_operator_and(segment) else 'any')
                     )
                 
@@ -103,9 +109,6 @@ class DataQuery:
             f'{stack_key}.tests',
             self._resolve_token_test_batch()
         )
-
-        if self.tokens.blank(f'{stack_key}.cond') and self.tokens.filled('_meta.batch.cond'):
-            self.tokens.set(f'{stack_key}.cond', self.tokens.get('_meta.batch.cond'))
         
         self.tokens.set('_meta.batch', {})
 
@@ -253,18 +256,31 @@ class DataQuery:
                 setattr(self, f'operators_{type_}', operators)
     
     def get_results(self) -> T.Any:
-        if not self.context:
-            raise RuntimeError('Context is not set to execute to tests')
-        
         ret_default = self.get_default_return()
         if Validate.blank(self.data):
             return ret_default
 
-        unpacked = self.get_unpacked_data()
-        ret = Convert.as_copied(unpacked)
+        if not self.context:
+            raise RuntimeError('Context is not set to execute tests')
 
-        for entry in self.get_tokens().values():
-            for test in Data.get(entry, 'tests', []):
+        ret = self.get_result_prepared_data()
+        tokens = self.get_tokens(asc=(self.get_tokens_master_condition() == 'all'))
+        
+        # # Resolve Inner First
+        # token_masters = list(sorted([key_ for key_ in tokens.keys() if '_' not in str(key_) and str(key_) != '0']))
+        # for master_ in token_masters:
+
+
+
+
+        for entry in tokens.values():
+            tests = Data.get(entry, 'tests', [])
+            batch = Convert.as_copied(ret)
+
+            for idx, test in enumerate(tests):
+                args = list(test['args'])
+                kwargs = dict(test['kwargs'])
+
                 args = Data.get(Data.prepend(test, 'args', [ret, self.context], extend=True), 'args', [])
                 kwargs = Data.get(test, 'kwargs', {})
 
@@ -274,8 +290,8 @@ class DataQuery:
                     ret = Ansible.filter_selectattr(*args, **kwargs)
 
         
-        if Validate.filled(ret):
-            ret = Data.pluck(ret, 'value')
+        # if Validate.filled(ret):
+        #     ret = Data.pluck(ret, 'value')
                 
 
 
@@ -297,16 +313,15 @@ class DataQuery:
     
     def get_query_segments(self) -> list:
         return self.query.split(' ')
-    
-    def get_query_segments_example(self) -> list[str]:
-        import random
-        return [segment if segment in ['(', ')'] else Factory.random_string(random.randint(3, 8)) for segment in self.get_query_segments()]
 
-    def get_tokens(self) -> dict:
-        return Data.sort_keys_char_count(self.tokens.all(), '_') #type: ignore
+    def get_tokens(self, **kwargs) -> dict:
+        return Data.sort_keys_char_count(self.tokens.all(), '_', **kwargs) #type: ignore
     
-    # def get_token_data_keys(self) -> list:
-    #     return list(set(self.tokens.get('*.tests.*.args.*.0', []))) if self.is_mod_attr() else []
+    def get_token_masters(self, exclude_main: bool = False) -> list:
+        return list(sorted([key_ for key_ in self.tokens.keys() if '_' not in str(key_) and (not exclude_main or str(key_) != '0')]))
+    
+    def get_tokens_data_keys(self) -> list:
+        return list(set(self.tokens.get('*.tests.*.args.*.0')))
     
     def get_default_return(self) -> T.Any:
         if self.cfg.get('settings.default'):
@@ -318,6 +333,22 @@ class DataQuery:
     
     def get_unpacked_data(self) -> list:
         return Convert.to_items(Convert.as_copied(self.data))
+    
+    def get_result_prepared_data(self) -> list:
+        ret = self.get_unpacked_data()
+        
+        # Avoid errors for missing keys for wrapped jinja tests
+        if self.is_mod_attr():
+            ph = Factory.placeholder(mod='hashed')
+            data_keys = self.get_tokens_data_keys()
+            for idx, entry in enumerate(ret):
+                for key_ in data_keys:
+                    Data.set_(ret[idx], key_, Data.get(entry, key_, ph))
+
+        return ret
+    
+    def get_tokens_master_condition(self) -> str:
+        return self.tokens.get('0.cond', 'any')
     
     def is_first_result(self) -> bool:
         return Validate.truthy(self.cfg.get('settings.first'))

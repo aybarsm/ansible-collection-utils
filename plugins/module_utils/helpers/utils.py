@@ -31,6 +31,10 @@ def dd(*args, **kwargs):
     dump(*args, **kwargs)
     exit(0)
 
+def product(*args, **kwargs):
+    from itertools import product
+    return product(*args, **kwargs)
+
 ### BEGIN: Json
 def json_load(path: PathlibPath|str, **kwargs)-> dict|list:
     return Convert.from_json(fs_read(path), **kwargs)
