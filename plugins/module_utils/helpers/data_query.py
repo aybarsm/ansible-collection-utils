@@ -55,72 +55,80 @@ class DataQuery:
     
     def resolve_tokens(self):
         self.tokens = Fluent()
-        self.cfg.set('tokens', {'depth': 0, 'top': 1})
+        self.cfg.set('tokens', {})
+        master = {'idx': 0, 'next': 1}
+        stack = []
 
         segments = self.get_query_segments()
-
         for idx, segment in enumerate(segments):
             if (self.is_token_segment_operator(segment) or segment in ['(', ')']) and self.should_token_batch_finalise():
                 self._token_batch_finalise()
-            
-            if idx == 0 or idx == len(segments) - 1:
-                continue
+
 
             if segment == '(':
-                self.cfg.increase('tokens.depth')
+                if idx == 0:
+                    stack = [master]
+                else:
+                    if len(stack) == 1 and stack[0]['idx'] == 0:
+                        stack = []
+                        parent = master
+                    else:
+                        parent = stack[-1]
+                    
+                    stack.append({'idx': parent['next'], 'next': 0})
+                    parent['next'] += 1
+                    
+                self.cfg.set('tokens.key', '_'.join(str(n['idx']) for n in stack))
             elif segment == ')':
-                self.cfg.decrease('tokens.depth')
-                if self.cfg.get('tokens.depth') == 0:
-                    self.cfg.increase('tokens.top')
-            elif self.is_token_segment_operator(segment):
-                self._token_batch_condition(segment)
-            else:
-                self._resolve_token_segment(segment)
-    
-    def _token_batch_condition(self, operator: str) -> None:
-        token_key = self._get_token_segment_key()
-        if not self.tokens.has(f'{token_key}.cond'):
-            self.tokens.set(
-                f'{token_key}.cond',
-                ('all' if self.is_token_segment_operator_and(operator) else 'any')
-            )
+                stack.pop()
+                
+                if Validate.blank(stack):
+                    stack.append(master)
+
+                self.cfg.set('tokens.key', '_'.join(str(n['idx']) for n in stack))
+            
+            if segment in ['(', ')']:
+                continue
+            
+            if self.is_token_segment_operator(segment):
+                if not self.tokens.has(f'tokens.batch.cond'):
+                    self.cfg.set(
+                        'tokens.batch.cond',
+                        ('all' if self.is_token_segment_operator_and(segment) else 'any')
+                    )
+                
+                continue
+
+            self._resolve_token_segment(segment)
     
     def _token_batch_finalise(self) -> None:
-        token_key = self._get_token_segment_key()
+        token_key = self.cfg.get('tokens.key')
 
         self.tokens.append(
             f'{token_key}.tests',
             self._resolve_token_test_batch()
         )
 
-        # alt_meta = self._get_token_segment_alt_key_meta()
-        # self.tokens.append(
-        #     '_meta.alt_keys',
-        #     alt_meta['key'],
-        #     unique=True,
-        # )
-        # self.tokens.append(
-        #     f'{token_key}._meta.alt_key',
-        #     alt_meta
-        # )
+        if not self.tokens.has(f'{token_key}.cond') and self.cfg.has('tokens.batch.cond'):
+            self.tokens.set(f'{token_key}.cond', self.cfg.get('tokens.batch.cond'))
         
         self.cfg.set('tokens.batch', {})
     
-    def _get_token_segment_key(self, **kwargs) -> str:        
-        mod = kwargs.pop('mod', '')
-
+    def _resolve_token_segment_key(self) -> str:
         depth = self.cfg.get('tokens.depth')
-        if depth == 0:
+        current_top = str(self.cfg.get('tokens.top'))
+        if depth == -1:
             ret = ['0']
         else:
-            ret = [str(self.cfg.get('tokens.top'))]
-            if depth - 1 > 0:
-                ret.extend(Str.repeat('subs', depth - 1, True))
+            ret = [current_top]
+            
+            if depth > 0:
+                for _ in range(0, depth):
+                    ret.append(str(self.cfg.get(f'tokens.stacks.{current_top}.{str(_)}', 0)))
+                
+                self.cfg.increase(f'tokens.stacks.{current_top}.{str(depth)}')
 
-        ret = '.'.join(ret)
-
-        if mod in ['hash', 'hashed']:
-            ret = Convert.to_md5(ret)
+        ret = '_'.join(ret)
 
         return ret
 
@@ -208,6 +216,7 @@ class DataQuery:
             'args': list(self.cfg.get('tokens.batch.args', [])),
             'kwargs': dict(self.cfg.get('tokens.batch.kwargs', {})),
             '_meta': {
+                'key': self.cfg.get('tokens.key'),
                 'top': self.cfg.get('tokens.top'),
                 'depth': self.cfg.get('tokens.depth'),
             }
