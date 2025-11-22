@@ -55,7 +55,6 @@ class DataQuery:
     
     def resolve_tokens(self):
         self.tokens = Fluent()
-        self.cfg.set('tokens', {})
         master = {'idx': 0, 'next': 1}
         stack = []
 
@@ -77,22 +76,22 @@ class DataQuery:
                     stack.append({'idx': parent['next'], 'next': 0})
                     parent['next'] += 1
                     
-                self.cfg.set('tokens.key', '_'.join(str(n['idx']) for n in stack))
+                self.tokens.set('_meta.key', '_'.join(str(n['idx']) for n in stack))
             elif segment == ')':
                 stack.pop()
                 
                 if Validate.blank(stack):
                     stack.append(master)
 
-                self.cfg.set('tokens.key', '_'.join(str(n['idx']) for n in stack))
+                self.tokens.set('_meta.key', '_'.join(str(n['idx']) for n in stack))
             
             if segment in ['(', ')']:
                 continue
             
             if self.is_token_segment_operator(segment):
-                if not self.tokens.has(f'tokens.batch.cond'):
-                    self.cfg.set(
-                        'tokens.batch.cond',
+                if self.tokens.blank(f'_meta.batch.cond'):
+                    self.tokens.set(
+                        '_meta.batch.cond',
                         ('all' if self.is_token_segment_operator_and(segment) else 'any')
                     )
                 
@@ -101,23 +100,23 @@ class DataQuery:
             self._resolve_token_segment(segment)
     
     def _token_batch_finalise(self) -> None:
-        token_key = self.cfg.get('tokens.key')
+        token_key = self.tokens.get('_meta.key')
 
         self.tokens.append(
             f'{token_key}.tests',
             self._resolve_token_test_batch()
         )
 
-        if not self.tokens.has(f'{token_key}.cond') and self.cfg.has('tokens.batch.cond'):
-            self.tokens.set(f'{token_key}.cond', self.cfg.get('tokens.batch.cond'))
+        if self.tokens.blank(f'{token_key}.cond') and self.tokens.filled('_meta.batch.cond'):
+            self.tokens.set(f'{token_key}.cond', self.tokens.get('_meta.batch.cond'))
         
-        self.cfg.set('tokens.batch', {})
+        self.tokens.set('_meta.batch', {})
 
     def _resolve_token_segment(self, segment: str) -> None:
         item = self._resolve_token_segment_item(segment)
         
         if not self.is_extra_args(item):
-           self.cfg.append('tokens.batch.args', item)
+           self.tokens.append('_meta.batch.args', item)
            return
         
         qs_ = Convert.from_qs(Str.chop_both(item, '`'), keep_blank_values=True)
@@ -128,11 +127,11 @@ class DataQuery:
             
             key_item = self._resolve_token_segment_item(key_)
             if Validate.blank(val_):
-                self.cfg.append('tokens.batch.args', key_item)
+                self.tokens.append('_meta.batch.args', key_item)
                 continue
 
-            self.cfg.set(
-                f'tokens.batch.kwargs.{key_item}', 
+            self.tokens.set(
+                f'_meta.batch.kwargs.{key_item}', 
                 self._resolve_token_segment_item(val_)
             )
 
@@ -150,8 +149,8 @@ class DataQuery:
     def _resolve_token_test_batch(self) -> dict:
         ret = {
             'negate': False,
-            'args': list(self.cfg.get('tokens.batch.args', [])),
-            'kwargs': dict(self.cfg.get('tokens.batch.kwargs', {})),
+            'args': list(self.tokens.get('_meta.batch.args', [])),
+            'kwargs': dict(self.tokens.get('_meta.batch.kwargs', {})),
         }
 
         if not self.is_mod_attr():
@@ -339,24 +338,13 @@ class DataQuery:
         return self.is_token_segment_operator_and(segment) or self.is_token_segment_operator_or(segment)
     
     def has_token_batch_args(self) -> bool:
-        return self.cfg.filled('tokens.batch.args')
+        return self.tokens.filled('_meta.batch.args')
     
     def has_token_batch_kwargs(self) -> bool:
-        return self.cfg.filled('tokens.batch.kwargs')
+        return self.tokens.filled('_meta.batch.kwargs')
 
     def should_token_batch_finalise(self) -> bool:
         return self.has_token_batch_args() or self.has_token_batch_kwargs()
-
-    # def should_token_batch_finalise(self, idx: int, segments: list[str]) -> bool:
-    #     has_cache = self.has_token_batch_args() or self.has_token_batch_kwargs()
-    #     if not has_cache:
-    #         return False
-        
-    #     if idx == len(segments) - 1:
-    #         return True
-
-    #     segment = segments[idx]
-    #     return self.is_token_segment_operator(segment)
 
     @staticmethod
     def is_extra_args(item: T.Any) -> bool:
