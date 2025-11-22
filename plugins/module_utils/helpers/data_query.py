@@ -71,19 +71,11 @@ class DataQuery:
             elif segment == ')':
                 self.cfg.decrease('tokens.depth')
                 if self.cfg.get('tokens.depth') == 0:
-                    self.cfg.increase('tokens.top')                
+                    self.cfg.increase('tokens.top')
             elif self.is_token_segment_operator(segment):
                 self._token_batch_condition(segment)
             else:
                 self._resolve_token_segment(segment)
-            
-            # if self.should_token_batch_finalise(idx, segments):
-            #     self._token_batch_finalise(token_key)
-
-        # if self.should_token_batch_finalise(idx, segments):
-        #     self._token_batch_finalise(token_key)
-        # if self.tokens.has('0.cond'):
-        #     self._token_batch_finalise()
     
     def _token_batch_condition(self, operator: str) -> None:
         token_key = self._get_token_segment_key()
@@ -92,12 +84,6 @@ class DataQuery:
                 f'{token_key}.cond',
                 ('all' if self.is_token_segment_operator_and(operator) else 'any')
             )
-            token_key_hash = self._get_token_segment_key(mod='hash')
-            alt_key = self._get_token_segment_alt_key()
-            self.cfg.set(
-                f'tokens.alt_keys.{alt_key}',
-                {'token_key': token_key, 'found': self.cfg.get(f'debug.found_alt_keys.{token_key_hash}')}
-            )
     
     def _token_batch_finalise(self) -> None:
         token_key = self._get_token_segment_key()
@@ -105,11 +91,22 @@ class DataQuery:
         self.tokens.append(
             f'{token_key}.tests',
             self._resolve_token_test_batch()
-        )   
+        )
+
+        # alt_meta = self._get_token_segment_alt_key_meta()
+        # self.tokens.append(
+        #     '_meta.alt_keys',
+        #     alt_meta['key'],
+        #     unique=True,
+        # )
+        # self.tokens.append(
+        #     f'{token_key}._meta.alt_key',
+        #     alt_meta
+        # )
         
         self.cfg.set('tokens.batch', {})
     
-    def _get_token_segment_key(self, **kwargs) -> str:
+    def _get_token_segment_key(self, **kwargs) -> str:        
         mod = kwargs.pop('mod', '')
 
         depth = self.cfg.get('tokens.depth')
@@ -118,7 +115,7 @@ class DataQuery:
         else:
             ret = [str(self.cfg.get('tokens.top'))]
             if depth - 1 > 0:
-                ret.extend(Str.repeat('sub', depth - 1, True))
+                ret.extend(Str.repeat('subs', depth - 1, True))
 
         ret = '.'.join(ret)
 
@@ -127,37 +124,49 @@ class DataQuery:
 
         return ret
 
-    def _get_token_segment_alt_key(self) -> str:
-        depth = self.cfg.get('tokens.depth')
+    def _get_token_segment_alt_key_meta(self) -> dict:
+        ret = {
+            'key': None,
+            'segments': [],
+            'pattern': None,
+            'keys': {
+                'all': [],
+                'found': [],
+                'rel': None,
+            },
+        }
+
+        depth = int(self.cfg.get('tokens.depth', 0))
+
         if depth == 0:
-            return '0'
+            ret['segments'] = ['0'] 
+        else:
+            current_top = str(self.cfg.get('tokens.top'))
+            if depth - 1 <= 0:
+                ret['segments'] = [current_top]
+            else:
+                ret['pattern'] = [current_top]
+                ret['pattern'].extend(Str.repeat('\\d+', depth-1, True))
+                ret['pattern'] = '_'.join(ret['pattern'])
+                
+                ret['keys']['all'] = self.tokens.get('_meta.alt_keys', [])
+                ret['keys']['found'] = list(sorted(Data.where(
+                    ret['keys']['all'],
+                    lambda key__: Validate.str_matches(key__, ret['pattern'], prepare=True),
+                    [],
+                )))
+
+                if Validate.filled(ret['keys']['found']):
+                    ret['keys']['rel'] = ret['keys']['found'][-1]
+                    ret['segments'] = str(ret['keys']['rel'][-1]).split('_')
+                    ret['segments'][-1] = str(int(ret['segments'][-1]) + 1)
+                else:
+                    ret['segments'] = [current_top]
+                    ret['segments'].extend(Str.repeat('0', depth - 1, True))
+
+        ret['key'] = '_'.join(ret['segments'])
         
-        current_top = str(self.cfg.get('tokens.top'))
-        if depth - 1 <= 0:
-            return current_top
-
-        token_key_hash = self._get_token_segment_key(mod='hash')
-        pattern = [current_top]
-        pattern.extend(Str.repeat('\\d+', depth-1, True))
-        pattern = '_'.join(pattern)
-        
-        keys = list(sorted(Data.where(
-            list(dict(self.cfg.get('tokens.alt_keys', {})).keys()),
-            lambda key__: Validate.str_matches(key__, pattern, prepare=True),
-            [],
-        )))
-
-        self.cfg.set(f'debug.found_alt_keys.{token_key_hash}', keys)
-
-        if Validate.filled(keys):
-            key_segments = str(keys[-1]).split('_')
-            key_segments[-1] = str(int(key_segments[-1]) + 1)
-            return '_'.join(key_segments)
-        
-        ret = [current_top]
-        ret.extend(Str.repeat('0', depth - 1, True))
-
-        return '_'.join(ret)
+        return ret
 
     def _resolve_token_segment(self, segment: str) -> None:
         item = self._resolve_token_segment_item(segment)
