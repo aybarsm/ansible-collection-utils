@@ -1,10 +1,10 @@
 from __future__ import annotations
 from jinja2 import pass_context
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.data_query import DataQuery
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.data_query_executor import DataQueryExecutor
 
 @pass_context
 def data_query(context, data, query, *bindings, **kwargs):
-    return DataQuery(context, data, query, *bindings, **kwargs).get_results()
+    return DataQueryExecutor(context, data, query, *bindings, **kwargs).execute()
 
 class FilterModule(object):
     def filters(self):

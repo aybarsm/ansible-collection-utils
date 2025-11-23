@@ -211,7 +211,7 @@ def from_ansible_template(templar, variable, **kwargs)-> T.Any:
     for var_key, var_value in extra_vars.items():
         templar.available_variables[var_key] = var_value
     
-    if Validate.is_data(variable):
+    if Validate.is_iterable(variable):
         ret = Data.walk_values_deep(variable, lambda value_: templar.template(value_, **kwargs))
     else:
         ret = templar.template(variable, **kwargs)
