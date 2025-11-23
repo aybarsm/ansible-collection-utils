@@ -233,7 +233,7 @@ def to_items(
     key_name: str = 'key',
     value_name: str = 'value',
 )-> list[dict[str, T.Any]]:
-    iteratee = enumerate(to_iterable(data)) if Validate.is_loopable(data) else dict(data).items()
+    iteratee = dict(data).items() if Validate.is_mapping(data) else enumerate(to_iterable(data))
     return [{key_name: key_, value_name: val_} for key_, val_ in iteratee]
 
 def from_items(

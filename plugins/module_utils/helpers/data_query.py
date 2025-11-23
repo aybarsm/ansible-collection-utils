@@ -25,7 +25,7 @@ class DataQuery:
     ):
         self.cfg: Fluent = Fluent(_CONF['data_query'])
         self.context: T.Optional[Context] = None
-        self.data: T.Sequence[T.Any] = []
+        self.data: list[T.Any] = []
         self.query: str = ''
         self.bindings_positional: list[T.Any] = []
         self.bindings_named: dict[str, T.Any] = {}
@@ -97,12 +97,17 @@ class DataQuery:
                         f'{stack_key}.cond',
                         ('all' if self.is_token_segment_operator_and(segment) else 'any')
                     )
+                    self.tokens.set(
+                        f'{stack_key}.key',
+                        stack_key
+                    )
                 
                 continue
 
             self._resolve_token_segment(segment)
         
-        self.tokens.forget('_meta')
+        if not self.tokens.has('0.cond'):
+            self.tokens.set('0.cond', 'any')
     
     def _token_batch_finalise(self, stack_key: str) -> None:
         self.tokens.append(
@@ -158,6 +163,9 @@ class DataQuery:
         else:
             ret['args'][0] = Convert.to_data_key('value', ret['args'][0])
         
+        if self.is_mod_attr():
+            self.tokens.append('_meta.data_keys', ret['args'][0], unique=True)
+        
         if len(ret['args']) < 2:
             raise ValueError(f'Test not found in query syntax: {Convert.to_text(ret)}')
 
@@ -187,7 +195,7 @@ class DataQuery:
         self.context = context
     
     def set_data(self, data: T.Sequence[T.Any]) -> None:
-        self.data = data
+        self.data = list(data)
     
     def set_query(
         self, 
@@ -263,65 +271,47 @@ class DataQuery:
         if not self.context:
             raise RuntimeError('Context is not set to execute tests')
 
-        ret = self.get_result_prepared_data()
-        tokens = self.get_tokens(asc=(self.get_tokens_master_condition() == 'all'))
-        
-        # # Resolve Inner First
-        # token_masters = list(sorted([key_ for key_ in tokens.keys() if '_' not in str(key_) and str(key_) != '0']))
-        # for master_ in token_masters:
+        data = self.get_result_prepared_data()
+        is_all = self.get_tokens_master_condition() == 'all'
+        batch = []
 
-
-
-
-        for entry in tokens.values():
-            tests = Data.get(entry, 'tests', [])
-            batch = Convert.as_copied(ret)
-
-            for idx, test in enumerate(tests):
-                args = list(test['args'])
-                kwargs = dict(test['kwargs'])
-
-                args = Data.get(Data.prepend(test, 'args', [ret, self.context], extend=True), 'args', [])
-                kwargs = Data.get(test, 'kwargs', {})
-
-                if test['negate'] == True:
-                    ret = Ansible.filter_rejectattr(*args, **kwargs)
-                else:
-                    ret = Ansible.filter_selectattr(*args, **kwargs)
-
-        
-        # if Validate.filled(ret):
-        #     ret = Data.pluck(ret, 'value')
-                
-
-
-        #         if entry['cond'] == 'all':
-                    
-                
-        #             if Validate.blank(ret):
-        #                 break
+        for token in self.get_tokens().values():
+            results = self._exec_tests(token, data, self.context, self.is_mod_attr())
             
-        #     if Validate.blank(ret):
-        #         break
+            if Validate.filled(results):
+                batch.append(results)
+                if not is_all and self.is_first_result():
+                    break
         
-        # if Validate.blank(ret):
-        #     ret = ret_default
-        # elif Validate.truthy(self.cfg.get('settings.unique')):
-        #     ret = list(set(ret))
-
-        return ret
+        batch = list(sorted(self._flatten_test_batch(is_all, batch)))
+        
+        if Validate.blank(batch):
+            return ret_default
+        
+        if self.is_first_result():
+            return Convert.as_copied(self.data[batch[0]])
+        else:
+            return [item for idx, item in enumerate(self.data) if idx in batch]
     
     def get_query_segments(self) -> list:
         return self.query.split(' ')
 
-    def get_tokens(self, **kwargs) -> dict:
-        return Data.sort_keys_char_count(self.tokens.all(), '_', **kwargs) #type: ignore
+    def get_tokens(self) -> dict:
+        ret = self.tokens.all()
+        
+        if '_meta' in ret:
+            del ret['_meta']
+        
+        return dict(sorted(ret.items()))
+    
+    def _get_executor_tokens(self) -> dict:
+        return {'cond': self.get_tokens_master_condition(), 'sub': self.get_tokens()}
     
     def get_token_masters(self, exclude_main: bool = False) -> list:
         return list(sorted([key_ for key_ in self.tokens.keys() if '_' not in str(key_) and (not exclude_main or str(key_) != '0')]))
     
     def get_tokens_data_keys(self) -> list:
-        return list(set(self.tokens.get('*.tests.*.args.*.0')))
+        return self.tokens.get('_meta.data_keys')
     
     def get_default_return(self) -> T.Any:
         if self.cfg.get('settings.default'):
@@ -334,27 +324,30 @@ class DataQuery:
     def get_unpacked_data(self) -> list:
         return Convert.to_items(Convert.as_copied(self.data))
     
-    def get_result_prepared_data(self) -> list:
+    def get_executor_data(self) -> list:
         ret = self.get_unpacked_data()
         
         # Avoid errors for missing keys for wrapped jinja tests
-        if self.is_mod_attr():
-            ph = Factory.placeholder(mod='hashed')
-            data_keys = self.get_tokens_data_keys()
-            for idx, entry in enumerate(ret):
-                for key_ in data_keys:
-                    Data.set_(ret[idx], key_, Data.get(entry, key_, ph))
+        # if self.is_mod_attr():
+        #     ph = Factory.placeholder(mod='hashed')
+        #     data_keys = self.get_tokens_data_keys()
+        #     for idx, entry in enumerate(ret):
+        #         for key_ in data_keys:
+        #             Data.set_(ret[idx], key_, Data.get(entry, key_, ph))
 
         return ret
     
     def get_tokens_master_condition(self) -> str:
-        return self.tokens.get('0.cond', 'any')
+        return self.tokens.get('0.cond')
     
     def is_first_result(self) -> bool:
         return Validate.truthy(self.cfg.get('settings.first'))
     
     def is_mod_attr(self) -> bool:
         return Validate.is_enumeratable_of_mappings(self.data)
+    
+    def is_mode_debug(self) -> bool:
+        return self.cfg.get('settings.debug', False) == True
     
     def is_token_segment_operator_and(self, segment: str) -> bool:
         return segment in self.operators_and
@@ -373,6 +366,74 @@ class DataQuery:
 
     def should_token_batch_finalise(self) -> bool:
         return self.has_token_batch_args() or self.has_token_batch_kwargs()
+
+    @staticmethod
+    def _flatten_test_batch(is_all: bool, batch: list) -> list:
+        _flatten = Data.flatten(batch)
+        if Validate.blank(_flatten):
+            return []
+        
+        if len(batch) == 1:
+            return list(set(_flatten))
+        
+        if is_all:
+            return Data.intersect(*batch)
+        else:
+            return list(set(Data.flatten(batch)))
+
+    @staticmethod
+    def _exec_test(negate: bool, *args, **kwargs) -> list:
+        if negate:
+            ret = Ansible.filter_rejectattr(*args, **kwargs)
+        else:
+            ret = Ansible.filter_selectattr(*args, **kwargs)
+        
+        return Data.pluck(ret, 'key')
+    
+    @staticmethod
+    def _resolve_token_data_keys(token: dict) -> list[str]:
+        return Data.get(token, 'tests.*.args.*.0', [])
+
+    # @staticmethod
+    # def _resolve_test_eligible_data(token: dict, data: list[dict[str, T.Any]]) -> list[dict[str, T.Any]]:
+    #     token_data_keys = DataQuery._resolve_token_data_keys(token)
+    #     ret = []
+
+
+    #     return ret
+    
+    @staticmethod
+    def _exec_tests(token: dict, data: list[dict[str, T.Any]], context: Context, mod_attr: bool) -> list:
+        if Validate.blank(data):
+            return data
+        
+        tests = Data.get(token, 'tests', [])
+        if Validate.blank(tests):
+            return data
+        
+        batch = []
+        for test in tests:
+            args = list(test['args'])
+            kwargs = dict(test['kwargs'])
+
+            if mod_attr:
+                args.insert(0, data)
+            else:
+                args.insert(0, data)
+
+            args.insert(0, context)
+            kwargs = Data.get(test, 'kwargs', {})
+
+            batch.append(DataQuery._exec_test(test['negate'], *args, **kwargs))
+
+            if token['cond'] == 'all' and Validate.blank(Data.flatten(batch)):
+                batch = []
+                break
+
+            for sub_token in dict(test.get('subs', {})).values():
+                batch.append(DataQuery._exec_tests(sub_token, data, context, mod_attr))
+        
+        return DataQuery._flatten_test_batch(token['cond'] == 'all', batch)
 
     @staticmethod
     def is_extra_args(item: T.Any) -> bool:

@@ -46,13 +46,13 @@ def get(data: T.Iterable[T.Any], key: int|str, default: T.Any = None)-> T.Any:
 
     return ret
 
-def set_(data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], key: str, value: T.Any)-> T.Any:
+def set_(data: T.Iterable[T.Any], key: str, value: T.Any)-> T.Any:
     return __pydash().set_(data, key, value) #type: ignore
 
 def has(data: T.Any, key)-> bool:
     return __pydash().has(data, key)
 
-def forget(data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], *args: str)-> T.Any:
+def forget(data: T.Iterable[T.Any], *args: str)-> T.Any:
     for key_ in args:
         __pydash().unset(data, key_) #type: ignore
     
@@ -67,10 +67,10 @@ def invert(data):
 def flip(data):
     return invert(data)
 
-def walk(data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], callback = T.Callable):
+def walk(data: T.Iterable[T.Any], callback = T.Callable):
     return collections().map_(data, callback)
 
-def walk_values_deep(data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], callback = T.Callable):
+def walk_values_deep(data: T.Iterable[T.Any], callback = T.Callable):
     return __pydash().map_values_deep(data, callback)
 
 def _sequence_a_b(a: T.Sequence[T.Any], b: T.Sequence[T.Any], callback: T.Callable, *args: T.Sequence[T.Any])-> list:
@@ -92,72 +92,43 @@ def difference(a: T.Sequence[T.Any], b: T.Sequence[T.Any], *args: T.Sequence[T.A
 def intersect(a: T.Sequence, b: T.Sequence, *args: T.Sequence)-> list:
     return _sequence_a_b(a, b, lambda seq_a, seq_b: set(seq_a) & set(seq_b), *args) #type: ignore
 
-def append(
-    data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]],
-    key: str,
-    value: T.Any,
-    **kwargs
-)-> T.Any:
-    if Validate.is_mapping(data) or Validate.filled(key):
-        current = list(get(data, key, []))
-    else:
-        current = list(data)
-    
+def _append_or_prepend(data: T.Iterable[T.Any], key: str, value: T.Any, is_prepend: bool, **kwargs) -> T.Iterable[T.Any]:
     is_extend = kwargs.pop('extend', False)
     is_unique = kwargs.pop('unique', False)
     is_sorted = kwargs.pop('sort', False)
-
-    if is_extend:
-        current.extend(value)
-    else:
-        current.append(value)
-
-    if is_unique:
-        current = list(set(current))
-    
-    if is_sorted:
-        current = list(sorted(current))
     
     if Validate.is_mapping(data) or Validate.filled(key):
-        set_(data, key, current.copy())
+        current = Convert.as_copied(list(get(data, key, [])))
     else:
-        data = current.copy()
-
-    return data
-
-def prepend(
-    data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]],
-    key: str,
-    value: T.Any,
-    **kwargs
-)-> T.Any:
-    if Validate.is_mapping(data) or Validate.filled(key):
-        current = list(get(data, key, []))
-    else:
-        current = list(data)
-        
-    is_extend = kwargs.pop('extend', False)
-    is_unique = kwargs.pop('unique', False)
-    is_sorted = kwargs.pop('sort', False)
-
-    if is_extend:
-        for item in Convert.to_iterable(value):
+        current = Convert.as_copied(list(data))
+    
+    for item in Convert.to_iterable(value):
+        if is_prepend:
             current.insert(0, item)
-    else:
-        current.insert(0, value)
+        else:
+            current.append(item)
 
+        if not is_extend:
+            break
+    
     if is_unique:
         current = list(set(current))
     
     if is_sorted:
         current = list(sorted(current))
-    
+        
     if Validate.is_mapping(data) or Validate.filled(key):
-        set_(data, key, current.copy())
+        set_(data, key, current)
     else:
-        data = current.copy()
-
+        data = current
+    
     return data
+
+def append(data: T.Iterable[T.Any], key: str, value: T.Any, **kwargs) -> T.Iterable[T.Any]:
+    return _append_or_prepend(data, key, value, False, **kwargs)
+
+def prepend(data: T.Iterable[T.Any], key: str, value: T.Any, **kwargs) -> T.Iterable[T.Any]:
+    return _append_or_prepend(data, key, value, True, **kwargs)
 
 def dot(data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], prepend='', **kwargs)-> dict:
     is_main = Validate.blank(prepend)
