@@ -244,6 +244,9 @@ def is_type_of(data: T.Any, check: str)-> bool:
             raise ValueError(f"require, {check} [{req}] is not a valid type to check.")
 
 def is_type(data: T.Any, *args: str, **kwargs)-> bool:
+        if 'any' in args:
+            return True
+        
         check_attr = kwargs.pop('attr', '')
         check_fn = kwargs.pop('fn', '')
         check_all = kwargs.pop('all', False)
@@ -490,11 +493,23 @@ def is_ansible_hostvars(data: T.Any)-> bool:
 def is_ansible_hostvarsvars(data: T.Any)-> bool:
     return is_object(data) and is_type_module(data, 'ansible.vars.hostvars') and is_type_name(data, 'HostVarsVars')
 
-def is_ansible_lazytemplatedict(data: T.Any)-> bool:
-    return is_object(data) and is_type_module(data, 'ansible._internal._templating._lazy_containers') and is_type_name(data, '_AnsibleLazyTemplateDict')
+def is_ansible_lazy_container_module(data: T.Any)-> bool:
+    return is_object(data) and is_type_module(data, 'ansible._internal._templating._lazy_containers')
+
+def is_ansible_lazy_template_dict(data: T.Any)-> bool:
+    return is_ansible_lazy_container_module(data) and is_type_name(data, '_AnsibleLazyTemplateDict')
+
+def is_ansible_lazy_template_list(data: T.Any)-> bool:
+    return is_ansible_lazy_container_module(data) and is_type_name(data, '_AnsibleLazyTemplateList')
+
+def is_ansible_lazy_access_tuple(data: T.Any)-> bool:
+    return is_ansible_lazy_container_module(data) and is_type_name(data, '_AnsibleLazyAccessTuple')
+
+def is_ansible_lazy_template(data: T.Any)-> bool:
+    return is_ansible_lazy_template_dict(data) or is_ansible_lazy_template_list(data) or is_ansible_lazy_access_tuple(data)
 
 def is_ansible_mapping(data: T.Any)-> bool:
-    return is_ansible_hostvars(data) or is_ansible_hostvarsvars(data) or is_ansible_lazytemplatedict(data)
+    return is_ansible_hostvars(data) or is_ansible_hostvarsvars(data) or is_ansible_lazy_template_dict(data)
 
 def is_ansible_marker(data: T.Any)-> bool:
     return is_object(data) and is_type_module(data, 'ansible._internal._templating._jinja_common') and is_type_name(data, 'Marker')

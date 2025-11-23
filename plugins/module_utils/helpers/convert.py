@@ -178,6 +178,17 @@ def to_native(*args, **kwargs)-> str:
 def to_string(*args, **kwargs)-> str:
     return to_text(*args, **kwargs)
 
+def to_primitive(*args, **kwargs) -> T.Any:
+    ret = to_text(*args, **kwargs)
+    if Validate.str_is_yaml(ret):
+        ret = from_yaml(ret)
+        if Validate.is_mapping(ret):
+            return dict(ret)
+        else:
+            return list(ret)
+    else:
+        return ret
+
 def to_bytes(*args, **kwargs):
     from ansible.module_utils.common.text.converters import to_bytes
     return to_bytes(*args, **kwargs)
@@ -200,27 +211,43 @@ def from_cli(data, *args, **kwargs):
     else:
         return to_iterable(ret if as_stripped else data) if as_iterable else (ret if as_stripped else data)
 
-def from_ansible_template(templar, variable, **kwargs)-> T.Any:
+def __from_ansible_template(templar, variable, **kwargs) -> T.Any:
     from ansible.template import is_trusted_as_template, trust_as_template
-    extra_vars = kwargs.pop('extra_vars', {})
-    remove_extra_vars = kwargs.pop('remove_extra_vars', True)
-
+    
     if Validate.is_string(variable) and not is_trusted_as_template(variable):
         variable = trust_as_template(variable)
+    
+    variable = templar.template(variable, **kwargs)
+    
+    if Validate.is_mapping(variable):
+        return dict(variable)
+    elif Validate.is_enumeratable(variable):
+        return to_iterable(variable)
+    else:
+        return variable
+
+def from_ansible_template(templar, variable, **kwargs)-> T.Any:
+    extra_vars = kwargs.pop('extra_vars', {})
+    remove_extra_vars = kwargs.pop('remove_extra_vars', True)
     
     for var_key, var_value in extra_vars.items():
         templar.available_variables[var_key] = var_value
     
     if Validate.is_iterable(variable):
-        ret = Data.walk_values_deep(variable, lambda value_: templar.template(value_, **kwargs))
+        variable = Data.walk_values_deep(variable, lambda value_: __from_ansible_template(templar, value_, **kwargs))
     else:
-        ret = templar.template(variable, **kwargs)
+        variable = __from_ansible_template(templar, variable, **kwargs)
     
     if not Validate.falsy(remove_extra_vars):
         for var_key, var_value in extra_vars.items():
             del templar.available_variables[var_key]
     
-    return ret
+    if Validate.is_mapping(variable):
+        return dict(variable)
+    elif Validate.is_enumeratable(variable):
+        return to_iterable(variable)
+    else:
+        return variable
 
 def from_ansible(data: T.Any)-> T.Any:
     if Validate.is_mapping(data) or Validate.is_sequence(data):

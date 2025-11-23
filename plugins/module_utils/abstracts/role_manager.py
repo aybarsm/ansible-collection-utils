@@ -2,7 +2,7 @@ import typing as T
 from abc import ABC, abstractmethod
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.fluent import Fluent
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.validator import Validator
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Convert, Data, Str, Validate, Utils
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Convert, Data, Factory, Str, Validate, Utils
 from ansible.plugins.action import ActionBase
 from ansible.plugins.lookup import LookupBase
 
@@ -17,7 +17,6 @@ class RoleManager(ABC):
         self.container: Fluent = Fluent()
         self.args: Fluent = Fluent()
         self.vars: Fluent = Fluent()
-        self.host_vars: dict[str, Fluent] = {}
         self.cache: Fluent = Fluent()
         self.ret: Fluent = Fluent()
 
@@ -31,34 +30,26 @@ class RoleManager(ABC):
     
         self.set_op(args, vars)
         
-
         # if self._has_cache_file_path():
         #     self.cache = Cache.load(self._get_cache_file_path())
         #     self._meta_set('conf.cache.loaded', True)
 
-    def set_op(self, args: T.Mapping[str, T.Any], vars: T.Mapping[str, T.Any]):
+    def set_op(self, args: T.Mapping[str, T.Any], vars: T.Mapping[str, T.Any]) -> None:
         op = args.get('op')
         if Validate.blank(op):
             raise ValueError('Operation argument op value cannot be blank')
         
-        args = dict(self._template(args))
-        
         schema = self._get_validation_schema_operation(args, vars)
+        
         if Validate.filled(schema):
+            args = Convert.to_primitive(args)
             v = Validator(schema, allow_unknown = True)
             if v.validate(args) != True:
                 raise ValueError(v.error_message())
             args = v.normalized(args)
 
-        vars = dict(vars)
-        host_vars = dict(vars.get('hostvars', {}))
-        if 'hostvars' in vars:
-            del vars['hostvars']
-        
         self.args = Fluent(args)
         self.vars = Fluent(vars)
-        for host_, value_ in host_vars.items():
-            self.host_vars[host_] = Fluent(dict(value_))
 
         self._resolve_tags()
         self._resolve_role_name()
@@ -115,12 +106,33 @@ class RoleManager(ABC):
 
     def host(self, default: T.Any = None)-> T.Any:
         return self.vars.get('inventory_hostname', default)
+    
+    def inventory(self, **kwargs) -> list[str]:
+        inventory = list(self.vars.get('groups.all', []))
+        
+        if kwargs.pop('remote', False) == True:
+            inventory = Data.difference(inventory, ['vars'])
 
-    # def host_vars(self, host: str = '', key = '', default = None):
-    #     if Validate.blank(host):
-    #         host = self.host()
-    #     key = str(Str.start(key, 'hostvars.' + host + '.')).rstrip('.')
-    #     return self.vars(key, default)
+        return inventory
+
+    def host_vars(self, host: str, key: str, default: T.Any = None) -> T.Any:
+        return self.vars.get(Convert.to_data_key('hostvars', host, key), default)
+    
+    def host_ansible_facts(self, host: str, key: str, default: T.Any = None) -> T.Any:
+        return self.vars.get(Convert.to_data_key('hostvars', host, 'ansible_facts', key), default)
+
+    def domain(self, host: str = '')-> str:
+        if Validate.blank(host):
+            host = self.host()
+        
+        return self.host_var_default(host, '_domain', 'blrm')
+    
+    def host_var_default(self, host: str, key: str, default: T.Any) -> T.Any:
+        return Data.first_filled(
+            self.host_vars(host, key), 
+            self.vars.get(key), 
+            default
+        )
     
     # def host_vars_has(self, host: str, key: str):
     #     return self.vars_has(str(Str.start(key, 'hostvars.' + host + '.')).rstrip('.'))
@@ -165,14 +177,6 @@ class RoleManager(ABC):
     # def play_batch(self, default: T.Any = None)-> T.Any:
     #     return self.vars('ansible_play_batch', default)
     
-    # def inventory(self, **kwargs)-> list:
-    #     inventory = list(self.vars('groups.all', []))
-        
-    #     if kwargs.pop('remote', False) == True:
-    #         inventory = Data.difference(inventory, ['vars'])
-
-    #     return inventory
-    
     # def is_check_mode(self)-> bool:
     #     return self.vars('ansible_check_mode', False) == True
 
@@ -207,15 +211,7 @@ class RoleManager(ABC):
     # def is_host_in_play_batch(self, host: str)-> bool:
     #     return host in self.vars('ansible_play_batch', [])
     
-    # def domain(self, host: str = '')-> str:
-    #     if Validate.blank(host):
-    #         host = self.host()
-        
-    #     return Data.first_filled(
-    #         self.host_vars(host, '_domain'), 
-    #         self.vars('_domain'), 
-    #         'blrm'
-    #     )
+    
     
     # def _resolve_role_cfg(self, **kwargs)-> None:
     #     role_name = self.meta('role.name', '')
@@ -354,5 +350,5 @@ class RoleManager(ABC):
     #     return self.vars('blrm__facts.play', {})
 
     @abstractmethod
-    def _get_validation_schema_operation(self, args, vars)-> dict:
+    def _get_validation_schema_operation(self, args: T.Mapping[str, T.Any], vars: T.Mapping[str, T.Any]) -> dict:
         pass
