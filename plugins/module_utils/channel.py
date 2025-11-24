@@ -1,9 +1,6 @@
-import time
-import threading
-from typing import (
-    Callable, Iterable, Any, TypeVar, Generic, 
-    List, Set, Dict, Sequence, Optional, Mapping
-)
+import time, threading
+import typing as T
+
 from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Data, Helper, Str, Fluent, Validate
 
 JobAlias = str

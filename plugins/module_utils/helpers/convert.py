@@ -41,6 +41,12 @@ def as_ts_mod(ts: datetime.datetime, mod: str)-> str|int:
 def to_iterable(data)-> list:
     return list(data) if isinstance(data, (list, set, tuple)) else [data]
 
+def to_enumeratable(data: T.Any) -> list:
+    if Validate.is_mapping(data):
+        return list(dict(data).values())
+    
+    return list(data) if isinstance(data, (list, set, tuple)) else [data]
+
 def as_copied(data):
     import copy
 

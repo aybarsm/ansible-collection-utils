@@ -1,25 +1,28 @@
 import typing as T
+from typing_extensions import Self
+
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
     __data, __validate, __utils, __pydash,
 )
 
+CollectionItem = T.TypeVar('CollectionItem')
 Data = __data()
 Utils = __utils()
 Validate = __validate()
 
-class Collection(object):
+class Collection(T.Generic[CollectionItem]):
     on_save: T.Optional[T.Callable] = None
     on_destroy: T.Optional[T.Callable] = None
 
-    def __init__(self, items: list[T.Any]|tuple[T.Any]|set[T.Any] = []):
-        self.items: list[T.Any] = list(items).copy()
+    def __init__(self, items: list[CollectionItem] | tuple[CollectionItem] | set[CollectionItem] = []):
+        self.items: list[CollectionItem] = list(items).copy()
     
     def map(self, callback: T.Callable) -> None:
-        for idx_, val_ in self.items:
+        for idx_, val_ in enumerate(self.items):
             self.items[idx_] = Utils.call(callback, val_, idx_)
     
     def each(self, callback: T.Callable) -> None:
-        for idx_, val_ in self.items:
+        for idx_, val_ in enumerate(self.items):
             res = Utils.call(callback, val_, idx_, self)
             if res == False:
                 break
@@ -52,29 +55,32 @@ class Collection(object):
         kwargs['key'] = True
         return self.last(callback, default, **kwargs)
     
-    def sort_by(self, callback: str|T.Callable, reverse: bool = False) -> T.Any:
-        return Collection(self.pydash().sort_by(self.all(), callback, reverse))
+    def sort_by(self, callback: str|T.Callable, reverse: bool = False) -> Self:
+        return self.__class__(self.pydash().sort_by(self.all(), callback, reverse))
     
     def sort(self, callback: str|T.Callable, reverse: bool = False) -> T.Any:
         return self.sort_by(callback, reverse)
     
-    def append(self, value: T.Any, **kwargs) -> None:
-        self.items = Data.append(self.items, '', value, **kwargs)
+    def append(self, value: CollectionItem, **kwargs):
+        self.items = list(Data.append(self.items, '', value, **kwargs))
     
-    def prepend(self, value: T.Any, **kwargs) -> None:
-        self.items = Data.prepend(self.items, '', value, **kwargs)
+    def prepend(self, value: CollectionItem, **kwargs) -> None:
+        self.items = list(Data.prepend(self.items, '', value, **kwargs))
     
-    def push(self, value: T.Any, **kwargs) -> None:
+    def push(self, value: CollectionItem, **kwargs) -> None:
         self.append(value, **kwargs)
     
-    def pop(self) -> T.Any:
+    def add(self, value: CollectionItem, **kwargs) -> None:
+        self.append(value, **kwargs)
+    
+    def pop(self) -> CollectionItem:
         return self.items.pop()
 
     def pluck(self, key: str) -> list[T.Any]:
         return self.pydash().pluck(self.all(), key)
     
-    def all(self)-> list:
-        return self.items.copy()
+    def all(self)-> list[CollectionItem]:
+        return list(self.items.copy())
     
     def empty(self)-> bool:
         return Validate.blank(self.items)
@@ -85,8 +91,8 @@ class Collection(object):
     def pydash(self):
         return __pydash().collections
     
-    def copy(self):
-        return Collection(self.all())
+    def copy(self) -> Self:
+        return self.__class__(self.all())
     
     def __copy__(self):
         return self.copy()

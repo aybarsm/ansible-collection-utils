@@ -58,6 +58,14 @@ def __fluent():
     from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.fluent import Fluent
     return Fluent
 
+def __pipeline():
+    from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.pipeline import Pipeline
+    return Pipeline
+
+def __queue():
+    import ansible_collections.aybarsm.utils.plugins.module_utils.helpers.queue as HelperQueue
+    return HelperQueue
+
 def __str():
     import ansible_collections.aybarsm.utils.plugins.module_utils.helpers.str as HelperStr
     return HelperStr

@@ -29,17 +29,19 @@ class RoleManager(ABC):
             self.set_module(module)
     
         self.set_op(args, vars)
-        
-        # if self._has_cache_file_path():
-        #     self.cache = Cache.load(self._get_cache_file_path())
-        #     self._meta_set('conf.cache.loaded', True)
+
+        if Validate.object_has_method(self, '_calback_post_init'):
+            getattr(self, '_calback_post_init')()
 
     def set_op(self, args: T.Mapping[str, T.Any], vars: T.Mapping[str, T.Any]) -> None:
         op = args.get('op')
         if Validate.blank(op):
             raise ValueError('Operation argument op value cannot be blank')
+
+        if Validate.object_has_method(self, '_calback_pre_op'):
+            getattr(self, '_calback_pre_op')()
         
-        schema = self._get_validation_schema_operation(args, vars)
+        schema = self._get_operation_validation_schema(args, vars)
         
         if Validate.filled(schema):
             args = Convert.to_primitive(args)
@@ -51,8 +53,50 @@ class RoleManager(ABC):
         self.args = Fluent(args)
         self.vars = Fluent(vars)
 
-        self._resolve_tags()
         self._resolve_role_name()
+        self._resolve_role_tags()
+        self._resolve_role_cfg()
+
+    def _resolve_role_tags(self):
+        for type_ in ['run', 'skip']:
+            if not self.meta.has(f'tags.{type_}'):
+                continue
+
+            self.meta.set(f'tags.{type_}', list(self.vars.get(f'ansible_{type_}_tags', [])))
+
+            if self.args.filled(f'config.tags.{type_}'):
+                self.meta.append(f'tags.{type_}', self.args.get(f'config.tags.{type_}'), extend=True, unique=True)
+    
+    def _resolve_role_name(self):
+        if self.meta.has('role.name'):
+            return
+
+        role_name = self.__class__.__name__
+        role_name = Str.case_snake(str(role_name).strip()).strip().strip('_')
+        self.meta.set('role.name', role_name)
+    
+    def _resolve_role_cfg(self, **kwargs)-> None:
+        if self.meta.has('role.cfg'):
+            return
+        
+        role_name = self.meta.get('role.name', '')
+        if Validate.blank(role_name):
+            return
+        
+        host = self.host()
+        role_name = str(role_name).strip().strip('_').strip()
+        var_keys = Data.where(
+            list(set(self.vars.keys() + list(self.host_vars(host, '', {}).keys()))),
+            lambda entry: str(entry).startswith(f'{role_name}__'),
+            default=[],
+        )
+
+        for var_name in var_keys:
+            cfg_key = Str.chop_start(var_name, f'{role_name}__')
+            self.meta.set(
+                f'role.cfg.{cfg_key}',
+                self.host_var_default(host, var_name)
+            )
     
     def get_module(self)-> T.Optional[ActionBase|LookupBase]:
         for module_ in self.modules.keys():
@@ -75,22 +119,6 @@ class RoleManager(ABC):
         self.cache.save()
 
         return {'result': self.ret.all()}
-    
-    def _resolve_tags(self):
-        if not self.meta.has('tags.run'):
-            ansible_run_tags = list(self.vars.get('ansible_run_tags', []))
-            module_run_tags = list(self.args.get('tags.run', []))
-            self.meta.set('tags.run', list(set(ansible_run_tags + module_run_tags)))
-        
-        if not self.meta.has('tags.skip'):
-            ansible_skip_tags = list(self.vars.get('ansible_skip_tags', []))
-            module_skip_tags = list(self.args.get('tags.skip', []))
-            self.meta.set('tags.skip', list(set(ansible_skip_tags + module_skip_tags)))
-    
-    def _resolve_role_name(self):
-        role_name = self.__class__.__name__
-        role_name = Str.case_snake(str(role_name).strip()).strip().strip('_')
-        self.meta.set('role.name', role_name)
     
     def _template(self, data: T.Any, **kwargs)-> T.Any:
         if Validate.blank(data):
@@ -127,228 +155,29 @@ class RoleManager(ABC):
         
         return self.host_var_default(host, '_domain', 'blrm')
     
-    def host_var_default(self, host: str, key: str, default: T.Any) -> T.Any:
-        return Data.first_filled(
-            self.host_vars(host, key), 
-            self.vars.get(key), 
-            default
-        )
+    def host_var_default(self, host: str, key: str, default: T.Any = None) -> T.Any:
+        if self.vars.has(f'hostvars.{host}.{key}'):
+            return self.vars.get(f'hostvars.{host}.{key}')
+        else:
+            return self.vars.get(key, default)
     
-    # def host_vars_has(self, host: str, key: str):
-    #     return self.vars_has(str(Str.start(key, 'hostvars.' + host + '.')).rstrip('.'))
+    def tag_eligible(self, *args, **kwargs):
+        is_all = kwargs.pop('all', False) == True
+        tags_run = self.meta.get('tags.run', [])
+        tags_skip = self.meta.get('tags.skip', [])
+
+        if not is_all:
+            for tag in args:
+                if ('all' in tags_run or tag in tags_run) and tag not in tags_skip:
+                    return True
+            
+            return False
+
+        return Validate.filled(Data.intersect(tags_run, list(set(list(args) + ['all'])))) and Validate.blank(Data.intersect(tags_skip, args))
     
-    # def host_ansible_facts(self, host: str = '', key = '', default = None):
-    #     if Validate.blank(host):
-    #         host = self.host()
-    #     return self.vars(Str.start(Convert.to_data_key(key), f'hostvars.{host}.ansible_facts.'), default)
+    def is_op(self, op: str) -> bool:
+        return self.op('op') == op
     
-    # def host_role_vars(self, host, key, default = None):
-    #     meta_key = f'hosts.{host}.{key}'
-    #     if Data.has(self._meta, meta_key):
-    #         return self.meta(meta_key, default)
-        
-    #     key = Str.start(key, 'vars.')
-    #     key = self.args(key, None)
-    #     if key == None:
-    #         return default
-        
-    #     ret = self.host_vars(host, key, default) #type: ignore
-        
-    #     Data.set_(self._meta, meta_key, ret)
-
-    #     return ret
-
-    # def host_arg_vars(self, var: str, **kwargs)-> T.Any:
-    #     default = kwargs.pop('default', None)
-    #     var = self.args(f'vars.{var}', '')
-    #     if Validate.blank(var):
-    #         return default
-        
-    #     host = kwargs.pop('host', self.host())
-    #     append = kwargs.pop('append', [])
-    #     key_parts = ['hostvars', host, var]
-    #     if Validate.filled(append):
-    #         key_parts += list(append)
-
-    #     key = Convert.to_data_key(*key_parts)
-
-    #     return self.vars(key, default)
-    
-    # def play_batch(self, default: T.Any = None)-> T.Any:
-    #     return self.vars('ansible_play_batch', default)
-    
-    # def is_check_mode(self)-> bool:
-    #     return self.vars('ansible_check_mode', False) == True
-
-    # def is_op(self, op: str):
-    #     return self.op('op') == op
-
-    # def is_cache_loaded(self)-> bool:
-    #     return Validate.is_truthy(self.meta('conf.cache.loaded'))
-    
-    # def _has_cache_file_path(self)-> bool:
-    #     return Validate.filled(self._get_cache_file_path())
-    
-    # def _get_cache_file_path(self)-> str:
-    #     return self.args('play.cache_file', '')
-
-    # def tag_run_has(self, *terms: str, **kwargs)->bool:
-    #     return Validate.contains(self.meta('_.tags.run', []), *terms, **kwargs)
-    
-    # def tag_skip_has(self, *terms: str, **kwargs)->bool:
-    #     return Validate.contains(self.meta('_.tags.skip', []), *terms, **kwargs)
-    
-    # def mod_eligible(self, mod):
-    #     return self.tag_eligible(mod)
-    
-    # def tag_eligible(self, tag):
-    #     return self.tag_run_has('all', tag) and not self.tag_skip_has(tag)
-    
-    # @staticmethod
-    # def item_eligible(item: T.Mapping)-> bool:
-    #     return Data.get(item, '_skip', False) != True and Data.get(item, '_keep', True) != False
-    
-    # def is_host_in_play_batch(self, host: str)-> bool:
-    #     return host in self.vars('ansible_play_batch', [])
-    
-    
-    
-    # def _resolve_role_cfg(self, **kwargs)-> None:
-    #     role_name = self.meta('role.name', '')
-    #     if Validate.blank(role_name):
-    #         return
-        
-    #     host = self.host()
-    #     role_name = str(role_name).strip().strip('_').strip()
-    #     role_cfg = {
-    #         'main': {},
-    #         'host': {},
-    #         'all': {}
-    #     }
-
-    #     host_role_var_keys = Data.where(
-    #         list(self.host_vars(host=host, default = {}).keys()),
-    #         lambda var_name: str(var_name).startswith(f'{role_name}__')
-    #     )
-
-    #     for var_name in host_role_var_keys:
-    #         cfg_key = Str.chop_start(var_name, f'{role_name}__')
-    #         Data.set_(
-    #             role_cfg, 
-    #             f'host.{cfg_key}', 
-    #             self._template(self.host_vars(host=host, key=var_name))
-    #         )
-
-    #     main_role_var_keys = Data.where(
-    #         list(self.vars(default = {}).keys()),
-    #         lambda var_name: str(var_name).startswith(f'{role_name}__')
-    #     )
-
-    #     for var_name in main_role_var_keys:
-    #         cfg_key = Str.chop_start(var_name, f'{role_name}__')
-    #         Data.set_(role_cfg, f'main.{cfg_key}', self._template(self.vars(key=var_name)))
-        
-    #     role_cfg['all'] = Data.combine(role_cfg['main'], role_cfg['host'], recursive=True)
-        
-    #     self._meta_set('role.cfg', Convert.as_copied(role_cfg))
-
-    # def get_role_cfg(self, sub: str = 'all')-> Fluent:
-    #     if Validate.blank(self.meta('role.cfg', {})):
-    #         self._resolve_role_cfg()
-        
-    #     key_suffix = f'.{sub}' if sub in ['host', 'main', 'all'] else ''
-    #     return Fluent(self.meta(f'role.cfg{key_suffix}', {}))
-    
-    # def _lookup(self, name: str, *args, **kwargs):
-    #     if not self._action_module:
-    #         raise RuntimeError('Action module does not exist to perform this')
-        
-    #     flat_ret = kwargs.pop('flat_ret', False)
-    #     lookup = Data.get(self._container, f'lookup.{name}')
-    #     if Validate.blank(lookup):
-    #         from ansible.plugins.loader import lookup_loader
-    #         lookup = lookup_loader.get(
-    #             name,
-    #             loader=self._action_module._loader,
-    #             templar=self._action_module._templar,
-    #         )
-
-    #         Data.set_(self._container, f'lookup.{name}', Convert.as_copied(lookup))
-        
-    #     args = list(args)
-    #     kwargs = dict(kwargs)
-    #     kwargs['variables'] = Convert.as_copied(self.vars())
-
-    #     ret = lookup.run(args, **kwargs)
-    #     if Validate.truthy(flat_ret) and Validate.is_iterable(ret):
-    #         ret = list(ret)[0]
-
-    #     return ret
-    
-    # def _exec_cmd(self, *args, **kwargs):
-    #     if not self._action_module:
-    #         raise RuntimeError('Action module does not exist to perform this')
-        
-    #     return self._action_module._low_level_execute_command(*args, **kwargs)
-    
-    # def _exec_module(self, **kwargs):
-    #     if not self._action_module:
-    #         raise RuntimeError('Action module does not exist to perform this')
-        
-    #     kwargs = dict(kwargs)
-    #     kwargs['task_vars'] = self.vars()
-
-    #     return self._action_module._execute_module(**kwargs)
-
-    # def _async_status(self, job: T.Mapping, **kwargs):
-    #     if not self._action_module:
-    #         raise RuntimeError('Action module does not exist to perform this')
-        
-    #     is_cleanup = kwargs.pop('is_cleanup', False)
-    #     jid = Data.get(job, 'ansible_job_id')
-    #     async_dir = Utils.fs_dirname(Data.get(job, 'results_file'))
-
-    #     kwargs = dict(kwargs)
-    #     kwargs['module_name'] = 'ansible.builtin.async_status'
-    #     kwargs['module_args'] = {
-    #         'jid': jid,
-    #         '_async_dir': async_dir,
-    #     }
-
-    #     if is_cleanup:
-    #         kwargs['module_args']['mode'] = 'cleanup'
-
-    #     return self._exec_module(**kwargs)
-    
-    # def _async_cleanup(self, job: T.Mapping, **kwargs):
-    #     kwargs['is_cleanup'] = True
-
-    #     return self._async_status(job, **kwargs)
-
-    # def set_cache(self, cache: Fluent)-> None:
-    #     self.cache = Convert.as_copied(cache)
-    
-    # def get_action_module(self)-> T.Optional[ActionBase]:
-    #     return self._action_module
-
-    # def set_action_module(self, module: ActionBase)-> None:
-    #     self._action_module = module
-    
-    # def has_action_module(self)-> bool:
-    #     return Validate.filled(self._action_module)
-    
-    # def get_lookup_module(self)-> T.Optional[LookupBase]:
-    #     return self._lookup_module
-
-    # def set_lookup_module(self, module: LookupBase)-> None:
-    #     self._lookup_module = module
-    
-    # def has_lookup_module(self)-> bool:
-    #     return Validate.filled(self._lookup_module)
-
-    # def get_play_meta(self)-> T.Mapping:
-    #     return self.vars('blrm__facts.play', {})
-
     @abstractmethod
-    def _get_validation_schema_operation(self, args: T.Mapping[str, T.Any], vars: T.Mapping[str, T.Any]) -> dict:
+    def _get_operation_validation_schema(self, args: T.Mapping[str, T.Any], vars: T.Mapping[str, T.Any]) -> dict:
         pass
