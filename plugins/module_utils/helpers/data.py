@@ -10,12 +10,15 @@ Str = __str()
 Utils = __utils()
 Validate = __validate()
 
+def pydash():
+    return __pydash()
+
 def collections():
     return __pydash().collections
 
 def get(data: T.Iterable[T.Any], key: int|str, default: T.Any = None)-> T.Any:
     if not str(key) == '*' and not Validate.str_contains(str(key), '.*', '*.'):
-        return __pydash().get(data, key, default)
+        return pydash().get(data, key, default)
     
     skip_ = []
     ret = Convert.as_copied(data)
@@ -36,7 +39,7 @@ def get(data: T.Iterable[T.Any], key: int|str, default: T.Any = None)-> T.Any:
         elif segment != '*' and Validate.is_iterable_of_mappings(ret):
             ret = pluck(ret, segment)
         elif segment != '*' and Validate.is_mapping(ret):
-            ret = Convert.as_copied(__pydash().get(ret, segment))       
+            ret = Convert.as_copied(pydash().get(ret, segment))       
         elif segment == '*':
             ret = flatten(ret, levels=1)
         
@@ -47,22 +50,22 @@ def get(data: T.Iterable[T.Any], key: int|str, default: T.Any = None)-> T.Any:
     return ret
 
 def set_(data: T.Iterable[T.Any], key: str, value: T.Any)-> T.Any:
-    return __pydash().set_(data, key, value) #type: ignore
+    return pydash().set_(data, key, value) #type: ignore
 
 def has(data: T.Any, key)-> bool:
-    return __pydash().has(data, key)
+    return pydash().has(data, key)
 
 def forget(data: T.Iterable[T.Any], *args: str)-> T.Any:
     for key_ in args:
-        __pydash().unset(data, key_) #type: ignore
+        pydash().unset(data, key_) #type: ignore
     
     return data #type: ignore
 
 def pluck(data, key: int|str):
-    return __pydash().pluck(data, key)
+    return pydash().pluck(data, key)
 
 def invert(data):
-    return __pydash().invert(data)
+    return pydash().invert(data)
 
 def flip(data):
     return invert(data)
@@ -71,7 +74,7 @@ def walk(data: T.Iterable[T.Any], callback = T.Callable):
     return collections().map_(data, callback)
 
 def walk_values_deep(data: T.Iterable[T.Any], callback = T.Callable):
-    return __pydash().map_values_deep(data, callback)
+    return pydash().map_values_deep(data, callback)
 
 def _sequence_a_b(a: T.Sequence[T.Any], b: T.Sequence[T.Any], callback: T.Callable, *args: T.Sequence[T.Any])-> list:
     if not Validate.is_sequence(a) or not Validate.is_sequence(b):

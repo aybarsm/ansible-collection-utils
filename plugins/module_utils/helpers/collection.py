@@ -2,13 +2,12 @@ import typing as T
 from typing_extensions import Self
 
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __data, __validate, __utils, __pydash,
+    __data, __utils, 
 )
 
 CollectionItem = T.TypeVar('CollectionItem')
 Data = __data()
 Utils = __utils()
-Validate = __validate()
 
 class Collection(T.Generic[CollectionItem]):
     on_save: T.Optional[T.Callable] = None
@@ -27,36 +26,36 @@ class Collection(T.Generic[CollectionItem]):
             if res == False:
                 break
     
-    def where(self, callback: T.Callable, default: T.Any = None, **kwargs) -> T.Any:
-        return Data.where(self.all(), callback, default, **kwargs)
+    def where(self, callback: T.Callable, **kwargs) -> list[CollectionItem]:
+        return list(Data.where(self.all(), callback, [], **kwargs))
     
-    def reject(self, callback: T.Callable, default: T.Any = None, **kwargs) -> T.Any:
-        return Data.reject(self.all(), callback, default, **kwargs)
+    def reject(self, callback: T.Callable, **kwargs) -> list[CollectionItem]:
+        return list(Data.reject(self.all(), callback, [], **kwargs))
 
-    def first(self, callback: T.Callable, default: T.Any = None, **kwargs) -> T.Any:
-        return Data.first(self.all(), callback, default, **kwargs)
+    def first(self, callback: T.Callable, **kwargs) -> T.Optional[CollectionItem]:
+        return Data.first(self.all(), callback, None, **kwargs)
     
-    def last(self, callback: T.Callable, default: T.Any = None, **kwargs) -> T.Any:
-        return Data.last(self.all(), callback, default, **kwargs)
+    def last(self, callback: T.Callable, **kwargs) -> T.Optional[CollectionItem]:
+        return Data.last(self.all(), callback, None, **kwargs)
     
-    def where_key(self, callback: T.Callable, default: T.Any = None, **kwargs) -> T.Any:
+    def where_key(self, callback: T.Callable, **kwargs) -> list[int]:
         kwargs['key'] = True
-        return self.where(callback, default, **kwargs)
+        return list(Data.where(self.all(), callback, [], **kwargs))
     
-    def reject_key(self, callback: T.Callable, default: T.Any = None, **kwargs) -> T.Any:
+    def reject_key(self, callback: T.Callable, **kwargs) -> list[int]:
         kwargs['key'] = True
-        return self.reject(callback, default, **kwargs)
+        return list(Data.reject(self.all(), callback, [], **kwargs))
 
-    def first_key(self, callback: T.Callable, default: T.Any = None, **kwargs) -> T.Any:
+    def first_key(self, callback: T.Callable, **kwargs) -> T.Optional[int]:
         kwargs['key'] = True
-        return self.first(callback, default, **kwargs)
+        return Data.first(self.all(), callback, None, **kwargs)
     
-    def last_key(self, callback: T.Callable, default: T.Any = None, **kwargs) -> T.Any:
+    def last_key(self, callback: T.Callable, **kwargs) -> T.Optional[int]:
         kwargs['key'] = True
-        return self.last(callback, default, **kwargs)
+        return Data.last(self.all(), callback, None, **kwargs)
     
     def sort_by(self, callback: str|T.Callable, reverse: bool = False) -> Self:
-        return self.__class__(self.pydash().sort_by(self.all(), callback, reverse))
+        return self.__class__(Data.collections().sort_by(self.all(), callback, reverse))
     
     def sort(self, callback: str|T.Callable, reverse: bool = False) -> T.Any:
         return self.sort_by(callback, reverse)
@@ -77,19 +76,19 @@ class Collection(T.Generic[CollectionItem]):
         return self.items.pop()
 
     def pluck(self, key: str) -> list[T.Any]:
-        return self.pydash().pluck(self.all(), key)
+        return Data.pluck(self.all(), key)
     
     def all(self)-> list[CollectionItem]:
         return list(self.items.copy())
     
+    def count(self) -> int:
+        return len(self.items)
+    
     def empty(self)-> bool:
-        return Validate.blank(self.items)
+        return self.count() == 0
     
     def not_empty(self)-> bool:
         return not self.empty()
-    
-    def pydash(self):
-        return __pydash().collections
     
     def copy(self) -> Self:
         return self.__class__(self.all())

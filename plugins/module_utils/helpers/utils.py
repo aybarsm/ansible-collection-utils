@@ -90,12 +90,18 @@ def callable_positional_argument_count(callback):
         if param.kind in (__inspect().Parameter.POSITIONAL_ONLY, __inspect().Parameter.POSITIONAL_OR_KEYWORD)
     ))
 
-def call(callback: T.Callable, *args, **kwargs)-> T.Any:
+def __call(callback: T.Callable, *args, **kwargs)-> T.Any:
     if callable_args_name(callback) == None:
         take = int(min([len(list(args)), callable_positional_argument_count(callback)]))
         args = list(list(args)[:take])
 
     return callback(*args, **kwargs) if callable_kwargs_name(callback) != None else callback(*args)
+
+def call(callback: T.Callable, *args, **kwargs)-> T.Any:
+    return __call(callback, *args, **kwargs)
+
+async def call_async(callback: T.Callable, *args, **kwargs)-> T.Any:
+    return await __call(callback, *args, **kwargs)
 ### END: Callable
 
 ### BEGIN: FS

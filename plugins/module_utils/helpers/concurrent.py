@@ -1,59 +1,89 @@
+import time, threading
 import typing as T
-import asyncio, functools
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __convert
-)
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.task import Task, TaskCollection, TaskId, JobCollection
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.fluent import Fluent
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.task import Task
-
-Convert = __convert()
 
 class Concurrent(object):
-    def __init__(self, tasks: T.Iterable[Task] = []):
+    def __init__(self, tasks: TaskCollection):
         self.data: Fluent = Fluent()
-        self.tasks: list[Task] = Convert.to_enumeratable(tasks)
+        self.tasks: TaskCollection = tasks
 
-    def add_task(self, task: Task):
-        self.tasks.append(task)
-        return self
+        self._lock = threading.Lock()
+        self.jobs: JobCollection = self.tasks.get_job_collection()
 
-    async def _execute_task_logic(self, task: Task, previous_result=None):
-        if task.is_async:
-            result = await task.callback(task.id, self)
-        else:
-            loop = asyncio.get_running_loop()
-            result = await loop.run_in_executor(None, task.id, self)
-
-        if task.on_status:
-            while True:
-                loop = asyncio.get_running_loop()
-                is_ready = await loop.run_in_executor(None, functools.partial(task.on_status, task.id, self))
-                
-                if is_ready:
-                    break
-                
-                await asyncio.sleep(task.poll)
-
-        if task.on_complete:
-            if asyncio.iscoroutinefunction(task.on_complete):
-                await task.on_complete(task.id, self)
-            else:
-                task.on_complete(task.id, self)
-                
-        return result
-
-    async def run_pipeline(self):
-        results = []
-        last_result = None
+    def wait(self):
+        if self.tasks.empty():
+            return
         
-        for task in self.tasks:
-            last_result = await self._execute_task_logic(task, last_result)
-            results.append(last_result)
+        self._start()
+
+        with self._lock:
+            if not self.jobs.has_active():
+                return
             
-        return results
+        self._poll()
 
-    def run_background(self):
-        return asyncio.create_task(self.run_pipeline())
+    def _start(self):
+        for task in self.tasks.all():
+            job_id = self._get_job_id(job_callable)
+            job_alias = getattr(job_callable, '__alias__')
+            try:
+                job_result = job_callable(job_id, self)
+                if self.on_start:
+                    self.on_start(job_id, job_result, self)
 
-    async def wait(self):
-        return await self.run_pipeline()
+                with self._lock:
+                    self.active_jobs.append(job_id)
+                    self.job_aliases[job_id] = job_alias
+
+            except Exception as e:
+                with self._lock:
+                    self.failed_jobs.add(job_id)
+
+    def _poll(self):
+        def has_active_jobs():
+            with self._lock:
+                return self.jobs.has_active()
+
+        while has_active_jobs():
+            with self._lock:
+                active_jobs = list(self.jobs.active)
+
+            for task_id in active_jobs:
+                if not 
+                try:
+                    is_finished = self.on_status(job_id, self)
+
+                    if is_finished:
+                        self._completed(job_id)
+                except Exception as e:
+                    message = f"[ERROR] Failed to get status for job {job_id}"
+                    
+                    job_alias = self.get_job_alias(job_id)
+                    if Validate.filled(job_alias):
+                        message += f"[{job_alias}]"
+                    
+                    raise RuntimeError(f"{message}: {e}")
+
+            if get_active_job_count() > 0:
+                time.sleep(self.poll)
+
+    def _completed(self, job_id: JobId):
+        if self.on_complete == None:
+            return
+        
+        try:
+            self.on_complete(job_id, self)
+        except Exception as e:
+            message = f"[ERROR] 'on_complete' callback failed for {job_id}"
+            
+            job_alias = self.get_job_alias(job_id)
+            if Validate.filled(job_alias):
+                message += f"[{job_alias}]"
+            
+            raise RuntimeError(f"{message}: {e}")
+
+        with self._lock:
+            if job_id in self.active_jobs:
+                self.active_jobs.remove(job_id)
+                self.completed_jobs.add(job_id)
