@@ -1,7 +1,8 @@
-import typing as T
-import datetime
+import typing as t
+import types as t
+import datetime, inspect
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __ansible, __data, __factory, __str, __utils, __validate, __ipaddress, __hashlib
+    __ansible, __data, __factory, __str, __types, __utils, __validate, __ipaddress, __hashlib
 )
 
 Ansible = __ansible()
@@ -11,13 +12,16 @@ Str = __str()
 Utils = __utils()
 Validate = __validate()
 
-def to_pydash(data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]])-> dict|list:
+TYPE_ENUMERATABLE = __types().ENUMERATABLE
+TYPE_ENUM_CALLABLE_PARAMETER_KIND = __types().ENUM_CALLABLE_PARAMETER_KIND
+
+def to_pydash(data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]])-> dict|list:
     if Validate.is_sequence(data):
         return list(data)
     else:
         return dict(data)
 
-def to_md5(data: T.Any)-> str:
+def to_md5(data: t.Any)-> str:
     return __hashlib().md5(str(to_text(data)).encode()).hexdigest()
 
 def as_ts_mod(ts: datetime.datetime, mod: str)-> str|int:
@@ -41,7 +45,7 @@ def as_ts_mod(ts: datetime.datetime, mod: str)-> str|int:
 def to_iterable(data)-> list:
     return list(data) if isinstance(data, (list, set, tuple)) else [data]
 
-def to_enumeratable(data: T.Any) -> list:
+def to_enumeratable(data: t.Any) -> list:
     if Validate.is_mapping(data):
         return list(dict(data).values())
     
@@ -62,7 +66,7 @@ def as_copied(data):
     
     return data
 
-def from_mapping_to_callable(data: T.Mapping[str, T.Any], **kwargs)-> T.Callable:
+def from_mapping_to_callable(data: t.Mapping[str, t.Any], **kwargs)-> t.Callable:
     no_dot = kwargs.pop('no_dot', False)
     
     if no_dot:
@@ -106,7 +110,7 @@ def to_safe_json(data):
     # Fallback
     return f"<unsupported type: {type(data)}>"
 
-def to_url_encode(data: T.Mapping[str, T.Any], **kwargs)-> str:
+def to_url_encode(data: t.Mapping[str, t.Any], **kwargs)-> str:
     import urllib.parse
     
     data = dict(data)
@@ -184,7 +188,7 @@ def to_native(*args, **kwargs)-> str:
 def to_string(*args, **kwargs)-> str:
     return to_text(*args, **kwargs)
 
-def to_primitive(*args, **kwargs) -> T.Any:
+def to_primitive(*args, **kwargs) -> t.Any:
     ret = to_text(*args, **kwargs)
     if Validate.str_is_yaml(ret):
         ret = from_yaml(ret)
@@ -217,7 +221,7 @@ def from_cli(data, *args, **kwargs):
     else:
         return to_iterable(ret if as_stripped else data) if as_iterable else (ret if as_stripped else data)
 
-def __from_ansible_template(templar, variable, **kwargs) -> T.Any:
+def __from_ansible_template(templar, variable, **kwargs) -> t.Any:
     from ansible.template import is_trusted_as_template, trust_as_template
     
     if Validate.is_string(variable) and not is_trusted_as_template(variable):
@@ -232,7 +236,7 @@ def __from_ansible_template(templar, variable, **kwargs) -> T.Any:
     else:
         return variable
 
-def from_ansible_template(templar, variable, **kwargs)-> T.Any:
+def from_ansible_template(templar, variable, **kwargs)-> t.Any:
     extra_vars = kwargs.pop('extra_vars', {})
     remove_extra_vars = kwargs.pop('remove_extra_vars', True)
     
@@ -255,26 +259,26 @@ def from_ansible_template(templar, variable, **kwargs)-> T.Any:
     else:
         return variable
 
-def from_ansible(data: T.Any)-> T.Any:
+def from_ansible(data: t.Any)-> t.Any:
     if Validate.is_mapping(data) or Validate.is_sequence(data):
         return from_yaml(to_native(data))
     
     return data
 
 def to_items(
-    data: T.Sequence[T.Any]|T.Mapping[T.Any, T.Any],
+    data: t.Sequence[t.Any]|t.Mapping[t.Any, t.Any],
     key_name: str = 'key',
     value_name: str = 'value',
-)-> list[dict[str, T.Any]]:
+)-> list[dict[str, t.Any]]:
     iteratee = dict(data).items() if Validate.is_mapping(data) else enumerate(to_iterable(data))
     return [{key_name: key_, value_name: val_} for key_, val_ in iteratee]
 
 def from_items(
-    data: T.Sequence[T.Mapping[str, T.Any]],
+    data: t.Sequence[t.Mapping[str, t.Any]],
     key_name: str = 'key',
     value_name: str = 'value',
     **kwargs,
-)-> dict[str, T.Any]:
+)-> dict[str, t.Any]:
     default_key_prefix = kwargs.pop('default_key_prefix', 'unknown')
     default_value = kwargs.pop('default_value')
     default_key = f'{default_key_prefix}_{Factory.placeholder(mod='hashed')}'
@@ -287,10 +291,10 @@ def from_items(
 ### END: Ansible
 
 ### BEGIN: Type
-def to_type_name(data: T.Any)-> str:
+def to_type_name(data: t.Any)-> str:
     return type(data).__name__
 
-def to_type_module(data: T.Any)-> str:
+def to_type_module(data: t.Any)-> str:
     return type(data).__name__
 ### END: Type
 
@@ -414,7 +418,7 @@ def as_ip_segments(data: str)-> dict:
         }
     }
 
-def as_ip_segments_validated(data, on_invalid: T.Optional[T.Callable] = None, **kwargs)-> list:
+def as_ip_segments_validated(data, on_invalid: t.Optional[t.Callable] = None, **kwargs)-> list:
     ret = Data.map(to_iterable(data), lambda ip_: as_ip_segments(ip_))
 
     if Validate.filled(ret) and Validate.filled(on_invalid):
@@ -482,7 +486,7 @@ def from_json(data: str, **kwargs)-> dict|list:
     return json.loads(data, **kwargs)
 
 def to_json(
-    data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], 
+    data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], 
     **kwargs,
 )-> str:
     import json
@@ -495,7 +499,7 @@ def from_yaml(data: str)-> dict|list:
     return yaml.unsafe_load(data)
 
 def to_yaml(
-    data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], 
+    data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], 
     **kwargs,
 )-> str:
     import yaml
@@ -507,7 +511,7 @@ def from_lua(data: str, **kwargs)-> dict|list:
     import luadata
     return luadata.unserialize(data, **kwargs)
 
-def to_lua(data: T.Mapping|T.Sequence, **kwargs)-> str:
+def to_lua(data: t.Mapping|t.Sequence, **kwargs)-> str:
     import luadata
     return luadata.serialize(data, **kwargs)
 ### END: Lua
@@ -517,13 +521,13 @@ def from_toml(data: str)-> dict|list:
     from tomlkit import parse
     return parse(data)
 
-def to_toml(data: T.Mapping, **kwargs)-> str:
+def to_toml(data: t.Mapping, **kwargs)-> str:
     from tomlkit import dumps
     return dumps(data, **kwargs)
 ### END: Toml
 
 ### BEGIN: Toml
-def from_base64(data: T.Any, **kwargs)-> str|bytes:
+def from_base64(data: t.Any, **kwargs)-> str|bytes:
     import base64
     decode_as = kwargs.pop('decode', 'utf-8')
 
@@ -534,7 +538,7 @@ def from_base64(data: T.Any, **kwargs)-> str|bytes:
     
     return ret
 
-def to_base64(data: T.Any, **kwargs)-> str|bytes:
+def to_base64(data: t.Any, **kwargs)-> str|bytes:
     import base64
     decode_as = kwargs.pop('decode', 'utf-8')
     encode_as = kwargs.pop('encode', 'utf-8')
@@ -589,3 +593,74 @@ def from_file_known_hosts(file_content: str)-> list[dict[str,str]]:
     
     return ret
 ### END: Roles
+
+### BEGIN: Callable
+def to_callable_signature(callback: t.Callable) -> inspect.Signature:
+    return inspect.signature(callback)
+
+def to_callable_parameters(
+    callback: t.Callable,
+    kinds: TYPE_ENUMERATABLE[TYPE_ENUM_CALLABLE_PARAMETER_KIND] = []
+) -> t.MappingProxyType[str, t.Any]:
+    ret = to_callable_signature(callback).parameters
+
+    if kinds:
+        ret = Data.where(
+            ret, 
+            lambda param: Validate.callable_parameter_is_kind(param, *kinds),
+            {},
+        )
+
+    return t.MappingProxyType(ret)
+
+def as_callable_segments(callback: t.Callable) -> t.MappingProxyType[str, t.Any]:
+    sig = to_callable_signature(callback)
+    is_named = callback.__name__ != '<lambda>'
+    ret = {
+        'name': callback.__name__ if is_named else None,
+        'is': {
+            'named': is_named,
+            'anonymous': not is_named,
+        },
+        'has': {
+            'params': {
+                'pos': False,
+                'key': False,
+                'any': False,
+                'empty': False,
+                'unknown': False,
+                'keyables': False,
+            },
+        },
+        'params': {
+            'pos': [],
+            'key': [],
+            'any': [],
+            'empty': [],
+            'unknown': [],
+            'keyables': [],
+        },
+    }
+
+    for name, param in sig.parameters.items():
+        param.default()
+        if Validate.callable_parameter_is_kind(param, 'positional', 'positional_only'):
+            rel_key = 'pos'
+        elif Validate.callable_parameter_is_kind(param, 'keyword', 'keyword_only'):
+            rel_key = 'key'
+        elif Validate.callable_parameter_is_kind(param, 'positional_or_keyword'):
+            rel_key = 'any'
+        elif Validate.callable_parameter_is_kind(param, 'empty'):
+            rel_key = 'empty'
+        else:
+            rel_key = 'unknown'
+        
+        ret['params'][rel_key].append({'name': name, 'param': param}) 
+        ret['has']['params'][rel_key] = True
+
+        if rel_key in ['key', 'any']:
+            ret['params']['keyables'].append(name)
+            ret['has']['params']['keyables'] = True
+
+    return t.MappingProxyType(ret)
+### END: Callable

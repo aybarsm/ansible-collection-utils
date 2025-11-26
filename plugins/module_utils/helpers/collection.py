@@ -1,84 +1,85 @@
-import typing as T
+import typing as t
 from typing_extensions import Self
-
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
+    T, ENUMERATABLE
+)
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
     __data, __utils, 
 )
 
-CollectionItem = T.TypeVar('CollectionItem')
 Data = __data()
 Utils = __utils()
 
-class Collection(T.Generic[CollectionItem]):
-    on_save: T.Optional[T.Callable] = None
-    on_destroy: T.Optional[T.Callable] = None
+class Collection(t.Generic[T]):
+    on_save: t.Optional[t.Callable] = None
+    on_destroy: t.Optional[t.Callable] = None
 
-    def __init__(self, items: list[CollectionItem] | tuple[CollectionItem] | set[CollectionItem] = []):
-        self.items: list[CollectionItem] = list(items).copy()
+    def __init__(self, items: ENUMERATABLE):
+        self.items: list[T] = list(items).copy()
     
-    def map(self, callback: T.Callable) -> None:
+    def map(self, callback: t.Callable) -> None:
         for idx_, val_ in enumerate(self.items):
             self.items[idx_] = Utils.call(callback, val_, idx_)
     
-    def each(self, callback: T.Callable) -> None:
+    def each(self, callback: t.Callable) -> None:
         for idx_, val_ in enumerate(self.items):
             res = Utils.call(callback, val_, idx_, self)
             if res == False:
                 break
     
-    def where(self, callback: T.Callable, **kwargs) -> list[CollectionItem]:
+    def where(self, callback: t.Callable, **kwargs) -> list[T]:
         return list(Data.where(self.all(), callback, [], **kwargs))
     
-    def reject(self, callback: T.Callable, **kwargs) -> list[CollectionItem]:
+    def reject(self, callback: t.Callable, **kwargs) -> list[T]:
         return list(Data.reject(self.all(), callback, [], **kwargs))
 
-    def first(self, callback: T.Callable, **kwargs) -> T.Optional[CollectionItem]:
+    def first(self, callback: t.Callable, **kwargs) -> t.Optional[T]:
         return Data.first(self.all(), callback, None, **kwargs)
     
-    def last(self, callback: T.Callable, **kwargs) -> T.Optional[CollectionItem]:
+    def last(self, callback: t.Callable, **kwargs) -> t.Optional[T]:
         return Data.last(self.all(), callback, None, **kwargs)
     
-    def where_key(self, callback: T.Callable, **kwargs) -> list[int]:
+    def where_key(self, callback: t.Callable, **kwargs) -> list[int]:
         kwargs['key'] = True
         return list(Data.where(self.all(), callback, [], **kwargs))
     
-    def reject_key(self, callback: T.Callable, **kwargs) -> list[int]:
+    def reject_key(self, callback: t.Callable, **kwargs) -> list[int]:
         kwargs['key'] = True
         return list(Data.reject(self.all(), callback, [], **kwargs))
 
-    def first_key(self, callback: T.Callable, **kwargs) -> T.Optional[int]:
+    def first_key(self, callback: t.Callable, **kwargs) -> t.Optional[int]:
         kwargs['key'] = True
         return Data.first(self.all(), callback, None, **kwargs)
     
-    def last_key(self, callback: T.Callable, **kwargs) -> T.Optional[int]:
+    def last_key(self, callback: t.Callable, **kwargs) -> t.Optional[int]:
         kwargs['key'] = True
         return Data.last(self.all(), callback, None, **kwargs)
     
-    def sort_by(self, callback: str|T.Callable, reverse: bool = False) -> Self:
+    def sort_by(self, callback: str | t.Callable, reverse: bool = False) -> Self:
         return self.__class__(Data.collections().sort_by(self.all(), callback, reverse))
     
-    def sort(self, callback: str|T.Callable, reverse: bool = False) -> T.Any:
+    def sort(self, callback: str | t.Callable, reverse: bool = False) -> t.Any:
         return self.sort_by(callback, reverse)
     
-    def append(self, value: CollectionItem, **kwargs):
+    def append(self, value: T, **kwargs) -> None:
         self.items = list(Data.append(self.items, '', value, **kwargs))
     
-    def prepend(self, value: CollectionItem, **kwargs) -> None:
+    def prepend(self, value: T, **kwargs) -> None:
         self.items = list(Data.prepend(self.items, '', value, **kwargs))
     
-    def push(self, value: CollectionItem, **kwargs) -> None:
+    def push(self, value: T, **kwargs) -> None:
         self.append(value, **kwargs)
     
-    def add(self, value: CollectionItem, **kwargs) -> None:
+    def add(self, value: T, **kwargs) -> None:
         self.append(value, **kwargs)
     
-    def pop(self) -> CollectionItem:
+    def pop(self) -> T:
         return self.items.pop()
 
-    def pluck(self, key: str) -> list[T.Any]:
+    def pluck(self, key: str) -> list[t.Any]:
         return Data.pluck(self.all(), key)
     
-    def all(self)-> list[CollectionItem]:
+    def all(self)-> list[T]:
         return list(self.items.copy())
     
     def count(self) -> int:
@@ -92,6 +93,12 @@ class Collection(T.Generic[CollectionItem]):
     
     def copy(self) -> Self:
         return self.__class__(self.all())
+    
+    def indexes(self) -> set[int]:
+        return set(range(0, len(self.items) - 1))
+    
+    def keys(self) -> set[int]:
+        return self.indexes()
     
     def __copy__(self):
         return self.copy()

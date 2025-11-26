@@ -1,4 +1,4 @@
-import typing as T
+import typing as t
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
     __convert, __data, __validate, __utils, __pydash,
 )
@@ -9,23 +9,23 @@ Utils = __utils()
 Validate = __validate()
 
 class Fluent(object):
-    on_save: T.Optional[T.Callable] = None
-    on_destroy: T.Optional[T.Callable] = None
+    on_save: t.Optional[t.Callable] = None
+    on_destroy: t.Optional[t.Callable] = None
 
-    def __init__(self, data: T.Mapping[T.Any, T.Any] = {}):
-        self.data: dict[T.Any, T.Any] = dict(data).copy()
+    def __init__(self, data: t.Mapping[t.Any, t.Any] = {}):
+        self.data: dict[t.Any, t.Any] = dict(data).copy()
     
-    def get(self, key: str, default: T.Any = None)-> T.Any:
+    def get(self, key: str, default: t.Any = None)-> t.Any:
         return Data.get(self.data, key, default)
     
-    def get_filled(self, key: str, default, **kwargs)-> T.Any:
+    def get_filled(self, key: str, default, **kwargs)-> t.Any:
         if not self.has(key):
             return default
         
         ret = self.get(key)
         return default if not Validate.filled(ret, **kwargs) else ret
     
-    def set(self, key: str, value: T.Any)-> dict:
+    def set(self, key: str, value: t.Any)-> dict:
         Data.set_(self.data, key, value)
         return self.data
     
@@ -68,7 +68,7 @@ class Fluent(object):
         self.data = dict(Data.prepend(self.data, key, value, **kwargs))
         return self.data
     
-    def pop(self, key: str, default: T.Any = None) -> T.Any:
+    def pop(self, key: str, default: t.Any = None) -> t.Any:
         current = list(self.get(key, []))
         
         if Validate.filled(current):
@@ -80,31 +80,31 @@ class Fluent(object):
 
         return ret
 
-    def where(self, callback: T.Callable, default: T.Any = None, **kwargs) -> T.Any:
+    def where(self, callback: t.Callable, default: t.Any = None, **kwargs) -> t.Any:
         return Data.where(self.all(), callback, default, **kwargs)
     
-    def reject(self, callback: T.Callable, default: T.Any = None, **kwargs) -> T.Any:
+    def reject(self, callback: t.Callable, default: t.Any = None, **kwargs) -> t.Any:
         return Data.reject(self.all(), callback, default, **kwargs)
 
-    def first(self, callback: T.Callable, default: T.Any = None, **kwargs) -> T.Any:
+    def first(self, callback: t.Callable, default: t.Any = None, **kwargs) -> t.Any:
         return Data.first(self.all(), callback, default, **kwargs)
     
-    def last(self, callback: T.Callable, default: T.Any = None, **kwargs) -> T.Any:
+    def last(self, callback: t.Callable, default: t.Any = None, **kwargs) -> t.Any:
         return Data.last(self.all(), callback, default, **kwargs)
     
-    def where_key(self, callback: T.Callable, default: T.Any = None, **kwargs) -> T.Any:
+    def where_key(self, callback: t.Callable, default: t.Any = None, **kwargs) -> t.Any:
         kwargs['key'] = True
         return self.where(callback, default, **kwargs)
     
-    def reject_key(self, callback: T.Callable, default: T.Any = None, **kwargs) -> T.Any:
+    def reject_key(self, callback: t.Callable, default: t.Any = None, **kwargs) -> t.Any:
         kwargs['key'] = True
         return self.reject(callback, default, **kwargs)
 
-    def first_key(self, callback: T.Callable, default: T.Any = None, **kwargs) -> T.Any:
+    def first_key(self, callback: t.Callable, default: t.Any = None, **kwargs) -> t.Any:
         kwargs['key'] = True
         return self.first(callback, default, **kwargs)
     
-    def last_key(self, callback: T.Callable, default: T.Any = None, **kwargs) -> T.Any:
+    def last_key(self, callback: t.Callable, default: t.Any = None, **kwargs) -> t.Any:
         kwargs['key'] = True
         return self.last(callback, default, **kwargs)
 
@@ -114,7 +114,7 @@ class Fluent(object):
     def all(self)-> dict:
         return self.data.copy()
     
-    def items(self, key_name: str = 'key', value_name: str = 'value',)-> list[dict[str, T.Any]]:
+    def items(self, key_name: str = 'key', value_name: str = 'value',)-> list[dict[str, t.Any]]:
         return Convert.to_items(self.all(), key_name, value_name)
 
     def only_with(self, *args, **kwargs):
@@ -135,7 +135,7 @@ class Fluent(object):
     def copy(self):
         return Fluent(self.all())
     
-    def combine(self, data: T.Mapping, key: str, **kwargs)-> None:
+    def combine(self, data: t.Mapping, key: str, **kwargs)-> None:
         if Validate.blank(key):
             self.data = Data.combine(self.all(), dict(data), **kwargs)
         else:

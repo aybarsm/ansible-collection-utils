@@ -1,4 +1,4 @@
-import typing as T
+import typing as t
 import time
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
     __ansible, __convert, __data, __utils, __validate
@@ -12,7 +12,7 @@ Utils = __utils()
 Validate = __validate()
 
 class DataQueryExecutor(DataQuery):
-    def execute(self) -> T.Any:
+    def execute(self) -> t.Any:
         if self.is_mode_debug():
             start = time.perf_counter()
 
@@ -47,7 +47,7 @@ class DataQueryExecutor(DataQuery):
 
         return ret
 
-    def _execute_token_group(self, data: list[dict[str, T.Any]], token_group: dict[str, T.Any]) -> list[dict[str, T.Any]]:
+    def _execute_token_group(self, data: list[dict[str, t.Any]], token_group: dict[str, t.Any]) -> list[dict[str, t.Any]]:
         if Validate.blank(data):
             return []
 
@@ -60,7 +60,7 @@ class DataQueryExecutor(DataQuery):
         
         return data
 
-    def _execute_condition_all(self, data: list[dict[str, T.Any]], queue: list[dict[str, T.Any]]) -> list[dict[str, T.Any]]:
+    def _execute_condition_all(self, data: list[dict[str, t.Any]], queue: list[dict[str, t.Any]]) -> list[dict[str, t.Any]]:
         current_data = data
 
         for item in queue:
@@ -74,7 +74,7 @@ class DataQueryExecutor(DataQuery):
 
         return current_data
 
-    def _execute_condition_any(self, data: list[dict[str, T.Any]], queue: list[dict[str, T.Any]]) -> list[dict[str, T.Any]]:
+    def _execute_condition_any(self, data: list[dict[str, t.Any]], queue: list[dict[str, t.Any]]) -> list[dict[str, t.Any]]:
         results = []
         candidates = Convert.as_copied(data)
         
@@ -98,7 +98,7 @@ class DataQueryExecutor(DataQuery):
         else:
             return [item for item in data if item['key'] in set(results)]
 
-    def _execute_test(self, data: list[dict[str, T.Any]], test: dict[str, T.Any]) -> list[dict[str, T.Any]]:
+    def _execute_test(self, data: list[dict[str, t.Any]], test: dict[str, t.Any]) -> list[dict[str, t.Any]]:
         args = list(test['args'])
         kwargs = dict(test['kwargs'])
         
@@ -132,11 +132,11 @@ class DataQueryExecutor(DataQuery):
         return Convert.to_items(Convert.as_copied(self.data))
     
     @staticmethod
-    def _resolve_test_eligible_data(data: list[dict[str, T.Any]], data_key: str) -> list[dict[str, T.Any]]:
+    def _resolve_test_eligible_data(data: list[dict[str, t.Any]], data_key: str) -> list[dict[str, t.Any]]:
         return [item for item in data if Data.has(item, data_key)]
     
     @staticmethod
-    def _resolve_token_group_execution_queue(token_group: dict[str, T.Any]) -> list[dict[str, T.Any]]:
+    def _resolve_token_group_execution_queue(token_group: dict[str, t.Any]) -> list[dict[str, t.Any]]:
         ret = []
 
         if Validate.filled(token_group.get('tests', [])):

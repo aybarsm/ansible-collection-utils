@@ -1,4 +1,4 @@
-import typing as T
+import typing as t
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
     __convert, __data, __factory, __validate
 )
@@ -29,7 +29,7 @@ def after(data: str, needle: str, **kwargs)-> str:
 def after_last(data: str, needle: str, **kwargs)-> str:
     return find(data, needle, reverse = True, before = False, **kwargs)
 
-def matches(data: str|T.Sequence[str], patterns: str|T.Sequence[str], **kwargs)-> list[str]|str:
+def matches(data: str|t.Sequence[str], patterns: str|t.Sequence[str], **kwargs)-> list[str]|str:
     import re
     is_cli = kwargs.get('cli', False) == True
     is_all = kwargs.get('all', False) == True
@@ -128,7 +128,7 @@ def remove_empty_lines(data: str) -> str:
     import re
     return re.sub(r'(\n\s*){2,}', '\n', re.sub(r'^\s*[\r\n]+|[\r\n]+\s*\Z', '', data))
 
-def pad(data: T.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+def pad(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
     padding = kwargs.pop('pad')
     if padding not in ['left', 'right', 'both']:
         raise ValueError(f'Invalid padding type [{padding}]. Available: left, right, both')
@@ -152,25 +152,25 @@ def pad(data: T.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
     else:
         return str(data).center(count, char)
 
-def ljust(data: T.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+def ljust(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
     kwargs['pad'] = 'left'
     return pad(data, count, char, **kwargs)
 
-def rjust(data: T.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+def rjust(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
     kwargs['pad'] = 'right'
     return pad(data, count, char, **kwargs)
 
-def center(data: T.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+def center(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
     kwargs['pad'] = 'both'
     return pad(data, count, char, **kwargs)
 
-def pad_left(data: T.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+def pad_left(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
     return ljust(data, count, char, **kwargs)
 
-def pad_right(data: T.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+def pad_right(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
     return rjust(data, count, char, **kwargs)
 
-def pad_both(data: T.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+def pad_both(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
     return rjust(data, count, char, **kwargs)
 ### END: Manipulate
 

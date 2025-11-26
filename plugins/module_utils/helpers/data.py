@@ -1,5 +1,5 @@
 import enum
-import typing as T
+import typing as t
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
     __convert, __factory, __str, __utils, __validate, __pydash
 )
@@ -16,7 +16,7 @@ def pydash():
 def collections():
     return __pydash().collections
 
-def get(data: T.Iterable[T.Any], key: int|str, default: T.Any = None)-> T.Any:
+def get(data: t.Iterable[t.Any], key: int|str, default: t.Any = None)-> t.Any:
     if not str(key) == '*' and not Validate.str_contains(str(key), '.*', '*.'):
         return pydash().get(data, key, default)
     
@@ -49,13 +49,13 @@ def get(data: T.Iterable[T.Any], key: int|str, default: T.Any = None)-> T.Any:
 
     return ret
 
-def set_(data: T.Iterable[T.Any], key: str, value: T.Any)-> T.Any:
+def set_(data: t.Iterable[t.Any], key: str, value: t.Any)-> t.Any:
     return pydash().set_(data, key, value) #type: ignore
 
-def has(data: T.Any, key)-> bool:
+def has(data: t.Any, key)-> bool:
     return pydash().has(data, key)
 
-def forget(data: T.Iterable[T.Any], *args: str)-> T.Any:
+def forget(data: t.Iterable[t.Any], *args: str)-> t.Any:
     for key_ in args:
         pydash().unset(data, key_) #type: ignore
     
@@ -70,13 +70,13 @@ def invert(data):
 def flip(data):
     return invert(data)
 
-def walk(data: T.Iterable[T.Any], callback = T.Callable):
+def walk(data: t.Iterable[t.Any], callback = t.Callable):
     return collections().map_(data, callback)
 
-def walk_values_deep(data: T.Iterable[T.Any], callback = T.Callable):
+def walk_values_deep(data: t.Iterable[t.Any], callback = t.Callable):
     return pydash().map_values_deep(data, callback)
 
-def _sequence_a_b(a: T.Sequence[T.Any], b: T.Sequence[T.Any], callback: T.Callable, *args: T.Sequence[T.Any])-> list:
+def _sequence_a_b(a: t.Sequence[t.Any], b: t.Sequence[t.Any], callback: t.Callable, *args: t.Sequence[t.Any])-> list:
     if not Validate.is_sequence(a) or not Validate.is_sequence(b):
         raise ValueError('Invalid sequence type')
     
@@ -89,13 +89,13 @@ def _sequence_a_b(a: T.Sequence[T.Any], b: T.Sequence[T.Any], callback: T.Callab
     
     return list(ret)
 
-def difference(a: T.Sequence[T.Any], b: T.Sequence[T.Any], *args: T.Sequence[T.Any])-> list:
+def difference(a: t.Sequence[t.Any], b: t.Sequence[t.Any], *args: t.Sequence[t.Any])-> list:
     return _sequence_a_b(a, b, lambda seq_a, seq_b: set(seq_a) - set(seq_b), *args) #type: ignore
 
-def intersect(a: T.Sequence, b: T.Sequence, *args: T.Sequence)-> list:
+def intersect(a: t.Sequence, b: t.Sequence, *args: t.Sequence)-> list:
     return _sequence_a_b(a, b, lambda seq_a, seq_b: set(seq_a) & set(seq_b), *args) #type: ignore
 
-def _append_or_prepend(data: T.Iterable[T.Any], key: str, value: T.Any, is_prepend: bool, **kwargs) -> T.Iterable[T.Any]:
+def _append_or_prepend(data: t.Iterable[t.Any], key: str, value: t.Any, is_prepend: bool, **kwargs) -> t.Iterable[t.Any]:
     is_extend = kwargs.pop('extend', False)
     is_unique = kwargs.pop('unique', False)
     is_sorted = kwargs.pop('sort', False)
@@ -127,13 +127,13 @@ def _append_or_prepend(data: T.Iterable[T.Any], key: str, value: T.Any, is_prepe
     
     return data
 
-def append(data: T.Iterable[T.Any], key: str, value: T.Any, **kwargs) -> T.Iterable[T.Any]:
+def append(data: t.Iterable[t.Any], key: str, value: t.Any, **kwargs) -> t.Iterable[t.Any]:
     return _append_or_prepend(data, key, value, False, **kwargs)
 
-def prepend(data: T.Iterable[T.Any], key: str, value: T.Any, **kwargs) -> T.Iterable[T.Any]:
+def prepend(data: t.Iterable[t.Any], key: str, value: t.Any, **kwargs) -> t.Iterable[t.Any]:
     return _append_or_prepend(data, key, value, True, **kwargs)
 
-def dot(data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], prepend='', **kwargs)-> dict:
+def dot(data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], prepend='', **kwargs)-> dict:
     is_main = Validate.blank(prepend)
     is_main_mapping = is_main and Validate.is_mapping(data)
     if is_main_mapping:
@@ -163,7 +163,7 @@ def dot(data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], prepend='', *
     
     return ret
 
-def undot(data: T.Mapping)-> dict:
+def undot(data: t.Mapping)-> dict:
     import re
     data = dict(data)
     if Validate.blank(data):
@@ -199,7 +199,7 @@ def undot(data: T.Mapping)-> dict:
     return ret
 
 def sort_keys_char_count(
-    data: T.Union[T.Sequence[str], T.Mapping[str, T.Any]],
+    data: t.Union[t.Sequence[str], t.Mapping[str, t.Any]],
     char: str,
     **kwargs
 )-> dict|list:
@@ -223,23 +223,23 @@ def sort_keys_char_count(
         return list(ret)
 
 def dot_sort_keys(
-    data: T.Union[T.Sequence[str], T.Mapping[str, T.Any]],
+    data: t.Union[t.Sequence[str], t.Mapping[str, t.Any]],
     **kwargs
 )-> dict|list:
     return sort_keys_char_count(data, '.', **kwargs)
 
-def filled(data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], key: str, **kwargs)-> bool:
+def filled(data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], key: str, **kwargs)-> bool:
     return Validate.filled(get(data, key, **kwargs))
 
-def blank(data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], key: str, **kwargs)-> bool:
+def blank(data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], key: str, **kwargs)-> bool:
     return Validate.blank(get(data, key, **kwargs))
 
 def where(
-    data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], 
-    callback: T.Optional[T.Union[T.Callable, T.Mapping[str, T.Any]]] = None, 
-    default: T.Any = None, 
-    **kwargs: T.Mapping[str, bool],
-) -> T.Any:
+    data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], 
+    callback: t.Optional[t.Union[t.Callable, t.Mapping[str, t.Any]]] = None, 
+    default: t.Any = None, 
+    **kwargs: t.Mapping[str, bool],
+) -> t.Any:
     is_negate = kwargs.pop('negate', False)
     is_first = kwargs.pop('first', False)
     is_last = kwargs.pop('last', False)
@@ -259,6 +259,7 @@ def where(
     
     is_mapping = Validate.is_mapping(data)
     data = Convert.to_iterable(data)    
+    
     if Validate.is_mapping(callback):
         callback = Convert.from_mapping_to_callable(dict(callback), **kwargs) #type: ignore
     
@@ -300,39 +301,41 @@ def where(
             return ret[0][keys_[0]] if is_first else ret[0][keys_[-1]]
         else:
             return ret[0] if is_first else ret[-1]
+    elif is_mapping:
+        return ret[0]
 
     return ret
 
 def reject(
-    data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], 
-    callback: T.Optional[T.Union[T.Callable, T.Mapping[str, T.Any]]] = None, 
-    default: T.Any = None, 
+    data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], 
+    callback: t.Optional[t.Union[t.Callable, t.Mapping[str, t.Any]]] = None, 
+    default: t.Any = None, 
     **kwargs,
-)-> T.Any:
+)-> t.Any:
     kwargs['negate'] = True
     return where(data, callback, default, **kwargs)
 
 def first(
-    data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], 
-    callback: T.Optional[T.Union[T.Callable, T.Mapping[str, T.Any]]] = None, 
-    default: T.Any = None, 
+    data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], 
+    callback: t.Optional[t.Union[t.Callable, t.Mapping[str, t.Any]]] = None, 
+    default: t.Any = None, 
     **kwargs,
-)-> T.Any:
+)-> t.Any:
     kwargs['first'] = True
     kwargs['last'] = False
     return where(data, callback, default, **kwargs)
 
 def last(
-    data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]], 
-    callback: T.Optional[T.Union[T.Callable, T.Mapping[str, T.Any]]] = None, 
-    default: T.Any = None, 
+    data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], 
+    callback: t.Optional[t.Union[t.Callable, t.Mapping[str, t.Any]]] = None, 
+    default: t.Any = None, 
     **kwargs,
-)-> T.Any:
+)-> t.Any:
     kwargs['first'] = False
     kwargs['last'] = True
     return where(data, callback, default, **kwargs)
 
-def first_filled(*args: T.Any, default: T.Any = None)-> T.Any:
+def first_filled(*args: t.Any, default: t.Any = None)-> t.Any:
     for data in args:
         if Validate.filled(data):
             return data
@@ -340,10 +343,10 @@ def first_filled(*args: T.Any, default: T.Any = None)-> T.Any:
     return default
 
 def only_with(
-    data: T.Union[T.Mapping[str, T.Any], T.Sequence[T.Mapping[str, T.Any]]],
+    data: t.Union[t.Mapping[str, t.Any], t.Sequence[t.Mapping[str, t.Any]]],
     *args: str,
     **kwargs,
-)-> dict[str, T.Any]|list[dict[str, T.Any]]:
+)-> dict[str, t.Any]|list[dict[str, t.Any]]:
     is_meta = kwargs.pop('meta', False)
     is_meta_fix = kwargs.pop('meta_fix', False)
     is_no_dot = kwargs.pop('no_dot', False)
@@ -395,10 +398,10 @@ def only_with(
     return ret[0] if is_mapping else ret
 
 def all_except(
-    data: T.Union[T.Mapping[str, T.Any], T.Sequence[T.Mapping[str, T.Any]]],
+    data: t.Union[t.Mapping[str, t.Any], t.Sequence[t.Mapping[str, t.Any]]],
     *args: str,
     **kwargs,
-)-> dict[str, T.Any]|list[dict[str, T.Any]]:
+)-> dict[str, t.Any]|list[dict[str, t.Any]]:
     is_meta = kwargs.pop('meta', False)
     is_omitted = kwargs.pop('omitted', False)
     is_no_dot = kwargs.pop('no_dot', False)
@@ -477,14 +480,14 @@ def merge_hash(x, y, recursive=True, list_merge='replace'):
 
         x_value = x[key]
 
-        if isinstance(x_value, T.MutableMapping) and isinstance(y_value, T.MutableMapping):
+        if isinstance(x_value, t.MutableMapping) and isinstance(y_value, t.MutableMapping):
             if recursive:
                 x[key] = merge_hash(x_value, y_value, recursive, list_merge)
             else:
                 x[key] = y_value
             continue
 
-        if isinstance(x_value, T.MutableSequence) and isinstance(y_value, T.MutableSequence):
+        if isinstance(x_value, t.MutableSequence) and isinstance(y_value, t.MutableSequence):
             if list_merge == 'replace':
                 x[key] = y_value
             elif list_merge == 'append':
@@ -527,7 +530,7 @@ def combine(*args, **kwargs):
 
 def combine_match(
     data: str,
-    items: T.Union[T.Mapping[str, T.Any], T.Sequence[T.Mapping[str, T.Any]]], 
+    items: t.Union[t.Mapping[str, t.Any], t.Sequence[t.Mapping[str, t.Any]]], 
     attribute: str,
     *args, 
     **kwargs
@@ -555,14 +558,14 @@ def combine_match(
     return combine(*ret, **kwargs)
 
 def map(
-    data: T.Sequence[T.Any], 
-    callback: T.Callable, 
+    data: t.Sequence[t.Any], 
+    callback: t.Callable, 
 )-> list:
     return [Utils.call(callback, val_, key_) for key_, val_ in enumerate(data)]
 
 def unique_by(
-    data: T.Sequence[T.Mapping[str, T.Any]],
-    by: T.Sequence[str]|T.Callable,
+    data: t.Sequence[t.Mapping[str, t.Any]],
+    by: t.Sequence[str]|t.Callable,
     **kwargs
 )-> list[dict]:
     unique_hashes = []
@@ -583,9 +586,9 @@ def unique_by(
     return ret
 
 def keys(
-    data: T.Union[T.Sequence[T.Any], T.Mapping[T.Any, T.Any]],
+    data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]],
     **kwargs
-)-> T.Any:
+)-> t.Any:
     ret = []
     is_mapping = Validate.is_mapping(data)
     replace = kwargs.pop('replace', {})
@@ -636,8 +639,8 @@ def keys(
     return ret[0] if is_mapping else ret
 
 # def walk_recursive(
-#     data: T.Mapping[T.Any, T.Any]|T.Sequence[T.Any],
-#     callback = T.Callable
+#     data: t.Mapping[t.Any, t.Any]|t.Sequence[t.Any],
+#     callback = t.Callable
 # )-> dict|list:
 #     if Validate.is_mapping(data):
 #         ret = {}
@@ -657,7 +660,7 @@ def keys(
 #     return ret
 
 # def dot_sort_keys(
-#         data: T.Union[T.Sequence[str], T.Mapping[str, T.Any]],
+#         data: t.Union[t.Sequence[str], t.Mapping[str, t.Any]],
 #         **kwargs
 #     )-> dict|list:
     

@@ -1,7 +1,8 @@
-import typing as T
+import typing as t
+import inspect
 from pathlib import Path as PathlibPath
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    _CONF, __convert, __data, __str, __utils,
+    _CONF, __convert, __data, __str, __types, __utils, __inspect
 )
 
 Convert = __convert()
@@ -9,8 +10,10 @@ Data = __data()
 Str = __str()
 Utils = __utils()
 
+ENUM_CALLABLE_PARAMETER_KIND = __types().ENUM_CALLABLE_PARAMETER_KIND
+
 ### BEGIN: Data
-def is_blank(data: T.Any)-> bool:
+def is_blank(data: t.Any)-> bool:
     if is_string(data) and data.strip() == '':
         return True
     elif is_sequence(data) and len(data) == 0:
@@ -26,27 +29,27 @@ def is_blank(data: T.Any)-> bool:
     
     return False
 
-def is_filled(data: T.Any)-> bool:    
+def is_filled(data: t.Any)-> bool:    
     return not is_blank(data)
 
-def blank(data: T.Any, **kwargs)-> bool:
+def blank(data: t.Any, **kwargs)-> bool:
     type_ = str(kwargs.get('type', ''))
     return is_blank(data) and (not is_filled(type_) or is_type_name(data, type_))
 
-def filled(data: T.Any, **kwargs)-> bool:
+def filled(data: t.Any, **kwargs)-> bool:
     type_ = str(kwargs.get('type', ''))
     return is_filled(data) and (not is_filled(type_) or is_type_name(data, type_))
 
-def is_truthy(data: T.Any)-> bool:
+def is_truthy(data: t.Any)-> bool:
     return Convert.to_string(data).lower() in ('y', 'yes', 'on', 'true', '1', '1.0', 1, 1.0)
 
-def is_falsy(data: T.Any)-> bool:
+def is_falsy(data: t.Any)-> bool:
     return Convert.to_string(data).lower() in ('n', 'no', 'off', 'false', '0', '0.0', 0, 0.0)
 
-def truthy(data: T.Any)-> bool:
+def truthy(data: t.Any)-> bool:
     return is_truthy(data)
 
-def falsy(data: T.Any)-> bool:
+def falsy(data: t.Any)-> bool:
     return is_falsy(data)
 
 def is_copyable(data):
@@ -65,7 +68,7 @@ def is_deepcopyable(data):
     except Exception:
         return False
 
-def contains(data: T.Union[T.Sequence, T.Mapping[T.Any, T.Any]], *args: str|int, **kwargs)-> bool:
+def contains(data: t.Union[t.Sequence, t.Mapping[t.Any, t.Any]], *args: str|int, **kwargs)-> bool:
     is_all = kwargs.pop('all', False) == True
     no_dot = kwargs.pop('no_dot', True) == False
 
@@ -79,7 +82,7 @@ def contains(data: T.Union[T.Sequence, T.Mapping[T.Any, T.Any]], *args: str|int,
 
     return True if is_all else False
 
-def is_item_exec(data: T.Mapping)-> bool:
+def is_item_exec(data: t.Mapping)-> bool:
     return not truthy(Data.get(data, '_skip', False)) and not falsy(Data.get(data, '_keep', True))
 ### END: Data
 
@@ -93,101 +96,101 @@ def __is_sequence_pre_check(data, include_strings: bool = False, include_bytes =
     
     return True
 
-def is_string(data: T.Any)-> bool:
+def is_string(data: t.Any)-> bool:
     return isinstance(data, str)
 
-def is_list(data: T.Any)-> bool:
+def is_list(data: t.Any)-> bool:
     return isinstance(data, list)
 
-def is_tuple(data: T.Any)-> bool:
+def is_tuple(data: t.Any)-> bool:
     return isinstance(data, tuple)
 
-def is_set(data: T.Any)-> bool:
+def is_set(data: t.Any)-> bool:
     return isinstance(data, set)
 
 def is_sequence(data, include_strings: bool = False, include_bytes = False)-> bool:
     if not __is_sequence_pre_check(data, include_strings, include_bytes):
         return False
     
-    return isinstance(data, T.Sequence)
+    return isinstance(data, t.Sequence)
 
 def is_iterable(data, include_strings: bool = False, include_bytes = False)-> bool:
     if not __is_sequence_pre_check(data, include_strings, include_bytes):
         return False
     
-    return isinstance(data, T.Iterable)
+    return isinstance(data, t.Iterable)
 
-def is_enumeratable(data: T.Any) -> bool:
+def is_enumeratable(data: t.Any) -> bool:
     return isinstance(data, (list, tuple, list))
 
-def is_enumeratable_of_mappings(data: T.Any) -> bool:
+def is_enumeratable_of_mappings(data: t.Any) -> bool:
     return is_enumeratable(data) and all(is_mapping(item) for item in data)
 
-def is_mapping(data: T.Any)-> bool:
-    return isinstance(data, T.Mapping)
+def is_mapping(data: t.Any)-> bool:
+    return isinstance(data, t.Mapping)
 
-def is_mapping_of_mappings(data: T.Any)-> bool:
+def is_mapping_of_mappings(data: t.Any)-> bool:
     return is_mapping(data) and all(is_mapping(item) for item in data.values())
 
-def is_iterable_of_mappings(data: T.Any)-> bool:
+def is_iterable_of_mappings(data: t.Any)-> bool:
     return is_iterable(data) and all(is_mapping(item) for item in data)
 
-def is_iterable_of_not_mappings(data: T.Any)-> bool:
+def is_iterable_of_not_mappings(data: t.Any)-> bool:
     return is_iterable(data) and all(not is_mapping(item) for item in data)
 
-def is_dict(data: T.Any)-> bool:
+def is_dict(data: t.Any)-> bool:
     return isinstance(data, dict)
 
-def is_bool(data: T.Any)-> bool:
+def is_bool(data: t.Any)-> bool:
     return isinstance(data, bool)
 
-def is_object(data: T.Any)-> bool:
+def is_object(data: t.Any)-> bool:
     return isinstance(data, object)
 
-def is_int(data: T.Any)-> bool:
+def is_int(data: t.Any)-> bool:
     return isinstance(data, int)
 
-def is_float(data: T.Any)-> bool:
+def is_float(data: t.Any)-> bool:
     return isinstance(data, float)
 
-def is_none(data: T.Any)-> bool:
+def is_none(data: t.Any)-> bool:
     return data is None
 
-def is_callable(data: T.Any)-> bool:
+def is_callable(data: t.Any)-> bool:
     return callable(data)
 
-def is_bytes(data: T.Any)-> bool:
+def is_bytes(data: t.Any)-> bool:
     return isinstance(data, bytes)
 
-def is_bytearray(data: T.Any)-> bool:
+def is_bytearray(data: t.Any)-> bool:
     return isinstance(data, bytearray)
 
-def is_path(data: T.Any)-> bool:
+def is_path(data: t.Any)-> bool:
     import pathlib
     return isinstance(data, pathlib.Path)
 
-def is_exception(data: T.Any)-> bool:
+def is_exception(data: t.Any)-> bool:
     return isinstance(data, BaseException) or (isinstance(data, type) and issubclass(data, BaseException))
 
-def is_http_error(data: T.Any)-> bool:
+def is_http_error(data: t.Any)-> bool:
     import urllib.error
     return is_object(data) and isinstance(data, urllib.error.HTTPError)
 
-def is_http_response(data: T.Any)-> bool:
+def is_http_response(data: t.Any)-> bool:
     import http.client
     return is_object(data) and isinstance(data, http.client.HTTPResponse)
 
-def is_type_name(data: T.Any, *of: str)-> bool:
+def is_type_name(data: t.Any, *of: str)-> bool:
     for type_ in Convert.to_iterable(of):
         if Convert.to_type_name(data) == type_:
             return True
     
     return False
 
-def is_type_module(data: T.Any, of: str)-> bool:
+def is_type_module(data: t.Any, of: str)-> bool:
     return Convert.to_type_module(data) == of
 
-def is_type_of(data: T.Any, check: str)-> bool:
+def is_type_of(data: t.Any, check: str)-> bool:
     import re
     req = re.sub(r'\_+', '_', re.sub(r'\-+', '-', check.lower())).strip('_')
 
@@ -243,7 +246,7 @@ def is_type_of(data: T.Any, check: str)-> bool:
         case _:
             raise ValueError(f"require, {check} [{req}] is not a valid type to check.")
 
-def is_type(data: T.Any, *args: str, **kwargs)-> bool:
+def is_type(data: t.Any, *args: str, **kwargs)-> bool:
         if 'any' in args:
             return True
         
@@ -274,7 +277,7 @@ def is_type(data: T.Any, *args: str, **kwargs)-> bool:
         return False
 
 def require_mutable_mappings(a, b):
-    if not (isinstance(a, T.MutableMapping) and isinstance(b, T.MutableMapping)):
+    if not (isinstance(a, t.MutableMapping) and isinstance(b, t.MutableMapping)):
         myvars = []
         for x in [a, b]:
             try:
@@ -284,6 +287,9 @@ def require_mutable_mappings(a, b):
         raise ValueError("failed to combine variables, expected dicts but got a '{0}' and a '{1}': \n{2}\n{3}".format(
             a.__class__.__name__, b.__class__.__name__, myvars[0], myvars[1])
         )
+
+def is_callable_parameter(data: t.Any)-> bool:
+    return isinstance(data, inspect.Parameter)
 ### END: Type
 
 
@@ -317,7 +323,7 @@ def str_is_int(data: str)-> bool:
 
 def str_is_json(
     data: str, 
-    type_: T.Literal['any', 'mapping', 'sequence'] = 'any'
+    type_: t.Literal['any', 'mapping', 'sequence'] = 'any'
 )-> bool:
     try:
         parsed = Convert.from_json(data)
@@ -329,7 +335,7 @@ def str_is_json(
 
 def str_is_yaml(
     data: str, 
-    type_: T.Literal['any', 'mapping', 'sequence'] = 'any'
+    type_: t.Literal['any', 'mapping', 'sequence'] = 'any'
 )-> bool:
     try:
         parsed = Convert.from_yaml(data)
@@ -341,7 +347,7 @@ def str_is_yaml(
 
 def str_is_lua(
     data: str, 
-    type_: T.Literal['any', 'mapping', 'sequence'] = 'any'
+    type_: t.Literal['any', 'mapping', 'sequence'] = 'any'
 )-> bool:
     try:
         parsed = Convert.from_lua(data)
@@ -353,7 +359,7 @@ def str_is_lua(
 
 def str_is_toml(
     data: str, 
-    type_: T.Literal['any', 'mapping', 'sequence'] = 'any'
+    type_: t.Literal['any', 'mapping', 'sequence'] = 'any'
 )-> bool:
     try:
         parsed = Convert.from_toml(data)
@@ -363,7 +369,7 @@ def str_is_toml(
     
     return ret
 
-def str_contains(data: str, *args: str, **kwargs: T.Mapping[str, bool])-> bool:
+def str_contains(data: str, *args: str, **kwargs: t.Mapping[str, bool])-> bool:
     if blank(data):
         return False
     
@@ -381,9 +387,34 @@ def str_contains_non_alphanum(data: str)-> bool:
     import re
     return re.search(r'[^A-Za-z0-9]', data) != None
 
-def str_matches(data: str|T.Sequence[str], patterns, **kwargs)-> bool:
+def str_matches(data: str|t.Sequence[str], patterns, **kwargs)-> bool:
     return filled(Str.matches(data, patterns, **kwargs))
 ### END: String
+
+### BEGIN: Callable
+def callable_is_coroutine(data: t.Callable) -> bool:
+    return inspect.iscoroutinefunction(data)
+
+def callable_parameter_is_kind(data: inspect.Parameter, *args: ENUM_CALLABLE_PARAMETER_KIND) -> bool:
+    for type_ in args:
+        if type_ == 'positional_or_keyword' and data.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD:
+            return True
+        elif type_ == 'positional' and data.kind == inspect.Parameter.VAR_POSITIONAL:
+            return True
+        elif type_ == 'positional_only' and data.kind == inspect.Parameter.POSITIONAL_ONLY:
+            return True
+        elif type_ == 'keyword' and data.kind == inspect.Parameter.VAR_KEYWORD:
+            return True
+        elif type_ == 'keyword_only' and data.kind == inspect.Parameter.KEYWORD_ONLY:
+            return True
+        elif type_ == 'empty' and data.kind == inspect.Parameter.empty:
+            return True
+
+    return False
+
+def callable_parameter_has_default(data: inspect.Parameter) -> bool:
+    return data.default and not callable_parameter_is_kind(data, 'empty')
+### END: Callable
 
 ### BEGIN: Integer
 def is_int_even(data: int)-> bool:
@@ -399,28 +430,28 @@ def object_has_method(obj, method: str)-> bool:
 ### END: Object
 
 ### BEGIN: IP
-def __to_ip_address(data: T.Any):
+def __to_ip_address(data: t.Any):
     return Convert.to_ip_address(Convert.to_string(data), default=False)
 
-def __to_ip_network(data: T.Any):
+def __to_ip_network(data: t.Any):
     return Convert.to_ip_network(Convert.to_string(data), default=False)
 
-def is_ip(data: T.Any)-> bool:
+def is_ip(data: t.Any)-> bool:
     return __to_ip_address(data) != False
 
-def is_network(data: T.Any)-> bool:
+def is_network(data: t.Any)-> bool:
     return __to_ip_network(data) != False
 
-def is_ip_v4(data: T.Any)-> bool:
+def is_ip_v4(data: t.Any)-> bool:
     return __to_ip_address(data).version == 4
 
-def is_ip_v6(data: T.Any)-> bool:
+def is_ip_v6(data: t.Any)-> bool:
     return __to_ip_address(data).version == 6
 
-def is_ip_public(data: T.Any)-> bool:        
+def is_ip_public(data: t.Any)-> bool:        
     return __to_ip_address(data).is_global
 
-def is_ip_private(data: T.Any)-> bool:
+def is_ip_private(data: t.Any)-> bool:
     return __to_ip_address(data).is_private
 
 def is_subnet_of(network_a, network_b)-> bool:
@@ -473,84 +504,84 @@ def fs_dir_exists(path: PathlibPath|str, **kwargs)-> bool:
 ### END: FS
 
 ### BEGIN: Python
-def is_python_native(data: T.Any)-> bool:
+def is_python_native(data: t.Any)-> bool:
     return is_type_module(data, 'builtins')
 ### END: Python
 
 ### BEGIN: Ansible
-def is_ansible_omitted(data: T.Any)-> bool:
+def is_ansible_omitted(data: t.Any)-> bool:
     return is_string(data) and str(data).startswith('__omit_place_holder__')
 
-def is_ansible_undefined(data: T.Any)-> bool:
+def is_ansible_undefined(data: t.Any)-> bool:
     return is_object(data) and Convert.to_type_name(data).startswith('AnsibleUndefined')
 
-def is_ansible_defined(data: T.Any)-> bool:
+def is_ansible_defined(data: t.Any)-> bool:
     return not is_ansible_undefined(data)
 
-def is_ansible_hostvars(data: T.Any)-> bool:
+def is_ansible_hostvars(data: t.Any)-> bool:
     return is_object(data) and is_type_module(data, 'ansible.vars.hostvars') and is_type_name(data, 'HostVars')
 
-def is_ansible_hostvarsvars(data: T.Any)-> bool:
+def is_ansible_hostvarsvars(data: t.Any)-> bool:
     return is_object(data) and is_type_module(data, 'ansible.vars.hostvars') and is_type_name(data, 'HostVarsVars')
 
-def is_ansible_lazy_container_module(data: T.Any)-> bool:
+def is_ansible_lazy_container_module(data: t.Any)-> bool:
     return is_object(data) and is_type_module(data, 'ansible._internal._templating._lazy_containers')
 
-def is_ansible_lazy_template_dict(data: T.Any)-> bool:
+def is_ansible_lazy_template_dict(data: t.Any)-> bool:
     return is_ansible_lazy_container_module(data) and is_type_name(data, '_AnsibleLazyTemplateDict')
 
-def is_ansible_lazy_template_list(data: T.Any)-> bool:
+def is_ansible_lazy_template_list(data: t.Any)-> bool:
     return is_ansible_lazy_container_module(data) and is_type_name(data, '_AnsibleLazyTemplateList')
 
-def is_ansible_lazy_access_tuple(data: T.Any)-> bool:
+def is_ansible_lazy_access_tuple(data: t.Any)-> bool:
     return is_ansible_lazy_container_module(data) and is_type_name(data, '_AnsibleLazyAccessTuple')
 
-def is_ansible_lazy_template(data: T.Any)-> bool:
+def is_ansible_lazy_template(data: t.Any)-> bool:
     return is_ansible_lazy_template_dict(data) or is_ansible_lazy_template_list(data) or is_ansible_lazy_access_tuple(data)
 
-def is_ansible_mapping(data: T.Any)-> bool:
+def is_ansible_mapping(data: t.Any)-> bool:
     return is_ansible_hostvars(data) or is_ansible_hostvarsvars(data) or is_ansible_lazy_template_dict(data)
 
-def is_ansible_marker(data: T.Any)-> bool:
+def is_ansible_marker(data: t.Any)-> bool:
     return is_object(data) and is_type_module(data, 'ansible._internal._templating._jinja_common') and is_type_name(data, 'Marker')
 
-def is_ansible_undefined_marker(data: T.Any)-> bool:
+def is_ansible_undefined_marker(data: t.Any)-> bool:
     return is_object(data) and is_type_module(data, 'ansible._internal._templating._jinja_common') and is_type_name(data, 'UndefinedMarker')
 
-def is_ansible_tagged_object(data: T.Any)-> bool:
+def is_ansible_tagged_object(data: t.Any)-> bool:
     return is_object(data) and is_type_module(data, 'ansible.module_utils._internal._datatag') and any("AnsibleTaggedObject" == cls.__name__ for cls in type(data).__mro__)
 
-def is_ansible_tagged_data(data: T.Any)-> bool:
+def is_ansible_tagged_data(data: t.Any)-> bool:
     return is_object(data) and is_type_module(data, 'ansible.module_utils._internal._datatag')
 
-def is_ansible_tagged_date(data: T.Any)-> bool:
+def is_ansible_tagged_date(data: t.Any)-> bool:
     return is_ansible_tagged_data(data) and is_type_name(data, '_AnsibleTaggedDate')
 
-def is_ansible_tagged_time(data: T.Any)-> bool:
+def is_ansible_tagged_time(data: t.Any)-> bool:
     return is_ansible_tagged_data(data) and is_type_name(data, '_AnsibleTaggedTime')
 
-def is_ansible_tagged_datetime(data: T.Any)-> bool:
+def is_ansible_tagged_datetime(data: t.Any)-> bool:
     return is_ansible_tagged_data(data) and is_type_name(data, '_AnsibleTaggedDateTime')
 
-def is_ansible_tagged_str(data: T.Any)-> bool:
+def is_ansible_tagged_str(data: t.Any)-> bool:
     return is_ansible_tagged_data(data) and is_type_name(data, '_AnsibleTaggedStr')
 
-def is_ansible_tagged_int(data: T.Any)-> bool:
+def is_ansible_tagged_int(data: t.Any)-> bool:
     return is_ansible_tagged_data(data) and is_type_name(data, '_AnsibleTaggedInt')
 
-def is_ansible_tagged_float(data: T.Any)-> bool:
+def is_ansible_tagged_float(data: t.Any)-> bool:
     return is_ansible_tagged_data(data) and is_type_name(data, '_AnsibleTaggedFloat')
 
-def is_ansible_tagged_list(data: T.Any)-> bool:
+def is_ansible_tagged_list(data: t.Any)-> bool:
     return is_ansible_tagged_data(data) and is_type_name(data, '_AnsibleTaggedList')
 
-def is_ansible_tagged_set(data: T.Any)-> bool:
+def is_ansible_tagged_set(data: t.Any)-> bool:
     return is_ansible_tagged_data(data) and is_type_name(data, '_AnsibleTaggedSet')
 
-def is_ansible_tagged_tuple(data: T.Any)-> bool:
+def is_ansible_tagged_tuple(data: t.Any)-> bool:
     return is_ansible_tagged_data(data) and is_type_name(data, '_AnsibleTaggedTuple')
 
-def is_ansible_tagged_dict(data: T.Any)-> bool:
+def is_ansible_tagged_dict(data: t.Any)-> bool:
     return is_ansible_tagged_data(data) and is_type_name(data, '_AnsibleTaggedDict')
 
 def is_ansible_env()-> bool:

@@ -1,4 +1,4 @@
-import typing as T
+import typing as t
 from abc import ABC, abstractmethod
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.fluent import Fluent
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.validator import Validator
@@ -9,9 +9,9 @@ from ansible.plugins.lookup import LookupBase
 class RoleManager(ABC):
     def __init__(
         self, 
-        args: T.Mapping[str, T.Any] = {}, 
-        vars: T.Mapping[str, T.Any] = {},
-        module: T.Optional[ActionBase|LookupBase] = None
+        args: t.Mapping[str, t.Any] = {}, 
+        vars: t.Mapping[str, t.Any] = {},
+        module: t.Optional[ActionBase|LookupBase] = None
     ):
         self.meta: Fluent = Fluent()
         self.container: Fluent = Fluent()
@@ -20,7 +20,7 @@ class RoleManager(ABC):
         self.cache: Fluent = Fluent()
         self.ret: Fluent = Fluent()
 
-        self.modules: dict[str, T.Optional[ActionBase | LookupBase]] = {
+        self.modules: dict[str, t.Optional[ActionBase | LookupBase]] = {
             'action': None,
             'lookup': None,
         }
@@ -33,7 +33,7 @@ class RoleManager(ABC):
         if Validate.object_has_method(self, '_calback_post_init'):
             getattr(self, '_calback_post_init')()
 
-    def set_op(self, args: T.Mapping[str, T.Any], vars: T.Mapping[str, T.Any]) -> None:
+    def set_op(self, args: t.Mapping[str, t.Any], vars: t.Mapping[str, t.Any]) -> None:
         op = args.get('op')
         if Validate.blank(op):
             raise ValueError('Operation argument op value cannot be blank')
@@ -98,7 +98,7 @@ class RoleManager(ABC):
                 self.host_var_default(host, var_name)
             )
     
-    def get_module(self)-> T.Optional[ActionBase|LookupBase]:
+    def get_module(self)-> t.Optional[ActionBase|LookupBase]:
         for module_ in self.modules.keys():
             if self.modules[module_]:
                 return self.modules[module_]
@@ -120,7 +120,7 @@ class RoleManager(ABC):
 
         return {'result': self.ret.all()}
     
-    def _template(self, data: T.Any, **kwargs)-> T.Any:
+    def _template(self, data: t.Any, **kwargs)-> t.Any:
         if Validate.blank(data):
             return data
 
@@ -129,10 +129,10 @@ class RoleManager(ABC):
         
         return Convert.from_ansible_template(self.get_module()._templar, data, **kwargs) #type: ignore
 
-    def op(self, default: T.Any = '')-> T.Any:
+    def op(self, default: t.Any = '')-> t.Any:
         return self.args.get('op', default)
 
-    def host(self, default: T.Any = None)-> T.Any:
+    def host(self, default: t.Any = None)-> t.Any:
         return self.vars.get('inventory_hostname', default)
     
     def inventory(self, **kwargs) -> list[str]:
@@ -143,10 +143,10 @@ class RoleManager(ABC):
 
         return inventory
 
-    def host_vars(self, host: str, key: str, default: T.Any = None) -> T.Any:
+    def host_vars(self, host: str, key: str, default: t.Any = None) -> t.Any:
         return self.vars.get(Convert.to_data_key('hostvars', host, key), default)
     
-    def host_ansible_facts(self, host: str, key: str, default: T.Any = None) -> T.Any:
+    def host_ansible_facts(self, host: str, key: str, default: t.Any = None) -> t.Any:
         return self.vars.get(Convert.to_data_key('hostvars', host, 'ansible_facts', key), default)
 
     def domain(self, host: str = '')-> str:
@@ -155,7 +155,7 @@ class RoleManager(ABC):
         
         return self.host_var_default(host, '_domain', 'blrm')
     
-    def host_var_default(self, host: str, key: str, default: T.Any = None) -> T.Any:
+    def host_var_default(self, host: str, key: str, default: t.Any = None) -> t.Any:
         if self.vars.has(f'hostvars.{host}.{key}'):
             return self.vars.get(f'hostvars.{host}.{key}')
         else:
@@ -179,5 +179,5 @@ class RoleManager(ABC):
         return self.op('op') == op
     
     @abstractmethod
-    def _get_operation_validation_schema(self, args: T.Mapping[str, T.Any], vars: T.Mapping[str, T.Any]) -> dict:
+    def _get_operation_validation_schema(self, args: t.Mapping[str, t.Any], vars: t.Mapping[str, t.Any]) -> dict:
         pass

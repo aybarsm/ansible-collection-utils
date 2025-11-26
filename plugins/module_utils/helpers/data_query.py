@@ -1,4 +1,4 @@
-import typing as T
+import typing as t
 import re
 from jinja2.runtime import Context
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
@@ -17,18 +17,18 @@ Validate = __validate()
 class DataQuery:
     def __init__(
         self,
-        context: T.Optional[Context] = None,
-        data: T.Sequence[T.Any] = [],
+        context: t.Optional[Context] = None,
+        data: t.Sequence[t.Any] = [],
         query: str = '',
-        *bindings: T.Any,
-        **kwargs: T.Any,
+        *bindings: t.Any,
+        **kwargs: t.Any,
     ):
         self.cfg: Fluent = Fluent(_CONF['data_query'])
-        self.context: T.Optional[Context] = None
-        self.data: list[T.Any] = []
+        self.context: t.Optional[Context] = None
+        self.data: list[t.Any] = []
         self.query: str = ''
-        self.bindings_positional: list[T.Any] = []
-        self.bindings_named: dict[str, T.Any] = {}
+        self.bindings_positional: list[t.Any] = []
+        self.bindings_named: dict[str, t.Any] = {}
         self.operators_and: list[str] = []
         self.operators_or: list[str] = []
         self.tokens: Fluent = Fluent()
@@ -140,7 +140,7 @@ class DataQuery:
                 self._resolve_token_segment_item(val_)
             )
 
-    def _resolve_token_segment_item(self, segment: str) -> T.Any:
+    def _resolve_token_segment_item(self, segment: str) -> t.Any:
         if self.is_token_segment_item_binding_positional(segment):
             ret = self.bindings_positional[self.cfg.get('b_pos', 0)]
             self.cfg.increase('b_pos')
@@ -191,17 +191,17 @@ class DataQuery:
         
         return test
     
-    def set_context(self, context: T.Optional[Context]) -> None:
+    def set_context(self, context: t.Optional[Context]) -> None:
         self.context = context
     
-    def set_data(self, data: T.Sequence[T.Any]) -> None:
+    def set_data(self, data: t.Sequence[t.Any]) -> None:
         self.data = list(data)
     
     def set_query(
         self, 
         query: str,
-        bindings_positional: list[T.Any] = [],
-        bindings_named: dict[str, T.Any] = {},
+        bindings_positional: list[t.Any] = [],
+        bindings_named: dict[str, t.Any] = {},
         operators_and: list[str] = [], 
         operators_or: list[str] = []
     ) -> None:
@@ -280,7 +280,7 @@ class DataQuery:
     def get_tokens_data_keys(self) -> list:
         return self.tokens.get('_meta.data_keys')
     
-    def get_default_return(self) -> T.Any:
+    def get_default_return(self) -> t.Any:
         if self.cfg.get('settings.default'):
             return self.cfg.get('settings.default')
         elif self.is_mod_attr() and self.is_first_result():
@@ -319,17 +319,17 @@ class DataQuery:
         return self.has_token_batch_args() or self.has_token_batch_kwargs()
 
     @staticmethod
-    def is_token_segment_item_extra_args(item: T.Any) -> bool:
+    def is_token_segment_item_extra_args(item: t.Any) -> bool:
         return Validate.is_string(item) and Validate.str_wrapped(item, '`')
 
     @staticmethod
-    def is_token_segment_item_binding(item: T.Any) -> bool:
+    def is_token_segment_item_binding(item: t.Any) -> bool:
         return Validate.is_string(item) and (item == '?' or item.startswith(':'))
     
     @staticmethod
-    def is_token_segment_item_binding_positional(item: T.Any) -> bool:
+    def is_token_segment_item_binding_positional(item: t.Any) -> bool:
         return DataQuery.is_token_segment_item_binding(item) and item == '?'
     
     @staticmethod
-    def is_token_segment_item_binding_named(item: T.Any) -> bool:
+    def is_token_segment_item_binding_named(item: t.Any) -> bool:
         return DataQuery.is_token_segment_item_binding(item) and item.startswith(':')

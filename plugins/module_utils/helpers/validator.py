@@ -1,4 +1,4 @@
-import typing as T
+import typing as t
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
     _CONF, __cerberus, __convert, __data, __str, __validate
 )
@@ -40,21 +40,21 @@ class Validator(BaseValidator):
         
         return self._lookup_field(path) #type: ignore
     
-    def _lookup_value(self, path: str, prefix: str = '^')-> T.Any:        
+    def _lookup_value(self, path: str, prefix: str = '^')-> t.Any:        
         return self._lookup_path(path, prefix)[-1] #type: ignore
     
-    def _lookup_key(self, path: str, prefix: str = '^')-> T.Any:        
+    def _lookup_key(self, path: str, prefix: str = '^')-> t.Any:        
         return self._lookup_path(path, prefix)[0] #type: ignore
         
     def _check_blank_filled_conditional(
         self,
-        value: T.Any,
+        value: t.Any,
         foreign_field: str, 
-        foreign_value: T.Any, 
+        foreign_value: t.Any, 
         mod: str, 
         expect_filled: bool,
         field: str = '',
-    )-> T.Optional[str]:
+    )-> t.Optional[str]:
         mod = mod.lower()
 
         if mod not in ['unless', 'when']:
@@ -81,7 +81,7 @@ class Validator(BaseValidator):
         
         return None
 
-    def _exec_filled_blank_conditional(self, constraint: T.Mapping, field: str, value: T.Any, mod: str, filled: bool, **kwargs)-> None:
+    def _exec_filled_blank_conditional(self, constraint: t.Mapping, field: str, value: t.Any, mod: str, filled: bool, **kwargs)-> None:
         if constraint == None:
             return
         for field_, value_ in constraint.items():
@@ -90,19 +90,19 @@ class Validator(BaseValidator):
                 self._error(field, error_message) #type: ignore
                 break
     
-    def _validate_filled_when(self, constraint: T.Mapping, field: str, value: T.Any):
+    def _validate_filled_when(self, constraint: t.Mapping, field: str, value: t.Any):
         """{'type': 'dict', 'empty': False, 'default': {}}"""
         self._exec_filled_blank_conditional(constraint, field, value, 'when', True)
     
-    def _validate_filled_unless(self, constraint: T.Mapping, field: str, value: T.Any):
+    def _validate_filled_unless(self, constraint: t.Mapping, field: str, value: t.Any):
         """{'type': 'dict', 'empty': False, 'default': {}}"""
         self._exec_filled_blank_conditional(constraint, field, value, 'unless', True)
     
-    def _validate_blank_when(self, constraint: T.Mapping, field: str, value: T.Any):
+    def _validate_blank_when(self, constraint: t.Mapping, field: str, value: t.Any):
         """{'type': 'dict', 'empty': False, 'default': {}}"""
         self._exec_filled_blank_conditional(constraint, field, value, 'when', False)
 
-    def _validate_blank_unless(self, constraint: T.Mapping, field: str, value: T.Any):
+    def _validate_blank_unless(self, constraint: t.Mapping, field: str, value: t.Any):
         """{'type': 'dict', 'empty': False, 'default': {}}"""
         self._exec_filled_blank_conditional(constraint, field, value, 'unless', False)
     
@@ -133,7 +133,7 @@ class Validator(BaseValidator):
         
         return bool(_CONF['regex'][key_].match(value))
         
-    def _exec_validate_type_ip(self, value, version: T.Literal[4, 6, 46], type_: T.Literal['address', 'subnet', ''] = '')-> bool:
+    def _exec_validate_type_ip(self, value, version: t.Literal[4, 6, 46], type_: t.Literal['address', 'subnet', ''] = '')-> bool:
         if not isinstance(value, str):
             return False
         

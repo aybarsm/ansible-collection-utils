@@ -1,253 +1,186 @@
-import typing as T
-import time, threading, asyncio, functools
-from dataclasses import dataclass, field
+import typing as t
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __factory, __utils
+    __convert, __factory, __utils
 )
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.fluent import Fluent
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
+    ENUMERATABLE, TaskId, TaskAlias, TaskGroup, TaskResult, TaskCallback, TaskOnFinallyCallback, TaskChannelSize
+)
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.collection import Collection
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.coroutine import WaitConcurrent
 
+Convert = __convert()
 Factory = __factory()
 Utils = __utils()
 
-TaskId = T.Optional[str]
-TaskAlias = T.Optional[str]
-TaskPoll = float
-TaskResult = T.Any
-TaskDispatchResult = T.Any
-TaskIsDispatched = bool
-TaskIsCompleted = bool
-TaskCallback = T.Callable[["Task", T.Optional[T.Any]], TaskResult]
-TaskOnDispatchCallback = T.Optional[T.Callable[["Task", T.Optional[T.Any]], None]]
-TaskOnPollCallback = T.Optional[T.Callable[["Task", T.Optional[T.Any]], bool]]
-TaskOnCompleteCallback = T.Optional[T.Callable[["Task", T.Optional[T.Any]], None]]
-
-TaskChannelSize = int
-TaskChannelPoll = float
-TaskChannelAll = list[TaskId]
-TaskChannelActive = list[TaskId]
-TaskChannelFailed = set[TaskId]
-TaskChannelCompleted = set[TaskId]
-TaskChannelResults = dict[TaskId, TaskResult]
-
-@dataclass
 class Task:
-    callback: TaskCallback
-    alias: TaskAlias = None
-    on_complete: TaskOnCompleteCallback = None
+    def __init__(
+        self,
+        callback: TaskCallback,
+        alias: TaskAlias = None, 
+        group: TaskGroup = None,
+        on_finally: TaskOnFinallyCallback = None
+    ):
+        self.__callback: TaskCallback = callback
+        self.__alias: TaskAlias = alias
+        self.__group: TaskGroup = group
+        self.__on_finally: TaskOnFinallyCallback = on_finally
 
-    _id: TaskId = field(init=False, repr=False)
-    _result: TaskResult = field(init=False, repr=False)
-    _is_dispatched: TaskIsDispatched = field(default=False, init=True, repr=False)
-    _is_completed: TaskIsCompleted = field(default=False, init=True, repr=False)
-    _placeholder: str = field(init=False, repr=False)
+        self.__id: TaskId = Convert.to_md5(f'task_{str(id(self.callback))}_{Factory.ts(mod='long')}')
+        self.__result: TaskResult
+        self.__is_dispatched: bool = False
+        self.__is_finished: bool = False
+        self.__is_failed: bool
+
+        if not self.__alias:
+            self.__alias = str(self.__id)
+        
+    @property
+    def callback(self) -> TaskCallback:
+        return self.__callback
 
     @property
     def id(self) -> TaskId:
-        return self._id
+        return self.__id
+
+    @property
+    def alias(self) -> TaskAlias:
+        return self.__alias
+    
+    @property
+    def group(self) -> TaskGroup:
+        return self.__group
+    
+    @property
+    def on_finally(self) -> TaskOnFinallyCallback:
+        return self.__on_finally
 
     @property
     def result(self) -> TaskResult:
-        return self._result
+        return self.__result
     
     @property
-    def is_dispatched(self) -> TaskIsDispatched:
-        return self._is_dispatched
+    def dispatched(self) -> bool:
+        return self.__is_dispatched
     
     @property
-    def is_completed(self) -> TaskIsCompleted:
-        return self._is_completed
+    def finished(self) -> bool:
+        return self.__is_finished
     
-    def has_result(self) -> bool:
-        return hasattr(self, '_result') and getattr(self, '_result', self._placeholder) != self._placeholder
-    
-    def __post_init__(self):
-        self._id = 'job_' + str(id(self.callback))
-        self._placeholder = Factory.placeholder(mod='hashed')
-    
-    async def dispatch(self, send: T.Any = None) -> None:
-        if self._dispatched:
-            return
+    @property
+    def failed(self) -> bool:
+        if not self.dispatched:
+            raise RuntimeError('Task has not dispatched yet to query failure.')
         
-        self._dispatched = True
-        
-        self._result = await Utils.call(self.callback, self, send)
-        
-        await self.__check_status()
-    
-    async def __check_status(self, send: T.Any = None) -> None:
-        while True:
-            self._is_completed = self.has_result()
+        return self.__is_failed
 
-            if self._is_completed:
-                await self.__completed(send)
-                break
-
-            await asyncio.sleep(1)
-    
-    async def __completed(self, send: T.Any = None) -> None:
-        if not self.on_complete:
-            return
+    def dispatch(self) -> TaskResult:
+        if self.dispatched or self.finished:
+            return self.result
         
-        Utils.call(self.on_complete, self, send)     
+        self.__is_dispatched = True
+        
+        try:
+            self.__result = Utils.call(self.callback, self)
+        except Exception as e:
+            self.__is_failed = True
+            self.__result = e
+        finally:
+            self.__is_finished = True
+            if self.on_finally:
+                Utils.call(self.on_finally, self)
+        
+        return self.result
 
-@dataclass
 class BaseTaskCollection(Collection[Task]):
-    pass
+    def __init__(self, tasks: ENUMERATABLE[Task]):
+        super().__init__(tasks)
 
-    def get(self, identifier: Task|TaskId|TaskAlias) -> T.Optional[Task]:
-        if isinstance(identifier, TaskId):
-            return self.get_by_id(identifier)
-        elif isinstance(identifier, Task):
+        if self.empty():
+            return
+        
+        aliases = self.get_aliases()
+        if len(aliases) != len(set(aliases)):
+            raise RuntimeError(f'Task aliases must be unique.')
+
+    def __validate_unique_task_alias(self, task: Task) -> None:
+        if self.get(task.alias) != None:
+            raise RuntimeError(f'Task with [{task.alias}] alias already exists.')
+        
+    def append(self, task: Task) -> None:
+        self.__validate_unique_task_alias(task)
+        super().append(task)
+    
+    def prepend(self, task: Task) -> None:
+        self.__validate_unique_task_alias(task)
+        super().prepend(task)
+    
+    def push(self, task: Task) -> None:
+        self.append(task)
+    
+    def add(self, task: Task) -> None:
+        self.append(task)
+
+    def get(self, identifier: str | Task | TaskId | TaskAlias | TaskGroup) -> t.Optional[Task | list[Task]]:
+        if isinstance(identifier, str):
+            identifier = TaskId(identifier)
+
+        if isinstance(identifier, Task):
             return self.get_by_id(identifier.id)
+        elif isinstance(identifier, TaskId):
+            return self.get_by_id(identifier)
         elif isinstance(identifier, TaskAlias):
             return self.get_by_alias(identifier)
+        elif isinstance(identifier, TaskGroup):
+            return self.get_by_group(identifier)
     
-    def get_by_id(self, identifier: TaskId) -> T.Optional[Task]:
+    def get_by_id(self, identifier: TaskId) -> t.Optional[Task]:
         return self.first(lambda task: task.id == identifier)
     
-    def get_by_alias(self, identifier: TaskAlias) -> T.Optional[Task]:
+    def get_by_alias(self, identifier: TaskAlias) -> t.Optional[Task]:
         return self.first(lambda task: task.alias == identifier)
+    
+    def get_by_group(self, identifier: TaskGroup) -> list[Task]:
+        return self.where(lambda task: task.group == identifier)
     
     def get_ids(self) -> list[TaskId]:
         return self.pluck('id')
+    
+    def get_aliases(self) -> list[TaskAlias]:
+        return self.pluck('alias')
 
-@dataclass
-class TaskCollection(BaseTaskCollection):
-    pass
+    def get_groups(self) -> list[TaskGroup]:
+        return [group for group in set(self.pluck('group')) if group]
 
-@dataclass
 class TaskChannel(BaseTaskCollection):
-    size: TaskChannelSize
-    poll: TaskChannelPoll = 1.0
+    def __init__(
+            self,
+            tasks: list[Task] | tuple[Task] | set[Task] = [],
+            size: t.Optional[TaskChannelSize] = None,
+        ):
+        self.__size: t.Optional[TaskChannelSize] = size
+        self.__concurrent: WaitConcurrent
 
-    _lock: threading.Lock = field(init=False, repr=False)
-    _all: TaskChannelAll = field(init=False, repr=False)
-    _active: TaskChannelActive = field(init=False, repr=False)
-    _failed: TaskChannelFailed = field(init=False, repr=False)
-    _completed: TaskChannelCompleted = field(init=False, repr=False)
-    _results : TaskChannelResults = field(init=False, repr=False)
-    _is_aborted : bool = field(default=False, init=True, repr=False)
-    pass
-
+        super().__init__(tasks)
+    
     @property
-    def results(self) -> TaskChannelResults:
-        if self._lock.locked():
-            with self._lock:
-                return self._results
+    def size(self) -> t.Optional[TaskChannelSize]:
+        if hasattr(self, '__concurrent'):
+            return self.__concurrent.size
         else:
-            return self._results
+            return self.__size
     
-    def is_aborted(self) -> bool:
-        if self._lock.locked():
-            with self._lock:
-                return self._is_aborted
-        else:
-            return self._is_aborted
+    @property
+    def running(self) -> bool:
+        return hasattr(self, '__concurrent') and self.__concurrent.running
     
-    def abort(self) -> None:
-        if not self._lock.locked():
-            return
+    @property
+    def finished(self) -> bool:
+        return hasattr(self, '__concurrent') and self.__concurrent.finished
+
+    def dispatch(self) -> list[TaskResult]:
+        callbacks = []
         
-        with self._lock:
-            self._is_aborted = True
-    
-    def get_active_task_count(self) -> int:
-        with self._lock:
-            return len(self._active)
+        for idx in self.indexes():
+            callbacks.append(self.items[idx].dispatch)
         
-    def is_running(self) -> bool:
-        return self.get_active_task_count() > 0
-    
-    def has_task_finished(self, task_id: TaskId) -> bool:
-        with self._lock:
-            return task_id in self._completed or task_id in self._failed
-    
-    def has_finished(self) -> bool:
-        with self._lock:
-            return (len(self._completed) + len(self._failed)) == len(self._all)
-
-    def __post_init__(self):
-        if self.size < 1:
-            raise ValueError('Task channel size value cannot be lower than 1')
-        
-        if self.poll < 0.01:
-            raise ValueError('Task channel poll value cannot be lower than 0.01')
-    
-    def __task_remove_from_active(self, task_id: TaskId) -> None:
-        with self._lock:
-            if task_id in self._active:
-                self._active.remove(task_id)
-
-    def __task_dispatched(self, task_id: TaskId) -> None:
-        with self._lock:
-            if task_id not in self._active:
-                self._active.append(task_id)
-    
-    def __task_failed(self, task_id: TaskId) -> None:
-        self.__task_remove_from_active(task_id)
-        with self._lock:
-            self._failed.add(task_id)
-    
-    def __task_completed(self, task_id: TaskId) -> None:
-        self.__task_remove_from_active(task_id)
-        with self._lock:
-            self._completed.add(task_id)
-    
-    def wait(self) -> None:
-        if self.empty() or self.is_running():
-            return
-
-        self.__run()
-
-        if not self.is_running():
-            return
-    
-    def __prepare(self):
-        self._lock = threading.Lock()
-
-        with self._lock:
-            self._all = self.get_ids()
-            self._active = []
-            self._failed = set()
-            self._completed = set()
-            self._results = {}
-            self._is_aborted = False
-
-    def __run(self):
-        self.__prepare()
-
-        while not self.has_finished():
-            with self._lock:
-                if self.is_aborted() or not self.has_finished():
-                    break
-
-                for task_id in self._all:
-                    if self.is_aborted():
-                        break
-                    
-                    if self.has_task_finished(task_id):
-                        continue
-
-                    try:
-                        task = self.get_by_id(task_id)
-                        
-                        if not task:
-                            self.__task_failed(task_id)
-                            continue
-                        
-                        if not task.is_dispatched:
-                            if self.get_active_task_count() == self.size:
-                                continue
-                            
-                            self.results[task_id] = task.dispatch()
-                            self.__task_dispatched(task_id)
-                        elif task.is_completed:
-                            self.__task_completed(task_id)
-
-                    except Exception as e:
-                        self.results[task_id] = e
-                        self.__task_failed(task_id)
-                
-                if self.is_running():
-                    time.sleep(self.poll)
+        return WaitConcurrent(callbacks, self.size).run()

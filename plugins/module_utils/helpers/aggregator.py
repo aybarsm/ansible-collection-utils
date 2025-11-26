@@ -70,6 +70,10 @@ def __str():
     import ansible_collections.aybarsm.utils.plugins.module_utils.helpers.str as HelperStr
     return HelperStr
 
+def __types():
+    import ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types as HelperTypes
+    return HelperTypes
+
 def __utils():
     import ansible_collections.aybarsm.utils.plugins.module_utils.helpers.utils as HelperUtils
     return HelperUtils

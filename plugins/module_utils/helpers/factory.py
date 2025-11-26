@@ -1,4 +1,4 @@
-import typing as T
+import typing as t
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
     __convert, __data, __utils, __validate
 )
@@ -17,6 +17,9 @@ def ts(**kwargs):
         return Convert.as_ts_mod(ts, mod)
     
     return ts
+
+def timestamp(**kwargs):
+    return ts(**kwargs)
 
 def random_string(length: int = 32)-> str:
     import random, string
@@ -55,7 +58,7 @@ def fs_path_tmp(file: str, *args, **kwargs)-> str:
 ### END: FS
 
 ### BEGIN: Play
-def play_meta(vars: T.Mapping, **kwargs)-> dict:
+def play_meta(vars: t.Mapping, **kwargs)-> dict:
     import urllib, urllib.parse
     make_cache = kwargs.pop('make_cache', False)
     ts_ = ts()

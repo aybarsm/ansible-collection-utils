@@ -1,4 +1,4 @@
-import typing as T
+import typing as t
 from pathlib import Path as PathlibPath
 import datetime
 from pydash import method
@@ -60,24 +60,24 @@ def json_save(data, path: PathlibPath|str, **kwargs) -> None:
 ### END: Json
 
 ### BEGIN: Callable
-def callable_signature(callback: T.Callable):
+def callable_signature(callback: t.Callable):
     return __inspect().signature(callback)
 
-def callable_args_name(callback: T.Callable)-> T.Optional[str]:
+def callable_args_name(callback: t.Callable)-> t.Optional[str]:
     for name, param in callable_signature(callback).parameters.items():
         if param.kind == __inspect().Parameter.VAR_POSITIONAL:
             return name
     
     return None
 
-def callable_kwargs_name(callback: T.Callable)-> T.Optional[str]:
+def callable_kwargs_name(callback: t.Callable)-> t.Optional[str]:
     for name, param in callable_signature(callback).parameters.items():
         if param.kind == __inspect().Parameter.VAR_KEYWORD:
             return name
     
     return None
 
-def callable_kwargs_defaults(callback: T.Callable)-> T.Optional[dict]:
+def callable_kwargs_defaults(callback: t.Callable)-> t.Optional[dict]:
     return {
         k: v.default
         for k, v in callable_signature(callback).parameters.items()
@@ -90,18 +90,46 @@ def callable_positional_argument_count(callback):
         if param.kind in (__inspect().Parameter.POSITIONAL_ONLY, __inspect().Parameter.POSITIONAL_OR_KEYWORD)
     ))
 
-def __call(callback: T.Callable, *args, **kwargs)-> T.Any:
-    if callable_args_name(callback) == None:
-        take = int(min([len(list(args)), callable_positional_argument_count(callback)]))
-        args = list(list(args)[:take])
+def call(callback: t.Callable, *args, **kwargs) -> t.Any:
+    args = list(args)
+    kwargs = dict(kwargs)
 
-    return callback(*args, **kwargs) if callable_kwargs_name(callback) != None else callback(*args)
+    conf = kwargs.pop('__conf', {})
+    segments = Convert.as_callable_segments(callback)
 
-def call(callback: T.Callable, *args, **kwargs)-> T.Any:
-    return __call(callback, *args, **kwargs)
+    send_args = []
+    send_kwargs = {}
 
-async def call_async(callback: T.Callable, *args, **kwargs)-> T.Any:
-    return await __call(callback, *args, **kwargs)
+    for idx, item in enumerate(segments['params']['pos']):
+        if idx in args:
+            send_args.append(args[idx])
+        elif Validate.callable_parameter_has_default(item['param']):
+            send_args.append(item['param'].default)
+        elif item['name'] in kwargs and item['name'] not in segments['params']['keyables']:
+            send_args.append(kwargs.pop(item['name']))
+    
+    for key_ in segments['params']['keyables']:
+        if key_ in kwargs:
+            send_kwargs[key_] = kwargs.pop(key_)
+    
+    if Validate.blank(send_args) and Validate.blank(send_kwargs):
+        return callback()
+    elif Validate.blank(send_kwargs):
+        return callback(*send_args)
+    elif Validate.blank(send_args):
+        return callback(**send_kwargs)
+    else:
+        return callback(*send_args, **send_kwargs)
+
+# def call(callback: t.Callable, *args, **kwargs)-> t.Any:
+#     if callable_args_name(callback) == None:
+#         take = int(min([len(list(args)), callable_positional_argument_count(callback)]))
+#         args = list(list(args)[:take])
+
+#     return callback(*args, **kwargs) if callable_kwargs_name(callback) != None else callback(*args)
+
+async def call_async(callback: t.Callable, *args, **kwargs)-> t.Any:
+    return call(callback, *args, **kwargs)
 ### END: Callable
 
 ### BEGIN: FS
@@ -138,7 +166,7 @@ def fs_write(path: PathlibPath|str, data: str|bytes, **kwargs)-> None:
     else:
         path.write_bytes(data, **kwargs) #type: ignore
 
-def fs_top_level_dirs(paths: str|T.Sequence[str], *args: str)-> list[str]:
+def fs_top_level_dirs(paths: str|t.Sequence[str], *args: str)-> list[str]:
     import os
 
     paths = list(paths)
@@ -161,7 +189,7 @@ def fs_top_level_dirs(paths: str|T.Sequence[str], *args: str)-> list[str]:
 ### END: FS
 
 ### BEGIN: Net
-def net_subnets_collapse(data: T.Sequence[str], **kwargs) -> list:
+def net_subnets_collapse(data: t.Sequence[str], **kwargs) -> list:
     only = kwargs.pop('only', '')
     proto = kwargs.pop('proto', '')
 
@@ -189,11 +217,26 @@ def net_subnets_collapse(data: T.Sequence[str], **kwargs) -> list:
 ### END: Net
 
 ### BEGIN: Date Time
+def ensure_utc_timezone(timestamp: datetime.datetime) -> datetime.datetime:
+        if timestamp.tzinfo is datetime.timezone.utc:
+            return timestamp
+        if timestamp.tzinfo is None:
+            return timestamp.replace(tzinfo=datetime.timezone.utc)
+        return timestamp.astimezone(datetime.timezone.utc)
+
+def remove_timezone(timestamp: datetime.datetime) -> datetime.datetime:
+        # Convert to native datetime object
+        if timestamp.tzinfo is None:
+            return timestamp
+        if timestamp.tzinfo is not datetime.timezone.utc:
+            timestamp = timestamp.astimezone(datetime.timezone.utc)
+        return timestamp.replace(tzinfo=None)
+
 def datetime_add_or_remove_timezone(
     timestamp: datetime.datetime, *, with_timezone: bool
 ) -> datetime.datetime:
     return (
-        Helper.ensure_utc_timezone(timestamp) if with_timezone else Helper.remove_timezone(timestamp)
+        ensure_utc_timezone(timestamp) if with_timezone else remove_timezone(timestamp)
     )
 ### END: Date Time
 
