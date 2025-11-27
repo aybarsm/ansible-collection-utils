@@ -60,36 +60,6 @@ def json_save(data, path: PathlibPath|str, **kwargs) -> None:
 ### END: Json
 
 ### BEGIN: Callable
-def callable_signature(callback: t.Callable):
-    return __inspect().signature(callback)
-
-def callable_args_name(callback: t.Callable)-> t.Optional[str]:
-    for name, param in callable_signature(callback).parameters.items():
-        if param.kind == __inspect().Parameter.VAR_POSITIONAL:
-            return name
-    
-    return None
-
-def callable_kwargs_name(callback: t.Callable)-> t.Optional[str]:
-    for name, param in callable_signature(callback).parameters.items():
-        if param.kind == __inspect().Parameter.VAR_KEYWORD:
-            return name
-    
-    return None
-
-def callable_kwargs_defaults(callback: t.Callable)-> t.Optional[dict]:
-    return {
-        k: v.default
-        for k, v in callable_signature(callback).parameters.items()
-        if v.default is not __inspect().Parameter.empty
-    }
-
-def callable_positional_argument_count(callback):
-    return int(sum(
-        1 for param in callable_signature(callback).parameters.values()
-        if param.kind in (__inspect().Parameter.POSITIONAL_ONLY, __inspect().Parameter.POSITIONAL_OR_KEYWORD)
-    ))
-
 def call(callback: t.Callable, *args, **kwargs) -> t.Any:
     if Validate.blank(args) and Validate.blank(kwargs):
         return callback()
@@ -130,13 +100,6 @@ def call(callback: t.Callable, *args, **kwargs) -> t.Any:
             kwargs = {}
 
     return callback(*send_args, **send_kwargs)
-
-# def call(callback: t.Callable, *args, **kwargs)-> t.Any:
-#     if callable_args_name(callback) == None:
-#         take = int(min([len(list(args)), callable_positional_argument_count(callback)]))
-#         args = list(list(args)[:take])
-
-#     return callback(*args, **kwargs) if callable_kwargs_name(callback) != None else callback(*args)
 
 async def call_async(callback: t.Callable, *args, **kwargs)-> t.Any:
     return call(callback, *args, **kwargs)
