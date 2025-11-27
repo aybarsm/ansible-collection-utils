@@ -1,29 +1,41 @@
 import typing as t
 import types as tt
+import dataclasses as dt
 import typing_extensions as te
+import pydantic as tp
 import inspect
-from dataclasses import dataclass
+import enum
+
+# BEGIN: Generic - Definitions
+class CommonStatus(enum.Enum):
+    QUEUED = enum.auto()
+    NOT_EXECUTED = enum.auto()
+    RUNNING = enum.auto()
+    FINISHED = enum.auto()
+    FAILED = enum.auto()
+    ABORTED = enum.auto()
+    CANCELLED = enum.auto()
+    SKIPPED = enum.auto()
+
+def immutable_data(cls):
+    return dt.dataclass(frozen=True)(cls)
+# END: Generic - Definitions
 
 # BEGIN: Generic - Types
 SENTINEL = object()
 T = t.TypeVar("T")
 ENUMERATABLE = t.Union[list[T], tuple[T, ...], set[T]]
+
+MappingImmutable = tt.MappingProxyType
 # END: Generic - Types
 
-# BEGIN: Generic - Definitions
-def immutable_data(cls):
-    return dataclass(frozen=True)(cls)
-# END: Generic - Definitions
+# BEGIN: Pydantic - Types
+PositiveInt = tp.PositiveInt
+PositiveFloat = tp.PositiveFloat
+# BEGIN: End - Types
 
 # BEGIN: Task
-TaskId = str
-TaskAlias = t.Optional[str]
-TaskGroup = t.Optional[str]
-TaskResult = t.Any
-TaskCallback = t.Callable[..., TaskResult]
-TaskOnFinallyCallback = t.Optional[t.Callable[..., None]]
 
-TaskChannelSize = int
 # END: Task
 
 # BEGIN: Callable

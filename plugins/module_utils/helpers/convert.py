@@ -2,7 +2,7 @@ import typing as t
 import types as tt
 import datetime, inspect
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    ENUMERATABLE, CallableParameterTypeMap, CallableParameterKind
+    ENUMERATABLE, CallableParameterTypeMap, CallableParameterKind, PositiveInt
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
     __ansible, __data, __factory, __str, __utils, __validate, __ipaddress, __hashlib
@@ -14,6 +14,29 @@ Factory = __factory()
 Str = __str()
 Utils = __utils()
 Validate = __validate()
+
+def as_id(
+    data: t.Any, 
+    prefix: str = '', 
+    suffix: str = '', 
+    use_ts: bool = True, 
+    as_hash: bool = True,
+    random_string: t.Optional[PositiveInt] = None,
+) -> str:
+    ret = [str(id(data))]
+    
+    if use_ts:
+        ret.append(str(Factory.ts(mod='long')))
+    
+    if random_string:
+        ret.append(Factory.random_string(random_string))
+    
+    ret = f'{prefix}{'_'.join(ret)}{suffix}'
+
+    if as_hash:
+        return to_md5(ret)
+    else:
+        return ret
 
 def to_pydash(data: t.Iterable[t.Any])-> dict | list:
     if Validate.is_mapping(data):

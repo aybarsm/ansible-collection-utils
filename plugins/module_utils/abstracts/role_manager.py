@@ -2,7 +2,7 @@ import typing as t
 from abc import ABC, abstractmethod
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.fluent import Fluent
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.validator import Validator
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Convert, Data, Factory, Str, Validate, Utils
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Convert, Data, Str, Validate, Utils
 from ansible.plugins.action import ActionBase
 from ansible.plugins.lookup import LookupBase
 
@@ -71,7 +71,11 @@ class RoleManager(ABC):
         if self.meta.has('role.name'):
             return
 
-        role_name = self.__class__.__name__
+        role = Utils.class_get_primary_child(self, RoleManager)
+        if not Validate.is_object(role):
+            return
+        
+        role_name = role.__name__ #type: ignore
         role_name = Str.case_snake(str(role_name).strip()).strip().strip('_')
         self.meta.set('role.name', role_name)
     
@@ -85,13 +89,13 @@ class RoleManager(ABC):
         
         host = self.host()
         role_name = str(role_name).strip().strip('_').strip()
-        var_keys = Data.where(
+        self.meta.set('role.var.keys', Data.where(
             list(set(self.vars.keys() + list(self.host_vars(host, '', {}).keys()))),
             lambda entry: str(entry).startswith(f'{role_name}__'),
             default=[],
-        )
+        ))
 
-        for var_name in var_keys:
+        for var_name in self.meta.get('role.var.keys', []):
             cfg_key = Str.chop_start(var_name, f'{role_name}__')
             self.meta.set(
                 f'role.cfg.{cfg_key}',

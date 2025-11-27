@@ -1,12 +1,5 @@
 import typing as t
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __convert, __data, __validate, __utils, __pydash,
-)
-
-Convert = __convert()
-Data = __data()
-Utils = __utils()
-Validate = __validate()
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Convert, Data, Utils, Validate
 
 class Fluent(object):
     on_save: t.Optional[t.Callable] = None
@@ -130,7 +123,7 @@ class Fluent(object):
         return not self.empty()
     
     def pydash(self):
-        return __pydash()
+        return Data.pydash()
     
     def copy(self):
         return Fluent(self.all())

@@ -2,6 +2,9 @@ import typing as t
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
     __convert, __data, __utils, __validate
 )
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
+    PositiveInt
+)
 
 Convert = __convert()
 Data = __data()
@@ -15,17 +18,17 @@ def ts(**kwargs):
     
     if Validate.filled(mod):
         return Convert.as_ts_mod(ts, mod)
-    
+
     return ts
 
 def timestamp(**kwargs):
     return ts(**kwargs)
 
-def random_string(length: int = 32)-> str:
+def random_string(length: PositiveInt = 32)-> str:
     import random, string
     return ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for _ in range(length))
 
-def placeholder(rand_length: int = 32, mod: str = ''):
+def placeholder(rand_length: PositiveInt = 32, mod: str = ''):
     import math
     ret = [
         random_string(math.ceil(rand_length/2)),

@@ -1,14 +1,9 @@
 import typing as t
-from typing_extensions import Self
+import typing_extensions as te
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
     T, ENUMERATABLE
 )
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __data, __utils,
-)
-
-Data = __data()
-Utils = __utils()
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Data, Utils
 
 class Collection(t.Generic[T]):
     on_save: t.Optional[t.Callable] = None
@@ -55,7 +50,7 @@ class Collection(t.Generic[T]):
         kwargs['key'] = True
         return Data.last(self.all(), callback, None, **kwargs)
     
-    def sort_by(self, callback: str | t.Callable, reverse: bool = False) -> Self:
+    def sort_by(self, callback: str | t.Callable, reverse: bool = False) -> te.Self:
         return self.__class__(Data.collections().sort_by(self.all(), callback, reverse))
     
     def sort(self, callback: str | t.Callable, reverse: bool = False) -> t.Any:
@@ -91,7 +86,7 @@ class Collection(t.Generic[T]):
     def not_empty(self)-> bool:
         return not self.empty()
     
-    def copy(self) -> Self:
+    def copy(self) -> te.Self:
         return self.__class__(self.all())
     
     def indexes(self) -> set[int]:

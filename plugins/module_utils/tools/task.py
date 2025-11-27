@@ -1,16 +1,20 @@
 import typing as t
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __convert, __factory, __utils
-)
+import typing_extensions as te
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    ENUMERATABLE, TaskId, TaskAlias, TaskGroup, TaskResult, TaskCallback, TaskOnFinallyCallback, TaskChannelSize
+    ENUMERATABLE, CommonStatus
 )
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.collection import Collection
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.coroutine import WaitConcurrent
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Convert, Utils
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools.collection import Collection
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools.coroutine import WaitConcurrent
 
-Convert = __convert()
-Factory = __factory()
-Utils = __utils()
+TaskId = str
+TaskAlias = t.Optional[str]
+TaskGroup = t.Optional[str]
+TaskResult = t.Any
+TaskCallback = t.Callable[..., TaskResult]
+TaskOnFinallyCallback = t.Callable[..., None]
+
+TaskChannelSize = int
 
 class Task:
     def __init__(
@@ -18,18 +22,16 @@ class Task:
         callback: TaskCallback,
         alias: TaskAlias = None, 
         group: TaskGroup = None,
-        on_finally: TaskOnFinallyCallback = None
+        on_finally: t.Optional[TaskOnFinallyCallback] = None
     ):
         self.__callback: TaskCallback = callback
         self.__alias: TaskAlias = alias
         self.__group: TaskGroup = group
-        self.__on_finally: TaskOnFinallyCallback = on_finally
+        self.__on_finally: t.Optional[TaskOnFinallyCallback] = on_finally
 
-        self.__id: TaskId = Convert.to_md5(f'task_{str(id(self.callback))}_{Factory.ts(mod='long')}')
-        self.__result: TaskResult
-        self.__is_dispatched: bool = False
-        self.__is_finished: bool = False
-        self.__is_failed: bool
+        self.__id: TaskId = Convert.as_id(self.callback, 'task_')
+        self.__status: CommonStatus = CommonStatus.NOT_EXECUTED
+        self.__result: TaskResult = CommonStatus.NOT_EXECUTED
 
         if not self.__alias:
             self.__alias = str(self.__id)
@@ -51,7 +53,7 @@ class Task:
         return self.__group
     
     @property
-    def on_finally(self) -> TaskOnFinallyCallback:
+    def on_finally(self) -> t.Optional[TaskOnFinallyCallback]:
         return self.__on_finally
 
     @property
@@ -59,39 +61,48 @@ class Task:
         return self.__result
     
     @property
-    def dispatched(self) -> bool:
-        return self.__is_dispatched
+    def status(self) -> CommonStatus:
+        return self.__status
     
     @property
+    def executed(self) -> bool:
+        return self.status != CommonStatus.NOT_EXECUTED
+    
+    @property
+    def dispatched(self) -> bool:
+        return self.executed
+    
+    @property
+    def running(self) -> bool:
+        return self.status == CommonStatus.RUNNING
+
+    @property
     def finished(self) -> bool:
-        return self.__is_finished
+        return self.status in [CommonStatus.FINISHED, CommonStatus.FAILED]
     
     @property
     def failed(self) -> bool:
-        if not self.dispatched:
-            raise RuntimeError('Task has not dispatched yet to query failure.')
-        
-        return self.__is_failed
+        return self.status == CommonStatus.FAILED
 
-    def dispatch(self) -> TaskResult:
+    def dispatch(self) -> te.Self:
         if self.dispatched or self.finished:
             return self.result
         
-        self.__is_dispatched = True
+        self.__status = CommonStatus.RUNNING
         call_conf = {'__caller': {'bind': {'annotation': {Task: self}}}}
         try:
             self.__result = Utils.call(self.callback, **call_conf)
+            self.__status = CommonStatus.FINISHED
         except Exception as e:
-            self.__is_failed = True
             self.__result = e
+            self.__status = CommonStatus.FAILED
         finally:
-            self.__is_finished = True
             if self.on_finally:
                 Utils.call(self.on_finally, **call_conf)
         
-        return self.result
+        return self
 
-class BaseTaskCollection(Collection[Task]):
+class TaskCollection(Collection[Task]):
     def __init__(self, tasks: ENUMERATABLE[Task]):
         super().__init__(tasks)
 
@@ -147,18 +158,26 @@ class BaseTaskCollection(Collection[Task]):
     
     def get_aliases(self) -> list[TaskAlias]:
         return self.pluck('alias')
+    
+    def get_results(self) -> list[TaskResult]:
+        return self.pluck('result')
+    
+    def get_dispatchers(self) -> list[t.Callable]:
+        return self.pluck('dispatch')
 
     def get_groups(self) -> list[TaskGroup]:
         return [group for group in set(self.pluck('group')) if group]
 
-class TaskChannel(BaseTaskCollection):
+class TaskChannel(TaskCollection):
     def __init__(
             self,
-            tasks: list[Task] | tuple[Task] | set[Task] = [],
+            tasks: ENUMERATABLE[Task] = [],
             size: t.Optional[TaskChannelSize] = None,
+            abort_on_failed: bool = True,
         ):
         self.__size: t.Optional[TaskChannelSize] = size
         self.__concurrent: WaitConcurrent
+        self.__abort_on_failed: bool = abort_on_failed
 
         super().__init__(tasks)
     
@@ -177,10 +196,14 @@ class TaskChannel(BaseTaskCollection):
     def finished(self) -> bool:
         return hasattr(self, '__concurrent') and self.__concurrent.finished
 
-    def dispatch(self) -> list[TaskResult]:
-        callbacks = []
+    def dispatch(self) -> list[TaskResult]:        
+        abort_when = None
+        if self.__abort_on_failed:
+            abort_when = lambda task: task.failed
         
-        for idx in self.indexes():
-            callbacks.append(self.items[idx].dispatch)
+        results = WaitConcurrent(self.get_dispatchers(), self.size, abort_when).run()
         
-        return WaitConcurrent(callbacks, self.size).run()
+        return results
+
+class TaskPipeline(Collection[Task | TaskChannel]):
+    pass

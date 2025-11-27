@@ -1,9 +1,9 @@
 import typing as t
+import dataclasses as dt
 from pathlib import Path as PathlibPath
 import datetime
-from pydash import method
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __convert, __data, __factory, __validate, __inspect
+    __convert, __data, __factory, __validate
 )
 
 Convert = __convert()
@@ -303,3 +303,22 @@ def crypto_get_relative_time_option(
         f'The time spec "{input_string}" for {input_name} is invalid'
     )
 ### END: Crypto
+
+### BEGIN: Generic
+def class_get_mro(self_: object):
+    return 
+
+def class_get_primary_child(self_: object, parent: type) -> bool | object:
+    if self_.__class__ is parent:
+        return True
+
+    mros = type(self_).__mro__
+    for idx, mro in enumerate(mros):
+        if not Validate.is_object(mro):
+            break
+        
+        if mro is parent:
+            return mros[idx - 1]
+    
+    return False
+### END: Generic
