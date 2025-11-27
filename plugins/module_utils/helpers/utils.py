@@ -91,35 +91,45 @@ def callable_positional_argument_count(callback):
     ))
 
 def call(callback: t.Callable, *args, **kwargs) -> t.Any:
+    if Validate.blank(args) and Validate.blank(kwargs):
+        return callback()
+
+    segments = Convert.as_callable_segments(callback)
     args = list(args)
     kwargs = dict(kwargs)
-
-    conf = kwargs.pop('__conf', {})
-    segments = Convert.as_callable_segments(callback)
-
     send_args = []
     send_kwargs = {}
+    conf = kwargs.pop('__caller', {})
+    
+    for param in segments['params']:
+        if param['has']['annotation'] and param['annotation'] in Data.get(conf, 'bind.annotation', {}):
+            bound = conf['bind']['annotation'][param['annotation']]
+            del conf['bind']['annotation'][param['annotation']]
+            
+            if param['type'] == 'pos':
+                send_args.insert(param['pos'], bound)
+            else:
+                send_kwargs[param['name']] = bound
+        elif param['type'] == 'pos' and len(send_args) < segments['has']['params']['pos'] and Validate.filled(args):
+            send_args.append(args[0])
+            del args[0]
+        elif param['type'] == 'any' and param['name'] not in kwargs and Validate.filled(args):
+            send_kwargs[param['name']] = args[0]
+            del args[0]
+        elif param['type'] in ['any', 'key'] and param['name'] in kwargs:
+            send_kwargs[param['name']] = kwargs.pop(param['name'])
+        elif param['type'] == 'args':
+            if Validate.filled(args):
+                send_args.extend(args)
+            args = []
+        elif param['type'] == 'kwargs':
+            for key_ in kwargs.keys():
+                if key_ not in send_kwargs:
+                    send_kwargs[key_] = kwargs[key_]
+                
+            kwargs = {}
 
-    for idx, item in enumerate(segments['params']['pos']):
-        if idx in args:
-            send_args.append(args[idx])
-        elif Validate.callable_parameter_has_default(item['param']):
-            send_args.append(item['param'].default)
-        elif item['name'] in kwargs and item['name'] not in segments['params']['keyables']:
-            send_args.append(kwargs.pop(item['name']))
-    
-    for key_ in segments['params']['keyables']:
-        if key_ in kwargs:
-            send_kwargs[key_] = kwargs.pop(key_)
-    
-    if Validate.blank(send_args) and Validate.blank(send_kwargs):
-        return callback()
-    elif Validate.blank(send_kwargs):
-        return callback(*send_args)
-    elif Validate.blank(send_args):
-        return callback(**send_kwargs)
-    else:
-        return callback(*send_args, **send_kwargs)
+    return callback(*send_args, **send_kwargs)
 
 # def call(callback: t.Callable, *args, **kwargs)-> t.Any:
 #     if callable_args_name(callback) == None:

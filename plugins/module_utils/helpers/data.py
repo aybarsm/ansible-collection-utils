@@ -1,5 +1,7 @@
-import enum
 import typing as t
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
+    ENUMERATABLE
+)
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
     __convert, __factory, __str, __utils, __validate, __pydash
 )
@@ -199,7 +201,7 @@ def undot(data: t.Mapping)-> dict:
     return ret
 
 def sort_keys_char_count(
-    data: t.Union[t.Sequence[str], t.Mapping[str, t.Any]],
+    data: t.Iterable[t.Any],
     char: str,
     **kwargs
 )-> dict|list:
@@ -223,19 +225,19 @@ def sort_keys_char_count(
         return list(ret)
 
 def dot_sort_keys(
-    data: t.Union[t.Sequence[str], t.Mapping[str, t.Any]],
+    data: t.Iterable[t.Any],
     **kwargs
 )-> dict|list:
     return sort_keys_char_count(data, '.', **kwargs)
 
-def filled(data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], key: str, **kwargs)-> bool:
+def filled(data: t.Iterable[t.Any], key: str, **kwargs)-> bool:
     return Validate.filled(get(data, key, **kwargs))
 
-def blank(data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], key: str, **kwargs)-> bool:
+def blank(data: t.Iterable[t.Any], key: str, **kwargs)-> bool:
     return Validate.blank(get(data, key, **kwargs))
 
 def where(
-    data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], 
+    data: t.Iterable[t.Any], 
     callback: t.Optional[t.Union[t.Callable, t.Mapping[str, t.Any]]] = None, 
     default: t.Any = None, 
     **kwargs: t.Mapping[str, bool],
@@ -307,7 +309,7 @@ def where(
     return ret
 
 def reject(
-    data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], 
+    data: t.Iterable[t.Any], 
     callback: t.Optional[t.Union[t.Callable, t.Mapping[str, t.Any]]] = None, 
     default: t.Any = None, 
     **kwargs,
@@ -316,7 +318,7 @@ def reject(
     return where(data, callback, default, **kwargs)
 
 def first(
-    data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], 
+    data: t.Iterable[t.Any], 
     callback: t.Optional[t.Union[t.Callable, t.Mapping[str, t.Any]]] = None, 
     default: t.Any = None, 
     **kwargs,
@@ -326,7 +328,7 @@ def first(
     return where(data, callback, default, **kwargs)
 
 def last(
-    data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], 
+    data: t.Iterable[t.Any], 
     callback: t.Optional[t.Union[t.Callable, t.Mapping[str, t.Any]]] = None, 
     default: t.Any = None, 
     **kwargs,
@@ -343,7 +345,7 @@ def first_filled(*args: t.Any, default: t.Any = None)-> t.Any:
     return default
 
 def only_with(
-    data: t.Union[t.Mapping[str, t.Any], t.Sequence[t.Mapping[str, t.Any]]],
+    data: t.Iterable[t.Any],
     *args: str,
     **kwargs,
 )-> dict[str, t.Any]|list[dict[str, t.Any]]:
@@ -398,7 +400,7 @@ def only_with(
     return ret[0] if is_mapping else ret
 
 def all_except(
-    data: t.Union[t.Mapping[str, t.Any], t.Sequence[t.Mapping[str, t.Any]]],
+    data: t.Iterable[t.Any],
     *args: str,
     **kwargs,
 )-> dict[str, t.Any]|list[dict[str, t.Any]]:
@@ -530,7 +532,7 @@ def combine(*args, **kwargs):
 
 def combine_match(
     data: str,
-    items: t.Union[t.Mapping[str, t.Any], t.Sequence[t.Mapping[str, t.Any]]], 
+    items: t.Mapping[str, t.Any] | ENUMERATABLE[t.Mapping[str, t.Any]], 
     attribute: str,
     *args, 
     **kwargs
@@ -558,14 +560,14 @@ def combine_match(
     return combine(*ret, **kwargs)
 
 def map(
-    data: t.Sequence[t.Any], 
+    data: ENUMERATABLE[t.Any], 
     callback: t.Callable, 
 )-> list:
     return [Utils.call(callback, val_, key_) for key_, val_ in enumerate(data)]
 
 def unique_by(
-    data: t.Sequence[t.Mapping[str, t.Any]],
-    by: t.Sequence[str]|t.Callable,
+    data: ENUMERATABLE[t.Mapping[str, t.Any]],
+    by: ENUMERATABLE[str] | t.Callable,
     **kwargs
 )-> list[dict]:
     unique_hashes = []
@@ -586,7 +588,7 @@ def unique_by(
     return ret
 
 def keys(
-    data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]],
+    data: t.Iterable[t.Any],
     **kwargs
 )-> t.Any:
     ret = []

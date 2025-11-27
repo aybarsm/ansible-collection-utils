@@ -78,16 +78,16 @@ class Task:
             return self.result
         
         self.__is_dispatched = True
-        
+        call_conf = {'__caller': {'bind': {'annotation': {Task: self}}}}
         try:
-            self.__result = Utils.call(self.callback, self)
+            self.__result = Utils.call(self.callback, **call_conf)
         except Exception as e:
             self.__is_failed = True
             self.__result = e
         finally:
             self.__is_finished = True
             if self.on_finally:
-                Utils.call(self.on_finally, self)
+                Utils.call(self.on_finally, **call_conf)
         
         return self.result
 

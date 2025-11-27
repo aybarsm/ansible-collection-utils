@@ -4,7 +4,7 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import
     T, ENUMERATABLE
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __data, __utils, 
+    __data, __utils,
 )
 
 Data = __data()
@@ -95,7 +95,7 @@ class Collection(t.Generic[T]):
         return self.__class__(self.all())
     
     def indexes(self) -> set[int]:
-        return set(range(0, len(self.items) - 1))
+        return set(range(0, len(self.items))) if self.not_empty() else set()
     
     def keys(self) -> set[int]:
         return self.indexes()

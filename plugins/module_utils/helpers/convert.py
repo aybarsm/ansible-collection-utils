@@ -1,8 +1,11 @@
 import typing as t
-import types as t
+import types as tt
 import datetime, inspect
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
+    ENUMERATABLE, CallableParameterTypeMap, CallableParameterKind
+)
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __ansible, __data, __factory, __str, __types, __utils, __validate, __ipaddress, __hashlib
+    __ansible, __data, __factory, __str, __utils, __validate, __ipaddress, __hashlib
 )
 
 Ansible = __ansible()
@@ -12,14 +15,11 @@ Str = __str()
 Utils = __utils()
 Validate = __validate()
 
-TYPE_ENUMERATABLE = __types().ENUMERATABLE
-TYPE_ENUM_CALLABLE_PARAMETER_KIND = __types().ENUM_CALLABLE_PARAMETER_KIND
-
-def to_pydash(data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]])-> dict|list:
-    if Validate.is_sequence(data):
-        return list(data)
-    else:
+def to_pydash(data: t.Iterable[t.Any])-> dict | list:
+    if Validate.is_mapping(data):
         return dict(data)
+    else:
+        return list(data)
 
 def to_md5(data: t.Any)-> str:
     return __hashlib().md5(str(to_text(data)).encode()).hexdigest()
@@ -266,7 +266,7 @@ def from_ansible(data: t.Any)-> t.Any:
     return data
 
 def to_items(
-    data: t.Sequence[t.Any]|t.Mapping[t.Any, t.Any],
+    data: t.Iterable[t.Any],
     key_name: str = 'key',
     value_name: str = 'value',
 )-> list[dict[str, t.Any]]:
@@ -600,8 +600,8 @@ def to_callable_signature(callback: t.Callable) -> inspect.Signature:
 
 def to_callable_parameters(
     callback: t.Callable,
-    kinds: TYPE_ENUMERATABLE[TYPE_ENUM_CALLABLE_PARAMETER_KIND] = []
-) -> t.MappingProxyType[str, t.Any]:
+    kinds: ENUMERATABLE[CallableParameterKind] = []
+) -> tt.MappingProxyType[str, t.Any]:
     ret = to_callable_signature(callback).parameters
 
     if kinds:
@@ -611,9 +611,9 @@ def to_callable_parameters(
             {},
         )
 
-    return t.MappingProxyType(ret)
+    return tt.MappingProxyType(ret)
 
-def as_callable_segments(callback: t.Callable) -> t.MappingProxyType[str, t.Any]:
+def as_callable_segments(callback: t.Callable) -> tt.MappingProxyType[str, t.Any]:
     sig = to_callable_signature(callback)
     is_named = callback.__name__ != '<lambda>'
     ret = {
@@ -624,43 +624,38 @@ def as_callable_segments(callback: t.Callable) -> t.MappingProxyType[str, t.Any]
         },
         'has': {
             'params': {
-                'pos': False,
-                'key': False,
-                'any': False,
-                'empty': False,
-                'unknown': False,
-                'keyables': False,
+                'pos': 0,
+                'key': 0,
+                'any': 0,
+                'args': 0,
+                'kwargs': 0,
+                'empty': 0,
             },
         },
-        'params': {
-            'pos': [],
-            'key': [],
-            'any': [],
-            'empty': [],
-            'unknown': [],
-            'keyables': [],
-        },
+        'params': [],
     }
-
-    for name, param in sig.parameters.items():
-        param.default()
-        if Validate.callable_parameter_is_kind(param, 'positional', 'positional_only'):
-            rel_key = 'pos'
-        elif Validate.callable_parameter_is_kind(param, 'keyword', 'keyword_only'):
-            rel_key = 'key'
-        elif Validate.callable_parameter_is_kind(param, 'positional_or_keyword'):
-            rel_key = 'any'
-        elif Validate.callable_parameter_is_kind(param, 'empty'):
-            rel_key = 'empty'
-        else:
-            rel_key = 'unknown'
+    
+    for pos, name in enumerate(sig.parameters.keys()):
+        param = sig.parameters[name]
+        type_ = CallableParameterTypeMap[param.kind]
         
-        ret['params'][rel_key].append({'name': name, 'param': param}) 
-        ret['has']['params'][rel_key] = True
+        has_default = Validate.callable_parameter_has(param, 'default')
+        has_annotation = Validate.callable_parameter_has(param, 'annotation')
+        ret['params'].append({
+            'pos': pos,
+            'type': type_,
+            'name': name,
+            'annotation': param.annotation,
+            'default': param.default if has_default else None,
+            'item': param,
+            'kind': param.kind,
+            'has': {
+                'default': has_default,
+                'annotation': has_annotation,
+            },
+        }) 
 
-        if rel_key in ['key', 'any']:
-            ret['params']['keyables'].append(name)
-            ret['has']['params']['keyables'] = True
+        ret['has']['params'][type_] += 1
 
-    return t.MappingProxyType(ret)
+    return tt.MappingProxyType(ret)
 ### END: Callable

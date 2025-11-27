@@ -2,7 +2,10 @@ import typing as t
 import inspect
 from pathlib import Path as PathlibPath
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    _CONF, __convert, __data, __str, __types, __utils, __inspect
+    _CONF, __convert, __data, __str, __utils
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
+    ENUMERATABLE, CallableParameterKindMap, CallableParameterKind, CallableParameterHas
 )
 
 Convert = __convert()
@@ -10,17 +13,15 @@ Data = __data()
 Str = __str()
 Utils = __utils()
 
-ENUM_CALLABLE_PARAMETER_KIND = __types().ENUM_CALLABLE_PARAMETER_KIND
-
 ### BEGIN: Data
 def is_blank(data: t.Any)-> bool:
-    if is_string(data) and data.strip() == '':
+    if is_none(data):
+        return True
+    elif is_string(data) and data.strip() == '':
         return True
     elif is_sequence(data) and len(data) == 0:
         return True
-    elif is_mapping(data) and len(data.keys()) == 0:
-        return True
-    elif data is None:
+    elif is_mapping(data) and len(data.keys()) == 0: #type: ignore
         return True
     elif is_ansible_undefined(data):
         return True
@@ -68,7 +69,7 @@ def is_deepcopyable(data):
     except Exception:
         return False
 
-def contains(data: t.Union[t.Sequence, t.Mapping[t.Any, t.Any]], *args: str|int, **kwargs)-> bool:
+def contains(data: t.Iterable[t.Any], *args: str|int, **kwargs)-> bool:
     is_all = kwargs.pop('all', False) == True
     no_dot = kwargs.pop('no_dot', True) == False
 
@@ -126,7 +127,7 @@ def is_enumeratable(data: t.Any) -> bool:
 def is_enumeratable_of_mappings(data: t.Any) -> bool:
     return is_enumeratable(data) and all(is_mapping(item) for item in data)
 
-def is_mapping(data: t.Any)-> bool:
+def is_mapping(data: t.Any) -> bool:
     return isinstance(data, t.Mapping)
 
 def is_mapping_of_mappings(data: t.Any)-> bool:
@@ -395,25 +396,15 @@ def str_matches(data: str|t.Sequence[str], patterns, **kwargs)-> bool:
 def callable_is_coroutine(data: t.Callable) -> bool:
     return inspect.iscoroutinefunction(data)
 
-def callable_parameter_is_kind(data: inspect.Parameter, *args: ENUM_CALLABLE_PARAMETER_KIND) -> bool:
+def callable_parameter_is_kind(data: inspect.Parameter, *args: CallableParameterKind) -> bool:
     for type_ in args:
-        if type_ == 'positional_or_keyword' and data.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD:
-            return True
-        elif type_ == 'positional' and data.kind == inspect.Parameter.VAR_POSITIONAL:
-            return True
-        elif type_ == 'positional_only' and data.kind == inspect.Parameter.POSITIONAL_ONLY:
-            return True
-        elif type_ == 'keyword' and data.kind == inspect.Parameter.VAR_KEYWORD:
-            return True
-        elif type_ == 'keyword_only' and data.kind == inspect.Parameter.KEYWORD_ONLY:
-            return True
-        elif type_ == 'empty' and data.kind == inspect.Parameter.empty:
+        if data.kind == CallableParameterKindMap[type_]:
             return True
 
     return False
 
-def callable_parameter_has_default(data: inspect.Parameter) -> bool:
-    return data.default and not callable_parameter_is_kind(data, 'empty')
+def callable_parameter_has(data: inspect.Parameter, of: CallableParameterHas) -> bool:
+    return not callable_parameter_is_kind(data, 'empty') and hasattr(data, of) and getattr(data, of) != CallableParameterKindMap['empty']
 ### END: Callable
 
 ### BEGIN: Integer
