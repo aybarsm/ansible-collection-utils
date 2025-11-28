@@ -1,7 +1,7 @@
 import typing as t
 import dataclasses as dt
 from pathlib import Path as PathlibPath
-import datetime
+import datetime, asyncio
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
     __convert, __data, __factory, __validate
 )
@@ -103,6 +103,23 @@ def call(callback: t.Callable, *args, **kwargs) -> t.Any:
 
 async def call_async(callback: t.Callable, *args, **kwargs)-> t.Any:
     return call(callback, *args, **kwargs)
+
+async def call_semaphore(semaphore: asyncio.Semaphore, callback: t.Callable, *args, **kwargs) -> t.Any:
+    async with semaphore:
+        if asyncio.iscoroutinefunction(callback):
+            result = await call_async(callback, *args, **kwargs)
+        else:
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(None, lambda: call(callback, *args, **kwargs))
+    
+        return result
+
+def tap_(value: t.Any, callback: t.Callable) -> t.Any:
+    callback(value)
+    return value
+
+def with_(value: t.Any, callback: t.Callable) -> t.Any:
+    return callback(value)
 ### END: Callable
 
 ### BEGIN: FS

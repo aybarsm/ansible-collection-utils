@@ -3,11 +3,10 @@ import types as tt
 import dataclasses as dt
 import typing_extensions as te
 import pydantic as tp
-import inspect
-import enum
+import inspect, enum, datetime, hashlib
 
 # BEGIN: Generic - Definitions
-class CommonStatus(enum.Enum):
+class CommonStatus(enum.StrEnum):
     QUEUED = enum.auto()
     NOT_EXECUTED = enum.auto()
     RUNNING = enum.auto()
@@ -16,15 +15,20 @@ class CommonStatus(enum.Enum):
     ABORTED = enum.auto()
     CANCELLED = enum.auto()
     SKIPPED = enum.auto()
+    TIMED_OUT = enum.auto()
 
 def immutable_data(cls):
     return dt.dataclass(frozen=True)(cls)
 # END: Generic - Definitions
 
 # BEGIN: Generic - Types
-SENTINEL = object()
 T = t.TypeVar("T")
 ENUMERATABLE = t.Union[list[T], tuple[T, ...], set[T]]
+
+SENTINEL: object = object()
+SENTINEL_TS: datetime.datetime = datetime.datetime.now(datetime.timezone.utc)
+SENTINEL_ID: str = f'{str(id(SENTINEL))}_{str(SENTINEL_TS.strftime('%Y-%m-%dT%H:%M:%S'))}.{SENTINEL_TS.microsecond * 1000:09d}Z'
+SENTINEL_HASH: str = hashlib.md5(SENTINEL_ID.encode()).hexdigest()
 
 MappingImmutable = tt.MappingProxyType
 # END: Generic - Types

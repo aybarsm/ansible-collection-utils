@@ -34,10 +34,6 @@ def __ansible():
     import ansible_collections.aybarsm.utils.plugins.module_utils.helpers.ansible as HelperAnsible
     return HelperAnsible
 
-def __collection():
-    from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.collection import Collection
-    return Collection
-
 def __convert():
     import ansible_collections.aybarsm.utils.plugins.module_utils.helpers.convert as HelperConvert
     return HelperConvert
@@ -53,10 +49,6 @@ def __data_query():
 def __factory():
     import ansible_collections.aybarsm.utils.plugins.module_utils.helpers.factory as HelperFactory
     return HelperFactory
-
-def __fluent():
-    from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.fluent import Fluent
-    return Fluent
 
 def __str():
     import ansible_collections.aybarsm.utils.plugins.module_utils.helpers.str as HelperStr

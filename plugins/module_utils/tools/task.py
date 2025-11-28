@@ -1,33 +1,40 @@
 import typing as t
 import typing_extensions as te
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    ENUMERATABLE, CommonStatus
+    ENUMERATABLE, CommonStatus, PositiveInt, immutable_data
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Convert, Utils
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools.collection import Collection
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools.coroutine import WaitConcurrent
 
 TaskId = str
 TaskAlias = t.Optional[str]
-TaskGroup = t.Optional[str]
 TaskResult = t.Any
 TaskCallback = t.Callable[..., TaskResult]
-TaskOnFinallyCallback = t.Callable[..., None]
+TaskEventCallback = t.Callable[..., None]
 
-TaskChannelSize = int
+TaskGroupId = str
+TaskGroupConcurrent = PositiveInt
+
+@immutable_data
+class TaskGroup:
+    id: TaskGroupId
+    concurrent: t.Optional[TaskGroupConcurrent] = None
 
 class Task:
     def __init__(
         self,
         callback: TaskCallback,
         alias: TaskAlias = None, 
-        group: TaskGroup = None,
-        on_finally: t.Optional[TaskOnFinallyCallback] = None
+        group: t.Optional[TaskGroup] = None,
+        on_finally: t.Optional[TaskEventCallback] = None,
+        on_cancel: t.Optional[TaskEventCallback] = None,
+        on_uncancel: t.Optional[TaskEventCallback] = None,
     ):
         self.__callback: TaskCallback = callback
         self.__alias: TaskAlias = alias
-        self.__group: TaskGroup = group
-        self.__on_finally: t.Optional[TaskOnFinallyCallback] = on_finally
+        self.__group: t.Optional[TaskGroup] = group
+        self.__on_finally: t.Optional[TaskEventCallback] = on_finally
+        self.__on_cancel: t.Optional[TaskEventCallback] = on_cancel
+        self.__on_uncancel: t.Optional[TaskEventCallback] = on_uncancel
 
         self.__id: TaskId = Convert.as_id(self.callback, 'task_')
         self.__status: CommonStatus = CommonStatus.NOT_EXECUTED
@@ -49,12 +56,20 @@ class Task:
         return self.__alias
     
     @property
-    def group(self) -> TaskGroup:
+    def group(self) -> t.Optional[TaskGroup]:
         return self.__group
     
     @property
-    def on_finally(self) -> t.Optional[TaskOnFinallyCallback]:
+    def on_finally(self) -> t.Optional[TaskEventCallback]:
         return self.__on_finally
+    
+    @property
+    def on_cancel(self) -> t.Optional[TaskEventCallback]:
+        return self.__on_cancel
+
+    @property
+    def on_uncancel(self) -> t.Optional[TaskEventCallback]:
+        return self.__on_uncancel
 
     @property
     def result(self) -> TaskResult:
@@ -78,132 +93,62 @@ class Task:
 
     @property
     def finished(self) -> bool:
-        return self.status in [CommonStatus.FINISHED, CommonStatus.FAILED]
+        return self.status in [CommonStatus.FINISHED, CommonStatus.FAILED, CommonStatus.CANCELLED]
     
     @property
     def failed(self) -> bool:
         return self.status == CommonStatus.FAILED
+    
+    @property
+    def cancelled(self) -> bool:
+        return self.status == CommonStatus.CANCELLED
+    
+    @property
+    def canceled(self) -> bool:
+        return self.cancelled
+    
+    def cancel(self) -> te.Self:
+        if self.executed:
+            raise RuntimeError('Only not executed task can be cancelled.')
+        
+        self.__status = CommonStatus.CANCELLED
+        self.__result = CommonStatus.CANCELLED
+        Utils.dump(f'Task [{self.id}] :: CANCELLED')
+        self.__event_call(self.on_cancel)
+        
+        return self
+    
+    def uncancel(self) -> te.Self:
+        if not self.cancelled:
+            raise RuntimeError('Only cancelled task can be uncancelled.')
+        
+        self.__status = CommonStatus.NOT_EXECUTED
+        self.__result = CommonStatus.NOT_EXECUTED
+        self.__event_call(self.on_uncancel)
+
+        return self
 
     def dispatch(self) -> te.Self:
         if self.dispatched or self.finished:
             return self.result
         
         self.__status = CommonStatus.RUNNING
-        call_conf = {'__caller': {'bind': {'annotation': {Task: self}}}}
         try:
-            self.__result = Utils.call(self.callback, **call_conf)
+            self.__result = Utils.call(self.callback, **self.__get_caller_config())
             self.__status = CommonStatus.FINISHED
         except Exception as e:
             self.__result = e
             self.__status = CommonStatus.FAILED
         finally:
-            if self.on_finally:
-                Utils.call(self.on_finally, **call_conf)
+            self.__event_call(self.on_finally)
         
         return self
+    
+    def __get_caller_config(self) -> dict:
+        return {'__caller': {'bind': {'annotation': {Task: self}}}}
 
-class TaskCollection(Collection[Task]):
-    def __init__(self, tasks: ENUMERATABLE[Task]):
-        super().__init__(tasks)
-
-        if self.empty():
+    def __event_call(self, callback: t.Optional[t.Callable]) -> None:
+        if not callback:
             return
         
-        aliases = self.get_aliases()
-        if len(aliases) != len(set(aliases)):
-            raise RuntimeError(f'Task aliases must be unique.')
-
-    def __validate_unique_task_alias(self, task: Task) -> None:
-        if self.get(task.alias) != None:
-            raise RuntimeError(f'Task with [{task.alias}] alias already exists.')
-        
-    def append(self, task: Task) -> None:
-        self.__validate_unique_task_alias(task)
-        super().append(task)
-    
-    def prepend(self, task: Task) -> None:
-        self.__validate_unique_task_alias(task)
-        super().prepend(task)
-    
-    def push(self, task: Task) -> None:
-        self.append(task)
-    
-    def add(self, task: Task) -> None:
-        self.append(task)
-
-    def get(self, identifier: str | Task | TaskId | TaskAlias | TaskGroup) -> t.Optional[Task | list[Task]]:
-        if isinstance(identifier, str):
-            identifier = TaskId(identifier)
-
-        if isinstance(identifier, Task):
-            return self.get_by_id(identifier.id)
-        elif isinstance(identifier, TaskId):
-            return self.get_by_id(identifier)
-        elif isinstance(identifier, TaskAlias):
-            return self.get_by_alias(identifier)
-        elif isinstance(identifier, TaskGroup):
-            return self.get_by_group(identifier)
-    
-    def get_by_id(self, identifier: TaskId) -> t.Optional[Task]:
-        return self.first(lambda task: task.id == identifier)
-    
-    def get_by_alias(self, identifier: TaskAlias) -> t.Optional[Task]:
-        return self.first(lambda task: task.alias == identifier)
-    
-    def get_by_group(self, identifier: TaskGroup) -> list[Task]:
-        return self.where(lambda task: task.group == identifier)
-    
-    def get_ids(self) -> list[TaskId]:
-        return self.pluck('id')
-    
-    def get_aliases(self) -> list[TaskAlias]:
-        return self.pluck('alias')
-    
-    def get_results(self) -> list[TaskResult]:
-        return self.pluck('result')
-    
-    def get_dispatchers(self) -> list[t.Callable]:
-        return self.pluck('dispatch')
-
-    def get_groups(self) -> list[TaskGroup]:
-        return [group for group in set(self.pluck('group')) if group]
-
-class TaskChannel(TaskCollection):
-    def __init__(
-            self,
-            tasks: ENUMERATABLE[Task] = [],
-            size: t.Optional[TaskChannelSize] = None,
-            abort_on_failed: bool = True,
-        ):
-        self.__size: t.Optional[TaskChannelSize] = size
-        self.__concurrent: WaitConcurrent
-        self.__abort_on_failed: bool = abort_on_failed
-
-        super().__init__(tasks)
-    
-    @property
-    def size(self) -> t.Optional[TaskChannelSize]:
-        if hasattr(self, '__concurrent'):
-            return self.__concurrent.size
-        else:
-            return self.__size
-    
-    @property
-    def running(self) -> bool:
-        return hasattr(self, '__concurrent') and self.__concurrent.running
-    
-    @property
-    def finished(self) -> bool:
-        return hasattr(self, '__concurrent') and self.__concurrent.finished
-
-    def dispatch(self) -> list[TaskResult]:        
-        abort_when = None
-        if self.__abort_on_failed:
-            abort_when = lambda task: task.failed
-        
-        results = WaitConcurrent(self.get_dispatchers(), self.size, abort_when).run()
-        
-        return results
-
-class TaskPipeline(Collection[Task | TaskChannel]):
-    pass
+        Utils.call(callback, **self.__get_caller_config())

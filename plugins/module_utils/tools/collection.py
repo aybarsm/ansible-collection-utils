@@ -1,7 +1,7 @@
 import typing as t
 import typing_extensions as te
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    T, ENUMERATABLE
+    T, CommonStatus, ENUMERATABLE, SENTINEL_HASH
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Data, Utils
 
@@ -11,44 +11,72 @@ class Collection(t.Generic[T]):
 
     def __init__(self, items: ENUMERATABLE):
         self.items: list[T] = list(items).copy()
+        self.__sentinel: str = SENTINEL_HASH
     
-    def map(self, callback: t.Callable) -> None:
-        for idx_, val_ in enumerate(self.items):
-            self.items[idx_] = Utils.call(callback, val_, idx_)
+    @property
+    def sentinel(self) -> str:
+        return self.__sentinel
     
-    def each(self, callback: t.Callable) -> None:
+    def map(self, callback: t.Callable) -> t.Self:
+        for idx in self.indexes():
+            self.items[idx] = Utils.call(callback, self.items[idx], idx)
+        
+        return self
+    
+    def each(self, callback: t.Callable, initial: t.Any = CommonStatus.NOT_EXECUTED) -> t.Any:
+        ret = initial
         for idx_, val_ in enumerate(self.items):
-            res = Utils.call(callback, val_, idx_, self)
-            if res == False:
+            ret = Utils.call(callback, val_, idx_, ret, self)
+            if ret == self.sentinel:
                 break
+        
+        return ret
     
-    def where(self, callback: t.Callable, **kwargs) -> list[T]:
-        return list(Data.where(self.all(), callback, [], **kwargs))
+    def where_index(self, callback: t.Callable, **kwargs) -> tuple[int, ...]:
+        kwargs['key'] = True
+        return tuple(Data.where(self.items, callback, [], **kwargs))
     
-    def reject(self, callback: t.Callable, **kwargs) -> list[T]:
-        return list(Data.reject(self.all(), callback, [], **kwargs))
+    def where_index_single(self, callback: t.Callable, **kwargs) -> t.Optional[int]:
+        kwargs['key'] = True
+        return Data.where(self.items, callback, None, **kwargs)
+    
+    def where(self, callback: t.Callable, **kwargs) -> tuple[T, ...]:
+        return tuple([self.items[idx] for idx in self.indexes() if idx in self.where_index(callback, **kwargs)])
+    
+    def where_single(self, callback: t.Callable, **kwargs) -> t.Optional[T]:
+        if not any([kwargs.get('first', False), kwargs.get('last', False)]):
+            raise RuntimeError('No single keyword provided')
+        
+        key = self.where_index_single(callback, **kwargs)
+        return None if key == None else self.items[key]
+    
+    def reject(self, callback: t.Callable, **kwargs) -> tuple[T, ...]:
+        kwargs['negate'] = True
+        return self.where(callback, **kwargs)
 
     def first(self, callback: t.Callable, **kwargs) -> t.Optional[T]:
-        return Data.first(self.all(), callback, None, **kwargs)
+        kwargs['first'] = True
+        kwargs['last'] = False
+        return self.where_single(callback, **kwargs)
     
     def last(self, callback: t.Callable, **kwargs) -> t.Optional[T]:
-        return Data.last(self.all(), callback, None, **kwargs)
+        kwargs['first'] = False
+        kwargs['last'] = True
+        return self.where_single(callback, **kwargs)
     
-    def where_key(self, callback: t.Callable, **kwargs) -> list[int]:
-        kwargs['key'] = True
-        return list(Data.where(self.all(), callback, [], **kwargs))
-    
-    def reject_key(self, callback: t.Callable, **kwargs) -> list[int]:
-        kwargs['key'] = True
-        return list(Data.reject(self.all(), callback, [], **kwargs))
+    def reject_index(self, callback: t.Callable, **kwargs) -> tuple[int, ...]:
+        kwargs['negate'] = True
+        return self.where_index(callback, **kwargs)
 
-    def first_key(self, callback: t.Callable, **kwargs) -> t.Optional[int]:
-        kwargs['key'] = True
-        return Data.first(self.all(), callback, None, **kwargs)
+    def first_index(self, callback: t.Callable, **kwargs) -> t.Optional[int]:
+        kwargs['first'] = True
+        kwargs['last'] = False
+        return self.where_index_single(callback, **kwargs)
     
-    def last_key(self, callback: t.Callable, **kwargs) -> t.Optional[int]:
-        kwargs['key'] = True
-        return Data.last(self.all(), callback, None, **kwargs)
+    def last_index(self, callback: t.Callable, **kwargs) -> t.Optional[int]:
+        kwargs['first'] = False
+        kwargs['last'] = True
+        return self.where_index_single(callback, **kwargs)
     
     def sort_by(self, callback: str | t.Callable, reverse: bool = False) -> te.Self:
         return self.__class__(Data.collections().sort_by(self.all(), callback, reverse))
@@ -91,9 +119,6 @@ class Collection(t.Generic[T]):
     
     def indexes(self) -> set[int]:
         return set(range(0, len(self.items))) if self.not_empty() else set()
-    
-    def keys(self) -> set[int]:
-        return self.indexes()
     
     def __copy__(self):
         return self.copy()
