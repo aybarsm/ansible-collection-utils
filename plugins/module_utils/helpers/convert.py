@@ -681,4 +681,23 @@ def as_callable_segments(callback: t.Callable) -> tt.MappingProxyType[str, t.Any
         ret['has']['params'][type_] += 1
 
     return tt.MappingProxyType(ret)
+
+def as_callable_caller_segments(container: object, origin: str) -> list[tt.MappingProxyType[str, t.Any]]:
+    import sys
+    ret = []
+    level = 0
+    while True:
+        level += 1
+        try:
+            frame = sys._getframe(level)
+            item = {
+                'level': level,
+                'caller_code': frame.f_code,
+                'caller_name': frame.f_code.co_name,
+            }
+            ret.append(tt.MappingProxyType(item))
+        except Exception:
+            break
+    
+    return ret
 ### END: Callable

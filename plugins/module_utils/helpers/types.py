@@ -1,31 +1,32 @@
 import typing as t
 import types as tt
 import typing_extensions as te
-import pydantic as tp
-import inspect, datetime, hashlib, uuid
+import annotated_types
+import inspect, uuid
 
 # BEGIN: Generic - Types
 T = t.TypeVar("T")
 ENUMERATABLE = t.Union[list[T], tuple[T, ...], set[T]]
 
-SENTINEL: object = object()
-SENTINEL_TS: datetime.datetime = datetime.datetime.now(datetime.timezone.utc)
-SENTINEL_ID: str = f'{str(id(SENTINEL))}_{str(SENTINEL_TS.strftime('%Y-%m-%dT%H:%M:%S'))}.{SENTINEL_TS.microsecond * 1000:09d}Z'
-SENTINEL_HASH: str = hashlib.md5(SENTINEL_ID.encode()).hexdigest()
-
 MappingImmutable = tt.MappingProxyType
 EventCallback = t.Callable[..., None]
-UniqueIdInt = tp.PositiveInt
+
+PositiveInt = t.Annotated[int, annotated_types.Gt(0)]
+NegativeInt = t.Annotated[int, annotated_types.Lt(0)]
+NonPositiveInt = t.Annotated[int, annotated_types.Le(0)]
+NonNegativeInt = t.Annotated[int, annotated_types.Ge(0)]
+
+PositiveFloat = t.Annotated[float, annotated_types.Gt(0)]
+NegativeFloat = t.Annotated[float, annotated_types.Lt(0)]
+NonPositiveFloat = t.Annotated[float, annotated_types.Le(0)]
+NonNegativeFloat = t.Annotated[float, annotated_types.Ge(0)]
+
+UniqueIdInt = PositiveInt
 UniqueIdStr = str
 UniqueIdUuid = uuid.UUID
 UniqueAlias = str
 # END: Generic - Types
 
-# BEGIN: Pydantic - Types
-PydanticBaseModel = tp.BaseModel
-PositiveInt = tp.PositiveInt
-PositiveFloat = tp.PositiveFloat
-# BEGIN: End - Types
 
 # BEGIN: Task
 TaskResult = t.Any

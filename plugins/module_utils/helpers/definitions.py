@@ -2,15 +2,22 @@ import typing as t
 import typing_extensions as te
 import dataclasses as dt
 import pydantic as tp
-import enum, functools, uuid
+import enum, functools, uuid, datetime, hashlib
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    PydanticBaseModel, EventCallback, UniqueIdUuid, UniqueAlias
+    EventCallback, UniqueIdUuid, UniqueAlias
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    _CONF, _convert, _data, _utils, _validate
+    _CONF, _convert, _data, _str, _utils, _validate
 )
 
 # BEGIN: Generic - Definitions
+dataclass = dt.dataclass
+
+SENTINEL: object = object()
+SENTINEL_TS: datetime.datetime = datetime.datetime.now(datetime.timezone.utc)
+SENTINEL_ID: str = f'{str(id(SENTINEL))}_{str(SENTINEL_TS.strftime('%Y-%m-%dT%H:%M:%S'))}.{SENTINEL_TS.microsecond * 1000:09d}Z'
+SENTINEL_HASH: str = hashlib.md5(SENTINEL_ID.encode()).hexdigest()
+
 class GenericStatus(enum.StrEnum):
     ABORTED = enum.auto()
     CANCELLED = enum.auto()
@@ -74,96 +81,142 @@ class GenericStatus(enum.StrEnum):
         return not self.dispatched()
     
     def cancelable(self) -> bool:
-        return self.cancelable()    
+        return self.cancelable()
+
+@functools.wraps(dt.field)
+def field(**kwargs):
+    options = _data().all_except(kwargs, *_CONF['data_classes']['kwargs'].keys())
+    kwargs = _data().only_with(kwargs, *_CONF['data_classes']['kwargs'].keys())
+    kwargs = _data().combine(kwargs, {'metadata': {'_options': options}}, recursive=True)
+    return dt.field(**kwargs)
+
+def method(**kwargs):
+    def decorator(func):        
+        setattr(func, '__metadata__', kwargs)
+        return func
+    return decorator
+
+DUMPS = []
+
+@dataclass
+class BaseModel:
+    id: UniqueIdUuid = field(default_factory=uuid.uuid4, init=False, repr=False, frozen=True)
+    alias: t.Optional[UniqueAlias] = field(default=None, init=True, repr=False, frozen=True)
+
+    def __dataclass_field(self, name: str, key: str = '', default: t.Any = None) -> t.Any:
+        attr = super().__getattribute__('__dataclass_fields__').get(name)
+
+        if attr is None:
+            return default
+        
+        if key.strip() == '':
+            return attr        
+
+        return _data().get(attr, key, default)
+        
+    def __delattr__(self, name: str) -> None:
+        if self.__dataclass_field(name, 'metadata._options.frozen') == True:
+            raise RuntimeError(f'Frozen attribute [{name}] cannot be deleted.')
+        
+        is_protected = self.__dataclass_field(name, 'metadata._options.protected') == True
+        if is_protected and not _validate().callable_called_within_hierarchy(self, '__delattr__'):
+            raise RuntimeError(f'Protected attribute [{name}] cannot be deleted externally.')
+        
+        super().__delattr__(name)
+    
+    def __setattr__(self, name: str, value: t.Any) -> None:
+        is_protected = self.__dataclass_field(name, 'metadata._options.protected') == True
+        if is_protected and not _validate().callable_called_within_hierarchy(self, '__setattr__'):
+            raise RuntimeError(f'Protected attribute [{name}] cannot be manipulated externally.')
+        
+        super().__setattr__(name, value)
+    
+    def __getattribute__(self, name: str) -> t.Any:
+        global DUMPS
+        attr = super().__getattribute__(name)
+        
+        if name in ['__class__', '__dataclass_fields__'] or name.endswith('__dataclass_field'):
+            return attr
+        
+        is_protected_method = _validate().is_callable(attr) and _data().get(attr, '__metadata__.protected') == True
+        if is_protected_method and not _validate().callable_called_within_hierarchy(self, '__getattribute__'):
+            raise RuntimeError(f'Protected method [{name}] cannot be called externally.')
+
+        # is_callable = _validate().is_callable(attr)
+        # has_metadata = is_callable and hasattr(attr, '__metadata__')
+
+        
+
+        # if name in super().__getattribute__('__dataclass_fields__'):
+        #     is_hidden = self.__dataclass_field(name, '_options.hidden') == True
+        #     if is_hidden and not _validate().callable_called_within_hierarchy(self, '__getattribute__'):
+        #         raise RuntimeError(f'Hidden attribute [{name}] cannot be accessed externally.')
+        # else:
+        #     attr = super().__getattribute__(name)
+        #     DUMPS.append({'name': name, 'attr': attr, 'callable': _validate().is_callable(attr)})
+
+        return attr
+
+    #     # _utils().dump({'name': name, 'attr': attr})
+    #     return attr
+        
+        # if name.startswith('__'):
+        #     return super().__getattribute__(name)
+        
+        # attr = object.__getattribute__(self, name)
+        
+        # if not _validate().is_callable(attr):
+        #     is_protected = self.__is_field(name, '_options.protected', True)
+        #     if is_protected and not _validate().callable_called_within_hierarchy(self, '__getattribute__'):
+        #         raise RuntimeError(f'Protected attribute [{name}] cannot be accessed externally.')
+            
+        #     return attr
+        # else:
+        #     return attr
+        
+    #     pass
+    
+    # def __call__(self, *args: t.Any, **kwds: t.Any) -> t.Any:
+    #     _utils().dump({'args': args, 'kwds': kwds})
+    #     pass
+def model(cls):
+    if BaseModel not in cls.__bases__:
+        cls.__bases__ = (BaseModel,) + cls.__bases__
+
+    return dt.dataclass(cls)
 # END: Generic - Definitions
 
-# BEGIN: Pydantic
-def __wrap_pydantic_field(*args, **kwargs):
-    for extra, default in _data().get(_CONF, 'pydantic.extras', {}).items():
-        _data().set_(kwargs, f'json_schema_extra.{extra}', kwargs.pop(extra, default))
-    
-    return [args, kwargs]
-
-@functools.wraps(tp.PrivateAttr)
-def wrapped_pydantic_privateattr(*args, **kwargs) -> t.Any:
-    # args, kwargs = __wrap_pydantic_field(*args, **kwargs)
-    return tp.PrivateAttr(*args, **kwargs)
-
-@functools.wraps(tp.Field)
-def wrapped_pydantic_field(*args, **kwargs) -> t.Any:
-    args, kwargs = __wrap_pydantic_field(*args, **kwargs)
-    return tp.Field(*args, **kwargs)
-
-PrivateAttr = wrapped_pydantic_privateattr
-Field = wrapped_pydantic_field
-computed_field = tp.computed_field
-
-class Ignored:
-    pass
-
-class BaseModel(PydanticBaseModel):
-    id: UniqueIdUuid = Field(default_factory=uuid.uuid4, init=False, repr=False, frozen=True)
-    alias: t.Optional[UniqueAlias] = Field(default=None, init=True, repr=False, frozen=True)
-    
-    model_config = tp.ConfigDict(extra='allow')
-    __pydantic_post_init__ = 'model_post_init'
-
-    @property
-    def __protected_attributes__(self) -> tuple[str, ...]:
-        ret = [attr for attr in self.__pydantic_fields__.keys() if _data().get(self.__pydantic_fields__, f'{attr}.json_schema_extra.protected') == True]
-        ret.extend(list(self.__private_attributes__.keys()))
-        return tuple(ret)
-
-    def model_post_init(self, context: t.Any):
-        self.__pydantic_configure_protected__()
-    
-    def __pydantic_configure_protected__(self) -> None:
-        for attr in self.__protected_attributes__:
-            if attr in self.__pydantic_fields__:
-                self.__pydantic_fields__[attr].frozen = True
-
-            if attr not in self.__pydantic_setattr_handlers__:
-                self.__pydantic_setattr_handlers__[attr] = self.__pydantic_protected_attr_set_handler__ #type: ignore
-
-    def __pydantic_protected_attr_set_handler__(self, container: "BaseModel", attr: str, value: t.Any):
-        if not _validate().callable_called_within_hierarchy(container, '__setattr__'):
-            raise ValueError(f'Attribute [{attr}] is protected. Cannot be modified externally.')
-    
-        object.__setattr__(container, attr, value)
-    
-# END: Pydantic
-
 # BEGIN: Mixins
-class CallableMixin:
-    def _caller_get_config(self, *args, **kwargs):
-        kwargs = _data().append(kwargs, '__caller.bind.annotations', self)        
+# class CallableMixin:
+#     def _caller_get_config(self, *args, **kwargs):
+#         kwargs = _data().append(kwargs, '__caller.bind.annotations', self)        
         
-        return [args, kwargs]
+#         return [args, kwargs]
 
-    def _caller_make_call(self, callback: t.Optional[t.Callable], *args, **kwargs) -> t.Any:
-        if not callback:
-            return
+#     def _caller_make_call(self, callback: t.Optional[t.Callable], *args, **kwargs) -> t.Any:
+#         if not callback:
+#             return
         
-        args, kwargs = self._caller_get_config(*args, **kwargs)
+#         args, kwargs = self._caller_get_config(*args, **kwargs)
 
-        return _utils().call(callback, *args, **kwargs)
+#         return _utils().call(callback, *args, **kwargs)
 
-class StatusMixin(CallableMixin):
-    status: GenericStatus = Field(default=GenericStatus.READY, init=False, repr=True, protected=True)
-    on_status_change: t.Optional[EventCallback] = Field(default=GenericStatus.READY, init=True, repr=True, frozen=True)
+# class StatusMixin(BaseModel, CallableMixin):
+#     status: GenericStatus = field(default=GenericStatus.READY, init=False, repr=True, protected=True)
+#     on_status_change: t.Optional[EventCallback] = field(default=None, init=True, repr=True, frozen=True)
 
-    def _set_status(self, status: GenericStatus) -> te.Self:
-        kwargs = {
-            'status_previous': self.status,
-            'status_current': status,
-        }
+#     def _set_status(self, status: GenericStatus) -> te.Self:
+#         kwargs = {
+#             'status_previous': self.status,
+#             'status_current': status,
+#         }
 
-        if kwargs['status_previous'] == status:
-            return self
+#         if kwargs['status_previous'] == status:
+#             return self
         
-        self.status = status
+#         self.status = status
 
-        self._caller_make_call(self.on_status_change, **kwargs)
+#         self._caller_make_call(self.on_status_change, **kwargs)
 
-        return self
+#         return self
 # END: Mixins

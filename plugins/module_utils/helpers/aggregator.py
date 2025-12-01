@@ -26,6 +26,10 @@ def _pathlib():
     import pathlib
     return pathlib
 
+def _data_classes():
+    import dataclasses
+    return dataclasses
+
 ### BEGIN: Helpers
 def _conf():
     return _CONF
@@ -72,8 +76,16 @@ def _validator():
 ### END: Helpers
 
 _CONF = {
-    'dataclass': {
+    'data_classes': {
         'kwargs': {
+            'default': _data_classes().MISSING,
+            'default_factory': _data_classes().MISSING,
+            'init': True,
+            'repr': True,
+            'hash': None,
+            'compare': True,
+            'metadata': None, 
+            'kw_only': _data_classes().MISSING,
         },
     },
     'pydantic': {
