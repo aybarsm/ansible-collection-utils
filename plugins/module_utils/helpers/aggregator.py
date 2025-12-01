@@ -72,6 +72,10 @@ def _validator():
 ### END: Helpers
 
 _CONF = {
+    'dataclass': {
+        'kwargs': {
+        },
+    },
     'pydantic': {
         'extras': {
             'protected': False,

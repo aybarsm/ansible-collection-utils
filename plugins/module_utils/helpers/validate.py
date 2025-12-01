@@ -85,6 +85,13 @@ def contains(data: t.Iterable[t.Any], *args: str|int, **kwargs)-> bool:
 
 def is_item_exec(data: t.Mapping)-> bool:
     return not truthy(Data.get(data, '_skip', False)) and not falsy(Data.get(data, '_keep', True))
+
+def is_hashable(data: t.Any)-> bool:
+    try:
+        hash(data)
+        return True
+    except TypeError:
+        return False
 ### END: Data
 
 ### BEGIN: Type

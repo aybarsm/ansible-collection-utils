@@ -1,35 +1,30 @@
 import typing as t
+from pydantic import PositiveInt
 import typing_extensions as te
 import asyncio
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    ENUMERATABLE, MappingImmutable, EventCallback, PositiveFloat,
-    TaskId, TaskAlias, TaskResult, EventCallback, 
-    TaskGroupId, TaskCollectionId, TaskCollectionAlias, 
+    ENUMERATABLE, MappingImmutable, EventCallback, UniqueIdInt, UniqueAlias, PositiveFloat,
+    TaskResult, EventCallback, 
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import (
-    GenericIdMixin, GenericStatus, StatusMixin
+    BaseModel, Field, GenericStatus, StatusMixin
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.tools.task import Task, TaskGroup
 from ansible_collections.aybarsm.utils.plugins.module_utils.tools.collection import Collection
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Convert, Data, Utils
 
-class TaskCollection(GenericIdMixin, Collection[Task]):
+TaskCollectionIdentifier = t.Union[UniqueIdInt, UniqueAlias, Task, asyncio.Task, TaskGroup, ENUMERATABLE[t.Union[UniqueIdInt, UniqueAlias, Task, asyncio.Task, TaskGroup]]]
+
+class TaskCollection(Collection[Task]):
+    context: t.Optional[t.Any] = None
+
     def __init__(
         self,
         tasks: ENUMERATABLE[Task] = [],
         context: t.Optional[t.Any] = None,
-        alias: t.Optional[TaskCollectionAlias] = None,
     ):
         super().__init__(tasks)
-
-        self.context: t.Optional[t.Any] = context
-        self._alias: t.Optional[TaskCollectionAlias] = alias
-        
-        self.__validate_uniqueness()
-
-    @property
-    def alias(self) -> t.Optional[TaskCollectionAlias]:
-        return self._alias
+        self.context = context
         
     def append(self, task: Task | ENUMERATABLE[Task]) -> te.Self:
         return self.__append_or_prepend(True, task)
@@ -43,80 +38,96 @@ class TaskCollection(GenericIdMixin, Collection[Task]):
     def add(self, task: Task) -> te.Self:
         return self.append(task)
 
-    def find(
-        self,
-        identifier: str | Task | TaskId | TaskAlias | TaskGroup | TaskGroupId | asyncio.Task,
-    ) -> t.Optional[Task]:
-        index = self.find_index(identifier)
+    # def find(
+    #     self,
+    #     identifier: UniqueIdInt | UniqueAlias | Task | asyncio.Task,
+    # ) -> t.Optional[Task]:
+    #     index = self.find_index(identifier)
 
-        return None if index == None else self.items[index]
+    #     return None if index == None else self.items[index]
     
-    def get(
-        self,
-        identifier: TaskGroup | TaskGroupId,
-    ) -> tuple[Task, ...]:
-        indexes = self.find_index(identifier)
+    # def get(
+    #     self,
+    #     identifier: ENUMERATABLE[UniqueIdInt | Task | TaskGroup] | TaskGroup,
+    # ) -> tuple[Task, ...]:
+    #     indexes = self.get_index(identifier)
 
-        return tuple([self.items[index] for index in self.indexes() if index in indexes]) #type: ignore
+    #     return tuple([self.items[index] for index in self.indexes() if index in indexes]) #type: ignore
     
-    def find_index(
-        self,
-        identifier: str | Task | TaskId | TaskAlias | TaskGroup | TaskGroupId | asyncio.Task,
-    ) -> t.Optional[int]:
-        identifier = self.resolve_identifier(identifier)
+    # def find_index(
+    #     self,
+    #     identifier: UniqueIdInt | UniqueAlias | Task | asyncio.Task,
+    # ) -> t.Optional[int]:
+    #     identifier = self.resolve_identifier(identifier)
 
-        if isinstance(identifier, TaskId):
-            return self.first_index(lambda task: task.id == identifier)
-        elif isinstance(identifier, TaskAlias):
-            return self.first_index(lambda task: task.alias == identifier)
-        elif isinstance(identifier, TaskGroupId):
-            return self.first_index(lambda task: task.group.id == identifier)
+    #     if isinstance(identifier, int):
+    #         return self.first_index(lambda task: task.id == identifier)
+    #     elif isinstance(identifier, TaskAlias):
+    #         return self.first_index(lambda task: task.alias == identifier)
+    #     elif isinstance(identifier, TaskGroupId):
+    #         return self.first_index(lambda task: task.group.id == identifier)
         
-    def get_index(
-        self,
-        identifier: TaskGroup | TaskGroupId,
-    ) -> tuple[int, ...]:
-        identifier = self.resolve_identifier(identifier) #type: ignore
+    # def get_index(
+    #     self,
+    #     identifier: ENUMERATABLE[UniqueIdInt | Task | TaskGroup] | TaskGroup,
+    # ) -> tuple[int, ...]:
+    #     identifier = self.resolve_identifier(identifier) #type: ignore
 
-        return self.where_index(lambda task: task.group.id == identifier)
+    #     return self.where_index(lambda task: task.group.id == identifier)
     
-    def get_ids(self) -> list[TaskId]:
+    def get_ids(self) -> list[UniqueIdInt]:
         return self.pluck('id')
     
-    def get_aliases(self) -> list[TaskAlias]:
+    def get_aliases(self) -> list[UniqueAlias]:
         return self.pluck('alias')
     
     def get_results(self) -> list[TaskResult]:
         return self.pluck('result')
     
-    def get_mapped_results(self) -> MappingImmutable[TaskId, TaskResult]:
+    def get_mapped_results(self) -> MappingImmutable[UniqueIdInt, TaskResult]:
         return MappingImmutable(
-            self.each(lambda task, idx, ret: Data.set_(ret, task.id, task.result), {})
+            self.each(lambda task, idx, ret: Data.set_(ret, str(task.id), task.result), {})
         )
     
     def get_dispatchers(self) -> list[t.Callable]:
         return self.pluck('dispatch')
 
     def get_groups(self) -> list[TaskGroup]:
-        return [group for group in set(self.pluck('group')) if group]
+        return self.pluck('group', unique=True, filled=True)
     
-    def get_group_ids(self) -> list[TaskGroupId]:
-        return self.pluck('group.id')
+    def get_group_ids(self) -> list[UniqueIdInt]:
+        return self.pluck('group.id', unique=True, filled=True)
+    
+    def get_group_aliases(self) -> list[UniqueAlias]:
+        return self.pluck('group.alias', unique=True, filled=True)
     
     @staticmethod
-    def resolve_identifier(
-        identifier: str | Task | TaskId | TaskAlias | TaskGroup | TaskGroupId | asyncio.Task,
-    ) -> TaskId | TaskAlias | TaskGroupId:
-        if isinstance(identifier, str):
-            return TaskId(identifier)
-        elif isinstance(identifier, Task):
-            return  identifier.id
-        elif isinstance(identifier, asyncio.Task):
-            return  TaskId(identifier.get_name())
-        elif isinstance(identifier, TaskGroup):
-            return  TaskGroupId(identifier.id)
+    def resolve_retrieval_callback(
+        identifier: TaskCollectionIdentifier,
+    ) -> t.Callable:
+        done = set()
+        ret = []
+
+        for ident in Convert.to_iterable(identifier):
+            if isinstance(ident, int):
+                key, val = 'task.id', ident
+            elif isinstance(ident, str):
+                key, val = 'task.alias', ident
+            elif isinstance(ident, Task):
+                key, val = 'task.id', ident.id
+            elif isinstance(ident, asyncio.Task):
+                key, val = 'task.id', int(ident.get_name())
+            elif isinstance(ident, TaskGroup):
+                key, val = 'task.group.id', ident.id
+            
+            key_done = f'{key}_{str(val)}'
+            if key_done in key_done:
+                continue
+            
+            ret.append(lambda task: getattr(task, key) == val)
+            done.add(key_done)
         
-        return identifier
+        return lambda task: any(ret)
     
     def __append_or_prepend(self, is_append: bool, task: Task | ENUMERATABLE[Task]) -> te.Self:
         for item in Convert.to_iterable(task):

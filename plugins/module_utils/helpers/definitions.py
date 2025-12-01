@@ -2,10 +2,9 @@ import typing as t
 import typing_extensions as te
 import dataclasses as dt
 import pydantic as tp
-import functools
-import enum
+import enum, functools, uuid
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    PydanticBaseModel, EventCallback, GenericUniqueIdInt, GenericUniqueAlias
+    PydanticBaseModel, EventCallback, UniqueIdUuid, UniqueAlias
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
     _CONF, _convert, _data, _utils, _validate
@@ -75,50 +74,8 @@ class GenericStatus(enum.StrEnum):
         return not self.dispatched()
     
     def cancelable(self) -> bool:
-        return self.cancelable()
+        return self.cancelable()    
 # END: Generic - Definitions
-
-# BEGIN: Mixins
-class GenericIdMixin:
-    alias: t.Optional[GenericUniqueAlias] = None
-
-    @property
-    def id(self) -> GenericUniqueIdInt:
-        return id(self)
-
-class CallableMixin:
-    def _caller_get_config(self, *args, **kwargs):
-        kwargs = _data().append(kwargs, '__caller.bind.annotations', self)        
-        
-        return [args, kwargs]
-
-    def _caller_make_call(self, callback: t.Optional[t.Callable], *args, **kwargs) -> t.Any:
-        if not callback:
-            return
-        
-        args, kwargs = self._caller_get_config(*args, **kwargs)
-
-        return _utils().call(callback, *args, **kwargs)
-
-class StatusMixin(CallableMixin):
-    status: GenericStatus = GenericStatus.READY
-    on_status_change: t.Optional[EventCallback] = None
-
-    def _set_status(self, status: GenericStatus) -> te.Self:
-        kwargs = {
-            'status_previous': self._status,
-            'status_current': status,
-        }
-
-        if kwargs['status_previous'] == status:
-            return self
-        
-        self._status = status
-
-        self._caller_make_call(self.on_status_change, **kwargs)
-
-        return self
-# END: Mixins
 
 # BEGIN: Pydantic
 def __wrap_pydantic_field(*args, **kwargs):
@@ -145,29 +102,68 @@ class Ignored:
     pass
 
 class BaseModel(PydanticBaseModel):
-    # __pydantic_post_init__ = 'model_post_init'
+    id: UniqueIdUuid = Field(default_factory=uuid.uuid4, init=False, repr=False, frozen=True)
+    alias: t.Optional[UniqueAlias] = Field(default=None, init=True, repr=False, frozen=True)
     
-    def __init__(self, **kwargs):
-        super(BaseModel, self).__init__(**kwargs)
-        self.__pydantic_configure_protected__()
+    model_config = tp.ConfigDict(extra='allow')
+    __pydantic_post_init__ = 'model_post_init'
 
-    # def model_post_init(self):
-    #     self.__pydantic_configure_protected__()
-    
-    def is_field_protected(self, field: str) -> bool:
-        return _data().get(self.__pydantic_fields__, f'{field}.json_schema_extra.protected') == True
+    @property
+    def __protected_attributes__(self) -> tuple[str, ...]:
+        ret = [attr for attr in self.__pydantic_fields__.keys() if _data().get(self.__pydantic_fields__, f'{attr}.json_schema_extra.protected') == True]
+        ret.extend(list(self.__private_attributes__.keys()))
+        return tuple(ret)
+
+    def model_post_init(self, context: t.Any):
+        self.__pydantic_configure_protected__()
     
     def __pydantic_configure_protected__(self) -> None:
-        for field in self.__pydantic_fields__.keys():
-            if self.is_field_protected(field):
-                self.__pydantic_fields__[field].frozen = True
-                if field not in self.__pydantic_setattr_handlers__:
-                    self.__pydantic_setattr_handlers__[field] = self.__pydantic_protected_field_set_handler__ #type: ignore
+        for attr in self.__protected_attributes__:
+            if attr in self.__pydantic_fields__:
+                self.__pydantic_fields__[attr].frozen = True
 
-    def __pydantic_protected_field_set_handler__(self, container: "BaseModel", field: str, value: t.Any):
+            if attr not in self.__pydantic_setattr_handlers__:
+                self.__pydantic_setattr_handlers__[attr] = self.__pydantic_protected_attr_set_handler__ #type: ignore
+
+    def __pydantic_protected_attr_set_handler__(self, container: "BaseModel", attr: str, value: t.Any):
         if not _validate().callable_called_within_hierarchy(container, '__setattr__'):
-            raise ValueError(f'Field [{field}] is protected. Cannot be modified externally.')
+            raise ValueError(f'Attribute [{attr}] is protected. Cannot be modified externally.')
     
-        object.__setattr__(container, field, value)
+        object.__setattr__(container, attr, value)
     
 # END: Pydantic
+
+# BEGIN: Mixins
+class CallableMixin:
+    def _caller_get_config(self, *args, **kwargs):
+        kwargs = _data().append(kwargs, '__caller.bind.annotations', self)        
+        
+        return [args, kwargs]
+
+    def _caller_make_call(self, callback: t.Optional[t.Callable], *args, **kwargs) -> t.Any:
+        if not callback:
+            return
+        
+        args, kwargs = self._caller_get_config(*args, **kwargs)
+
+        return _utils().call(callback, *args, **kwargs)
+
+class StatusMixin(CallableMixin):
+    status: GenericStatus = Field(default=GenericStatus.READY, init=False, repr=True, protected=True)
+    on_status_change: t.Optional[EventCallback] = Field(default=GenericStatus.READY, init=True, repr=True, frozen=True)
+
+    def _set_status(self, status: GenericStatus) -> te.Self:
+        kwargs = {
+            'status_previous': self.status,
+            'status_current': status,
+        }
+
+        if kwargs['status_previous'] == status:
+            return self
+        
+        self.status = status
+
+        self._caller_make_call(self.on_status_change, **kwargs)
+
+        return self
+# END: Mixins

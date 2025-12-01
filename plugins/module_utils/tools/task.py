@@ -1,43 +1,21 @@
 import typing as t
 import typing_extensions as te
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    PositiveInt, GenericUniqueAlias, TaskResult, TaskCallback, EventCallback
+    PositiveInt, TaskResult, TaskCallback, EventCallback
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import (
-    BaseModel, Field, computed_field, GenericIdMixin, GenericStatus, StatusMixin
+    BaseModel, Field, PrivateAttr, computed_field, GenericStatus, StatusMixin
 )
 
-class TaskGroup(BaseModel, GenericIdMixin):
-    is_concurrent: bool = Field(init=True, protected=True)
-    size_concurrent: t.Optional[PositiveInt] = Field(default=None, init=True, protected=True)
+class TaskGroup(BaseModel):
+    is_concurrent: bool = Field(init=True, frozen=True)
+    size_concurrent: t.Optional[PositiveInt] = Field(default=None, init=True, frozen=True)
 
-class Task(BaseModel, GenericIdMixin, StatusMixin):
+class Task(BaseModel, StatusMixin):
     callback: TaskCallback = Field(init=True, frozen=True)
-    # alias: t.Optional[GenericUniqueAlias] = Field(default=None, init=True, frozen=True)
     group: t.Optional[TaskGroup] = Field(default=None, init=True, frozen=True)
-    # on_status_change: t.Optional[EventCallback] = Field(default=None, init=True, frozen=True)
+    _result: TaskResult = PrivateAttr(init=False)
 
-    # status: GenericStatus = Field(default=GenericStatus.READY, init=True, protected=True)
-    # result: TaskResult = Field(require=False, required=False, init=False, protected=True)
-
-    # @computed_field
-    # @property
-    # def result(self) -> TaskResult:
-    #     return "something calculated"
-
-    # def __init__(
-    #     self, 
-    #     callback: TaskCallback,
-    #     alias: t.Optional[GenericUniqueAlias] = None,
-    #     group: t.Optional[TaskGroup] = None,
-    #     on_status_change: t.Optional[EventCallback] = None,
-    # ):
-    #     self.callback = callback
-    #     self.alias = alias
-    #     self.group = group
-    #     self.on_status_change = on_status_change
-    #     self.status = GenericStatus.READY
-        
     @computed_field
     @property
     def result(self) -> TaskResult:

@@ -2,7 +2,7 @@ import typing as t
 import types as tt
 import typing_extensions as te
 import pydantic as tp
-import inspect, datetime, hashlib
+import inspect, datetime, hashlib, uuid
 
 # BEGIN: Generic - Types
 T = t.TypeVar("T")
@@ -15,8 +15,10 @@ SENTINEL_HASH: str = hashlib.md5(SENTINEL_ID.encode()).hexdigest()
 
 MappingImmutable = tt.MappingProxyType
 EventCallback = t.Callable[..., None]
-GenericUniqueIdInt = tp.PositiveInt
-GenericUniqueAlias = str
+UniqueIdInt = tp.PositiveInt
+UniqueIdStr = str
+UniqueIdUuid = uuid.UUID
+UniqueAlias = str
 # END: Generic - Types
 
 # BEGIN: Pydantic - Types
@@ -26,16 +28,9 @@ PositiveFloat = tp.PositiveFloat
 # BEGIN: End - Types
 
 # BEGIN: Task
-TaskId = GenericUniqueIdInt
-TaskAlias = t.Optional[str]
 TaskResult = t.Any
 TaskCallback = t.Callable[..., TaskResult]
-
-TaskGroupId = GenericUniqueIdInt
 TaskGroupConcurrent = PositiveInt
-
-TaskCollectionId = GenericUniqueIdInt
-TaskCollectionAlias = str
 # END: Task
 
 # BEGIN: Callable

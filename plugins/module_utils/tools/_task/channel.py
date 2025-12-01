@@ -6,7 +6,7 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import
     ENUMERATABLE, PositiveInt, EventCallback, PositiveFloat
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import (
-    GenericIdMixin, GenericStatus
+    GenericStatus
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Utils
 from ansible_collections.aybarsm.utils.plugins.module_utils.tools.task import Task

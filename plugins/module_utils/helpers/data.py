@@ -63,8 +63,29 @@ def forget(data: t.Iterable[t.Any], *args: str)-> t.Any:
     
     return data #type: ignore
 
-def pluck(data, key: int|str):
-    return pydash().pluck(data, key)
+def pluck(data, key: int|str, **kwargs) -> list[t.Any]:
+    is_unique = kwargs.pop('unique', False)
+    is_filled = kwargs.pop('filled', False)
+
+    ret = pydash().pluck(data, key)
+    if is_unique == True:
+        ret = unique(ret)
+    
+    if is_filled == True:
+        ret = [item for item in ret if Validate.filled(item)]
+
+    return ret
+
+def unique(data: ENUMERATABLE[t.Any]) -> list[t.Any]:
+    ret = list(set([item for item in data if Validate.is_hashable(item)]))
+    seen = set()
+    
+    for item in [item for item in data if not Validate.is_hashable(item)]:
+        if str(id(item)) not in seen:
+            ret.append(item)
+            seen.add(str(id(item)))
+    
+    return ret
 
 def invert(data):
     return pydash().invert(data)

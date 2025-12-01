@@ -3,7 +3,7 @@ import typing_extensions as te
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
     T, ENUMERATABLE, SENTINEL_HASH
 )
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Data, Utils
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Data, Utils, Validate
 
 class Collection(t.Generic[T]):
     on_save: t.Optional[t.Callable] = None
@@ -99,8 +99,8 @@ class Collection(t.Generic[T]):
     def pop(self) -> T:
         return self.items.pop()
 
-    def pluck(self, key: str) -> list[t.Any]:
-        return Data.pluck(self.all(), key)
+    def pluck(self, key: str, **kwargs) -> list[t.Any]:
+        return Data.pluck(self.all(), key, **kwargs)
     
     def all(self)-> list[T]:
         return list(self.items.copy())
