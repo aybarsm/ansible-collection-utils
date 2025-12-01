@@ -3,20 +3,20 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import
     ENUMERATABLE
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __convert, __factory, __str, __utils, __validate, __pydash
+    _convert, _factory, _str, _utils, _validate, _pydash
 )
 
-Convert = __convert()
-Factory = __factory()
-Str = __str()
-Utils = __utils()
-Validate = __validate()
+Convert = _convert()
+Factory = _factory()
+Str = _str()
+Utils = _utils()
+Validate = _validate()
 
 def pydash():
-    return __pydash()
+    return _pydash()
 
 def collections():
-    return __pydash().collections
+    return _pydash().collections
 
 def get(data: t.Iterable[t.Any], key: int|str, default: t.Any = None)-> t.Any:
     if not str(key) == '*' and not Validate.str_contains(str(key), '.*', '*.'):

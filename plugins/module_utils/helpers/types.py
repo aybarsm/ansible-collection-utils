@@ -1,25 +1,8 @@
 import typing as t
 import types as tt
-import dataclasses as dt
 import typing_extensions as te
 import pydantic as tp
-import inspect, enum, datetime, hashlib
-
-# BEGIN: Generic - Definitions
-class CommonStatus(enum.StrEnum):
-    QUEUED = enum.auto()
-    NOT_EXECUTED = enum.auto()
-    RUNNING = enum.auto()
-    FINISHED = enum.auto()
-    FAILED = enum.auto()
-    ABORTED = enum.auto()
-    CANCELLED = enum.auto()
-    SKIPPED = enum.auto()
-    TIMED_OUT = enum.auto()
-
-def immutable_data(cls):
-    return dt.dataclass(frozen=True)(cls)
-# END: Generic - Definitions
+import inspect, datetime, hashlib
 
 # BEGIN: Generic - Types
 T = t.TypeVar("T")
@@ -31,15 +14,28 @@ SENTINEL_ID: str = f'{str(id(SENTINEL))}_{str(SENTINEL_TS.strftime('%Y-%m-%dT%H:
 SENTINEL_HASH: str = hashlib.md5(SENTINEL_ID.encode()).hexdigest()
 
 MappingImmutable = tt.MappingProxyType
+EventCallback = t.Callable[..., None]
+GenericUniqueIdInt = tp.PositiveInt
+GenericUniqueAlias = str
 # END: Generic - Types
 
 # BEGIN: Pydantic - Types
+PydanticBaseModel = tp.BaseModel
 PositiveInt = tp.PositiveInt
 PositiveFloat = tp.PositiveFloat
 # BEGIN: End - Types
 
 # BEGIN: Task
+TaskId = GenericUniqueIdInt
+TaskAlias = t.Optional[str]
+TaskResult = t.Any
+TaskCallback = t.Callable[..., TaskResult]
 
+TaskGroupId = GenericUniqueIdInt
+TaskGroupConcurrent = PositiveInt
+
+TaskCollectionId = GenericUniqueIdInt
+TaskCollectionAlias = str
 # END: Task
 
 # BEGIN: Callable
@@ -56,40 +52,3 @@ CallableParameterTypeMap = tt.MappingProxyType({v: k for k, v in CallableParamet
 
 CallableParameterKind = t.Literal['any', 'pos', 'key', 'empty', 'args', 'kwargs']
 CallableParameterHas = t.Literal['default', 'annotation']
-
-@immutable_data
-class CallableSegmentParameter:
-    pos: int
-    type_: CallableParameterKind
-    name: str
-    annotation: type
-    default: t.Any
-    item: inspect.Parameter
-    kind: inspect._ParameterKind
-    
-    @immutable_data
-    class has:
-        default: bool
-        annotation: bool
-
-@immutable_data
-class CallableSegments:
-    name: t.Optional[str]
-    params: tuple[CallableSegmentParameter]
-
-    @immutable_data
-    class is_:
-        named: bool = False
-        anonymous: bool = False
-    
-    @immutable_data
-    class has:
-        @immutable_data
-        class params:
-            pos: bool = False
-            key: bool = False
-            any: bool = False
-            args: bool = False
-            kwargs: bool = False
-            empty: bool = False
-# END: Callable

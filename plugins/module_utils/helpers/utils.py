@@ -3,13 +3,13 @@ import dataclasses as dt
 from pathlib import Path as PathlibPath
 import datetime, asyncio
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __convert, __data, __factory, __validate
+    _convert, _data, _factory, _validate
 )
 
-Convert = __convert()
-Data = __data()
-Factory = __factory()
-Validate = __validate()
+Convert = _convert()
+Data = _data()
+Factory = _factory()
+Validate = _validate()
 
 def dump(*args, **kwargs):
     import rich, rich.pretty, rich.console
@@ -70,6 +70,16 @@ def call(callback: t.Callable, *args, **kwargs) -> t.Any:
     send_args = []
     send_kwargs = {}
     conf = kwargs.pop('__caller', {})
+    
+    if Data.filled(conf, 'bind.annotations'):
+        if not Data.has(conf, 'bind.annotation'):
+            Data.set_(conf, 'bind.annotation', {})
+
+        for binding_ in Data.get(conf, 'bind.annotations', []):
+            if type(binding_) not in conf['bind']['annotation']:
+                conf['bind']['annotation'][type(binding_)] = binding_
+
+        del conf['bind']['annotations']
     
     for param in segments['params']:
         if param['has']['annotation'] and param['annotation'] in Data.get(conf, 'bind.annotation', {}):

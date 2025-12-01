@@ -1,7 +1,7 @@
 import typing as t
 import typing_extensions as te
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    T, CommonStatus, ENUMERATABLE, SENTINEL_HASH
+    T, ENUMERATABLE, SENTINEL_HASH
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Data, Utils
 
@@ -23,7 +23,7 @@ class Collection(t.Generic[T]):
         
         return self
     
-    def each(self, callback: t.Callable, initial: t.Any = CommonStatus.NOT_EXECUTED) -> t.Any:
+    def each(self, callback: t.Callable, initial: t.Any = None) -> t.Any:
         ret = initial
         for idx_, val_ in enumerate(self.items):
             ret = Utils.call(callback, val_, idx_, ret, self)

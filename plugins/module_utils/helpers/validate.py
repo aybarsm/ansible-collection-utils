@@ -2,16 +2,16 @@ import typing as t
 import inspect
 from pathlib import Path as PathlibPath
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    _CONF, __convert, __data, __str, __utils
+    _CONF, _convert, _data, _str, _utils
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    ENUMERATABLE, CallableParameterKindMap, CallableParameterKind, CallableParameterHas
+    ENUMERATABLE, CallableParameterKindMap, CallableParameterKind, CallableParameterHas, PositiveInt
 )
 
-Convert = __convert()
-Data = __data()
-Str = __str()
-Utils = __utils()
+Convert = _convert()
+Data = _data()
+Str = _str()
+Utils = _utils()
 
 ### BEGIN: Data
 def is_blank(data: t.Any)-> bool:
@@ -405,6 +405,39 @@ def callable_parameter_is_kind(data: inspect.Parameter, *args: CallableParameter
 
 def callable_parameter_has(data: inspect.Parameter, of: CallableParameterHas) -> bool:
     return not callable_parameter_is_kind(data, 'empty') and hasattr(data, of) and getattr(data, of) != CallableParameterKindMap['empty']
+
+def callable_called_within_hierarchy(container: object, origin: str) -> bool:
+    import sys
+    
+    level = 0
+    level_exec = None
+    while True:
+        level += 1
+        try:
+            frame = sys._getframe(level)
+            if frame.f_code.co_name == origin:
+                level_exec = level + 1
+                break
+        except Exception:
+            break
+    
+    if level_exec == None:
+        return False
+
+    try:
+        frame = sys._getframe(level_exec)
+    except Exception:
+        return False
+    
+    caller_code = frame.f_code
+    caller_name = caller_code.co_name
+
+    for cls in type(container).__mro__:
+        indirect = cls.__dict__.get(caller_name)
+        if indirect and getattr(indirect, '__code__', None) == caller_code:
+            return True
+    
+    return False
 ### END: Callable
 
 ### BEGIN: Integer

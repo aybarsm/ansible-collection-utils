@@ -1,15 +1,15 @@
 import typing as t
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __convert, __data, __utils, __validate
+    _convert, _data, _utils, _validate
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
     PositiveInt
 )
 
-Convert = __convert()
-Data = __data()
-Utils = __utils()
-Validate = __validate()
+Convert = _convert()
+Data = _data()
+Utils = _utils()
+Validate = _validate()
 
 def ts(**kwargs):
     import datetime

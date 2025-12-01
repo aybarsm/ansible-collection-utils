@@ -1,15 +1,15 @@
 import typing as t
 import time
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __ansible, __convert, __data, __utils, __validate
+    _ansible, _convert, _data, _utils, _validate
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.data_query import DataQuery
 
-Ansible = __ansible()
-Convert = __convert()
-Data = __data()
-Utils = __utils()
-Validate = __validate()
+Ansible = _ansible()
+Convert = _convert()
+Data = _data()
+Utils = _utils()
+Validate = _validate()
 
 class DataQueryExecutor(DataQuery):
     def execute(self) -> t.Any:

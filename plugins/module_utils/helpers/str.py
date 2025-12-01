@@ -1,12 +1,12 @@
 import typing as t
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __convert, __data, __factory, __validate
+    _convert, _data, _factory, _validate
 )
 
-Convert = __convert()
-Data = __data()
-Factory = __factory()
-Validate = __validate()
+Convert = _convert()
+Data = _data()
+Factory = _factory()
+Validate = _validate()
 
 ### BEGIN: Locate
 def find(data: str, needle: str, reverse: bool = False, before: bool = True, **kwargs) -> str:

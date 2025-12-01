@@ -5,15 +5,15 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import
     ENUMERATABLE, CallableParameterTypeMap, CallableParameterKind, PositiveInt
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    __ansible, __data, __factory, __str, __utils, __validate, __ipaddress, __hashlib
+    _ansible, _data, _factory, _str, _utils, _validate, _ipaddress, _hashlib
 )
 
-Ansible = __ansible()
-Data = __data()
-Factory = __factory()
-Str = __str()
-Utils = __utils()
-Validate = __validate()
+Ansible = _ansible()
+Data = _data()
+Factory = _factory()
+Str = _str()
+Utils = _utils()
+Validate = _validate()
 
 def as_id(
     data: t.Any, 
@@ -45,7 +45,7 @@ def to_pydash(data: t.Iterable[t.Any])-> dict | list:
         return list(data)
 
 def to_md5(data: t.Any)-> str:
-    return __hashlib().md5(str(to_text(data)).encode()).hexdigest()
+    return _hashlib().md5(str(to_text(data)).encode()).hexdigest()
 
 def as_ts_mod(ts: datetime.datetime, mod: str)-> str|int:
     mod = mod.lower()
@@ -327,7 +327,7 @@ def to_ip_address(data, **kwargs):
     default = kwargs.get('default', ph)
 
     try:
-        return __ipaddress().ip_address(data)
+        return _ipaddress().ip_address(data)
     except Exception as e:
         if default == ph:
             raise e
@@ -339,7 +339,7 @@ def to_ip_network(data, **kwargs):
     default = kwargs.get('default', ph)
 
     try:
-        return __ipaddress().ip_network(data)
+        return _ipaddress().ip_network(data)
     except Exception as e:
         if default == ph:
             raise e

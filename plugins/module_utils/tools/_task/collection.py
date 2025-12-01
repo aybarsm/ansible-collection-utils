@@ -2,26 +2,34 @@ import typing as t
 import typing_extensions as te
 import asyncio
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    ENUMERATABLE, MappingImmutable
+    ENUMERATABLE, MappingImmutable, EventCallback, PositiveFloat,
+    TaskId, TaskAlias, TaskResult, EventCallback, 
+    TaskGroupId, TaskCollectionId, TaskCollectionAlias, 
 )
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools.task import (
-    TaskId, TaskAlias, TaskResult, TaskGroup, TaskGroupId, Task
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import (
+    GenericIdMixin, GenericStatus, StatusMixin
 )
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools.task import Task, TaskGroup
 from ansible_collections.aybarsm.utils.plugins.module_utils.tools.collection import Collection
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Convert, Data
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Convert, Data, Utils
 
-TaskCollectionContext = t.Any
-
-class TaskCollection(Collection[Task]):
+class TaskCollection(GenericIdMixin, Collection[Task]):
     def __init__(
-            self,
-            tasks: ENUMERATABLE[Task] = [],
-            context: t.Optional[TaskCollectionContext] = None
-        ):
+        self,
+        tasks: ENUMERATABLE[Task] = [],
+        context: t.Optional[t.Any] = None,
+        alias: t.Optional[TaskCollectionAlias] = None,
+    ):
         super().__init__(tasks)
 
-        self.context = context
+        self.context: t.Optional[t.Any] = context
+        self._alias: t.Optional[TaskCollectionAlias] = alias
+        
         self.__validate_uniqueness()
+
+    @property
+    def alias(self) -> t.Optional[TaskCollectionAlias]:
+        return self._alias
         
     def append(self, task: Task | ENUMERATABLE[Task]) -> te.Self:
         return self.__append_or_prepend(True, task)
@@ -128,3 +136,34 @@ class TaskCollection(Collection[Task]):
         aliases = self.get_aliases()
         if len(aliases) != len(set(aliases)):
             raise RuntimeError(f'Task aliases must be unique.')
+
+class TaskCollectionDispatchable(TaskCollection, StatusMixin):
+    def __init__(
+        self,
+        tasks: ENUMERATABLE[Task] = [],
+        context: t.Optional[t.Any] = None,
+        timeout: t.Optional[PositiveFloat] = None,
+        abort_on_failed: bool = True,
+        on_status_change: t.Optional[EventCallback] = None,
+    ):
+        super().__init__(tasks, context)
+        
+        self._timeout = timeout
+        self._abort_on_failed: bool = abort_on_failed
+        self._on_status_change: t.Optional[EventCallback] = on_status_change
+    
+    @property
+    def timeout(self) -> t.Optional[PositiveFloat]:
+        self._timeout
+    
+    @property
+    def abort_on_failed(self) -> bool:
+        return self._abort_on_failed
+    
+    def abort(self) -> te.Self:
+        if not self.status.abortable():
+            raise RuntimeError('Only running task collection can be aborted.')
+        
+        self._set_status(GenericStatus.ABORTED)
+
+        return self

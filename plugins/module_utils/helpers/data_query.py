@@ -2,17 +2,17 @@ import typing as t
 import re
 from jinja2.runtime import Context
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    _CONF, __ansible, __convert, __data, __factory, __str, __utils, __validate
+    _CONF, _ansible, _convert, _data, _factory, _str, _utils, _validate
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.fluent import Fluent
 
-Ansible = __ansible()
-Convert = __convert()
-Data = __data()
-Factory = __factory()
-Str = __str()
-Utils = __utils()
-Validate = __validate()
+Ansible = _ansible()
+Convert = _convert()
+Data = _data()
+Factory = _factory()
+Str = _str()
+Utils = _utils()
+Validate = _validate()
 
 class DataQuery:
     def __init__(

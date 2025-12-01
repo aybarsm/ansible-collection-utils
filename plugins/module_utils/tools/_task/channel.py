@@ -1,73 +1,37 @@
 import typing as t
 import typing_extensions as te
+import dataclasses as dt
 import asyncio
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    ENUMERATABLE, PositiveInt, PositiveFloat, CommonStatus
+    ENUMERATABLE, PositiveInt, EventCallback, PositiveFloat
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import (
+    GenericIdMixin, GenericStatus
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Utils
 from ansible_collections.aybarsm.utils.plugins.module_utils.tools.task import Task
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools._task.collection import (
-    TaskCollectionContext, TaskCollection
-)
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools._task.collection import TaskCollectionDispatchable
 
-TaskChannelSize = PositiveInt
-TaskChannelTimeout = PositiveFloat
-
-class TaskChannel(TaskCollection):
+class TaskChannel(TaskCollectionDispatchable):
     def __init__(
             self,
             tasks: ENUMERATABLE[Task] = [],
-            size: t.Optional[TaskChannelSize] = None,
-            context: t.Optional[TaskCollectionContext] = None,
-            timeout: t.Optional[TaskChannelTimeout] = None,
+            size: t.Optional[PositiveInt] = None,
+            context: t.Optional[t.Any] = None,
+            timeout: t.Optional[PositiveFloat] = None,
             abort_on_failed: bool = True,
+            on_status_change: t.Optional[EventCallback] = None,
         ):
-        super().__init__(tasks, context)
+        super().__init__(tasks, context, timeout, abort_on_failed, on_status_change)
 
-        self.__size: t.Optional[TaskChannelSize] = size
-        self.__timeout: t.Optional[TaskChannelTimeout] = timeout
-        self.__status: CommonStatus = CommonStatus.NOT_EXECUTED
-        
-        self.__abort_on_failed: bool = abort_on_failed
-    
+        self._size: t.Optional[PositiveInt] = size
+
     @property
-    def size(self) -> TaskChannelSize:
-        if self.__size:
-            return self.__size
+    def size(self) -> PositiveInt:
+        if self._size:
+            return self._size
         else:
             return self.count()
-
-    @property
-    def timeout(self) -> t.Optional[TaskChannelTimeout]:
-        self.__timeout
-    
-    @property
-    def status(self) -> CommonStatus:
-        return self.__status
-    
-    @property
-    def abort_on_failed(self) -> bool:
-        return self.__abort_on_failed
-    
-    @property
-    def executed(self) -> bool:
-        return self.status != CommonStatus.NOT_EXECUTED
-    
-    @property
-    def dispatched(self) -> bool:
-        return self.executed
-    
-    @property
-    def running(self) -> bool:
-        return self.status == CommonStatus.RUNNING
-
-    @property
-    def finished(self) -> bool:
-        return self.status in [CommonStatus.FINISHED, CommonStatus.ABORTED]
-    
-    @property
-    def aborted(self) -> bool:
-        return self.status == CommonStatus.ABORTED
 
     def dispatch(self) -> te.Self:
         asyncio.run(self.__run())
@@ -79,28 +43,29 @@ class TaskChannel(TaskCollection):
         if not task:
             raise RuntimeError(f'Coroutine delviered task [{coro_task.get_name()}] not found.')
         
-        if task.failed:
-            if self.abort_on_failed and not self.aborted:
-                self.__status = CommonStatus.ABORTED
+        if task.status.failed() and self.abort_on_failed and self.status.abortable:
+            self.abort()
         
-        if not task.executed and self.aborted:
+        if task.status.cancellable() and self.status.aborted():
             task.cancel()
     
     async def __run(self) -> None:
-        if self.running:
+        if self.status.running():
             raise RuntimeError('Concurrency already running.')
         
         semaphore: asyncio.Semaphore = asyncio.Semaphore(self.size)
         pending: set[asyncio.Task] = set()
         
-        self.__status = CommonStatus.RUNNING
+        self._set_status(GenericStatus.RUNNING)
 
         for task in self.items:
             coro_task = asyncio.create_task(
                 coro=Utils.call_semaphore(semaphore, task.dispatch), 
-                name=task.id,
+                name=str(task.id),
                 context=self.context
             )
+            
+            task._set_status(GenericStatus.QUEUED)
 
             coro_task.add_done_callback(
                 lambda task_done: self.__on_task_done(task_done)
@@ -121,7 +86,7 @@ class TaskChannel(TaskCollection):
                 except asyncio.CancelledError:
                     pass
 
-            if self.aborted:
+            if self.status.aborted():
                 for coro_task in pending:
                     coro_task.cancel()
                     self.__on_task_done(coro_task)
@@ -133,5 +98,5 @@ class TaskChannel(TaskCollection):
 
                 break
         
-        if self.running:
-            self.__status = CommonStatus.FINISHED
+        if self.status.running():
+            self._status = GenericStatus.COMPLETED
