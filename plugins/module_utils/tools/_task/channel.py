@@ -6,13 +6,16 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import
     ENUMERATABLE, PositiveInt, EventCallback, PositiveFloat
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import (
-    GenericStatus
+    dataclass, model_field, GenericStatus
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Utils
 from ansible_collections.aybarsm.utils.plugins.module_utils.tools.task import Task
 from ansible_collections.aybarsm.utils.plugins.module_utils.tools._task.collection import TaskCollectionDispatchable
 
+@dataclass(init=False, kw_only=True)
 class TaskChannel(TaskCollectionDispatchable):
+    size: t.Optional[PositiveInt] = model_field(default=None, init=True, frozen=True)
+
     def __init__(
             self,
             tasks: ENUMERATABLE[Task] = [],
@@ -20,18 +23,10 @@ class TaskChannel(TaskCollectionDispatchable):
             context: t.Optional[t.Any] = None,
             timeout: t.Optional[PositiveFloat] = None,
             abort_on_failed: bool = True,
-            on_status_change: t.Optional[EventCallback] = None,
         ):
-        super().__init__(tasks, context, timeout, abort_on_failed, on_status_change)
+        super().__init__(tasks=tasks, context=context, timeout=timeout, abort_on_failed=abort_on_failed)
 
-        self._size: t.Optional[PositiveInt] = size
-
-    @property
-    def size(self) -> PositiveInt:
-        if self._size:
-            return self._size
-        else:
-            return self.count()
+        self.size: t.Optional[PositiveInt] = size
 
     def dispatch(self) -> te.Self:
         asyncio.run(self.__run())
@@ -41,7 +36,7 @@ class TaskChannel(TaskCollectionDispatchable):
     def __on_task_done(self, coro_task: asyncio.Task) -> None:
         task = self.find(coro_task)
         if not task:
-            raise RuntimeError(f'Coroutine delviered task [{coro_task.get_name()}] not found.')
+            raise RuntimeError(f'Coroutine delivered task [{coro_task.get_name()}] not found.')
         
         if task.status.failed() and self.abort_on_failed and self.status.abortable:
             self.abort()
@@ -53,7 +48,7 @@ class TaskChannel(TaskCollectionDispatchable):
         if self.status.running():
             raise RuntimeError('Concurrency already running.')
         
-        semaphore: asyncio.Semaphore = asyncio.Semaphore(self.size)
+        semaphore: asyncio.Semaphore = asyncio.Semaphore(self.size if self.size else self.count())
         pending: set[asyncio.Task] = set()
         
         self._set_status(GenericStatus.RUNNING)
@@ -65,11 +60,9 @@ class TaskChannel(TaskCollectionDispatchable):
                 context=self.context
             )
             
-            task._set_status(GenericStatus.QUEUED)
+            task.queue()
 
-            coro_task.add_done_callback(
-                lambda task_done: self.__on_task_done(task_done)
-            )
+            coro_task.add_done_callback(self.__on_task_done)
             
             pending.add(coro_task)
 
@@ -99,4 +92,4 @@ class TaskChannel(TaskCollectionDispatchable):
                 break
         
         if self.status.running():
-            self._status = GenericStatus.COMPLETED
+            self._set_status(GenericStatus.COMPLETED)

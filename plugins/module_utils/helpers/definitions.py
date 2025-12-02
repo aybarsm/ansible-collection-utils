@@ -4,19 +4,48 @@ import dataclasses as dt
 import pydantic as tp
 import enum, functools, uuid, datetime, hashlib
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    EventCallback, UniqueIdUuid, UniqueAlias
+    PositiveInt, EventCallback, UniqueIdUuid, UniqueAlias
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
     _CONF, _convert, _data, _str, _utils, _validate
 )
 
-# BEGIN: Generic - Definitions
+# BEGIN: Data Classes
 dataclass = dt.dataclass
 
+@functools.wraps(dt.dataclass)
+def model_class(cls=None, /, **kwargs):
+    kwargs['init']=True
+    kwargs['kw_only']=True
+    return dt.dataclass(cls, **kwargs)
+
+@functools.wraps(dt.field)
+def model_field(**kwargs):
+    options = _data().all_except(kwargs, *_CONF['data_classes']['kwargs'].keys())
+    kwargs = _data().only_with(kwargs, *_CONF['data_classes']['kwargs'].keys())
+    kwargs = _data().combine(kwargs, {'metadata': {'_options': options}}, recursive=True)
+    return dt.field(**kwargs)
+
+def model_method(**kwargs):
+    def decorator(func):        
+        setattr(func, '__metadata__', kwargs)
+        return func
+    return decorator
+# END: Data Classes
+
+# BEGIN: Generic - Definitions
 SENTINEL: object = object()
 SENTINEL_TS: datetime.datetime = datetime.datetime.now(datetime.timezone.utc)
 SENTINEL_ID: str = f'{str(id(SENTINEL))}_{str(SENTINEL_TS.strftime('%Y-%m-%dT%H:%M:%S'))}.{SENTINEL_TS.microsecond * 1000:09d}Z'
 SENTINEL_HASH: str = hashlib.md5(SENTINEL_ID.encode()).hexdigest()
+
+@dataclass(frozen=True)
+class Separator:
+    char: str = model_field(default='-', init=True)
+    times: PositiveInt = model_field(default=50, init=True)
+
+    def make(self) -> str:
+        return self.char * self.times
 
 class GenericStatus(enum.StrEnum):
     ABORTED = enum.auto()
@@ -68,14 +97,14 @@ class GenericStatus(enum.StrEnum):
     def abortable(self) -> bool:
         return self.running()
     
-    def dispatched(self) -> bool:
-        return self.not_(self.READY, self.QUEUED)
-    
     def dispatchable(self) -> bool:
-        return self.ready()
+        return self.is_(self.READY, self.QUEUED)
+    
+    def dispatched(self) -> bool:
+        return not self.dispatchable()
     
     def finished(self) -> bool:
-        return self.not_(self.QUEUED, self.RUNNING)
+        return not self.dispatchable()
     
     def cancellable(self) -> bool:
         return not self.dispatched()
@@ -83,28 +112,10 @@ class GenericStatus(enum.StrEnum):
     def cancelable(self) -> bool:
         return self.cancelable()
 
-@functools.wraps(dt.field)
-def field(**kwargs):
-    options = _data().all_except(kwargs, *_CONF['data_classes']['kwargs'].keys())
-    kwargs = _data().only_with(kwargs, *_CONF['data_classes']['kwargs'].keys())
-    kwargs = _data().combine(kwargs, {'metadata': {'_options': options}}, recursive=True)
-    return dt.field(**kwargs)
-
-def method(**kwargs):
-    def decorator(func):        
-        setattr(func, '__metadata__', kwargs)
-        return func
-    return decorator
-
-DUMPS = []
-
-@dataclass
+@dataclass(kw_only=True)
 class BaseModel:
-    id: UniqueIdUuid = field(default_factory=uuid.uuid4, init=False, repr=False, frozen=True)
-    alias: t.Optional[UniqueAlias] = field(default=None, init=True, repr=False, frozen=True)
-
     def __dataclass_field(self, name: str, key: str = '', default: t.Any = None) -> t.Any:
-        attr = super().__getattribute__('__dataclass_fields__').get(name)
+        attr = self.__dataclass_fields__.get(name)
 
         if attr is None:
             return default
@@ -132,91 +143,80 @@ class BaseModel:
         super().__setattr__(name, value)
     
     def __getattribute__(self, name: str) -> t.Any:
-        global DUMPS
         attr = super().__getattribute__(name)
         
-        if name in ['__class__', '__dataclass_fields__'] or name.endswith('__dataclass_field'):
+        if name in ['__class__', '__dataclass_fields__', '__dataclass_field']:
             return attr
         
-        is_protected_method = _validate().is_callable(attr) and _data().get(attr, '__metadata__.protected') == True
+        is_callable = _validate().is_callable(attr)
+        is_protected_method = is_callable and _data().get(attr, '__metadata__.protected') == True
+        is_hidden_field = not is_callable and self.__dataclass_field(name, 'metadata._options.hidden') == True
+
         if is_protected_method and not _validate().callable_called_within_hierarchy(self, '__getattribute__'):
+            # _utils().dump(_convert().as_callable_caller_segments(self, '__getattribute__'))
             raise RuntimeError(f'Protected method [{name}] cannot be called externally.')
-
-        # is_callable = _validate().is_callable(attr)
-        # has_metadata = is_callable and hasattr(attr, '__metadata__')
-
-        
-
-        # if name in super().__getattribute__('__dataclass_fields__'):
-        #     is_hidden = self.__dataclass_field(name, '_options.hidden') == True
-        #     if is_hidden and not _validate().callable_called_within_hierarchy(self, '__getattribute__'):
-        #         raise RuntimeError(f'Hidden attribute [{name}] cannot be accessed externally.')
-        # else:
-        #     attr = super().__getattribute__(name)
-        #     DUMPS.append({'name': name, 'attr': attr, 'callable': _validate().is_callable(attr)})
+        elif is_hidden_field and not _validate().callable_called_within_hierarchy(self, '__getattribute__'):
+            raise RuntimeError(f'Hidden attribute [{name}] cannot be accessed externally.')
 
         return attr
-
-    #     # _utils().dump({'name': name, 'attr': attr})
-    #     return attr
-        
-        # if name.startswith('__'):
-        #     return super().__getattribute__(name)
-        
-        # attr = object.__getattribute__(self, name)
-        
-        # if not _validate().is_callable(attr):
-        #     is_protected = self.__is_field(name, '_options.protected', True)
-        #     if is_protected and not _validate().callable_called_within_hierarchy(self, '__getattribute__'):
-        #         raise RuntimeError(f'Protected attribute [{name}] cannot be accessed externally.')
-            
-        #     return attr
-        # else:
-        #     return attr
-        
-    #     pass
-    
-    # def __call__(self, *args: t.Any, **kwds: t.Any) -> t.Any:
-    #     _utils().dump({'args': args, 'kwds': kwds})
-    #     pass
-def model(cls):
-    if BaseModel not in cls.__bases__:
-        cls.__bases__ = (BaseModel,) + cls.__bases__
-
-    return dt.dataclass(cls)
 # END: Generic - Definitions
 
+# BEGIN: Events
+@dataclass(kw_only=True, frozen=True)
+class StatusChangedEvent:
+    related: t.Any
+    previous: GenericStatus
+    current: GenericStatus
+# END: Events
+
 # BEGIN: Mixins
-# class CallableMixin:
-#     def _caller_get_config(self, *args, **kwargs):
-#         kwargs = _data().append(kwargs, '__caller.bind.annotations', self)        
+@dataclass(kw_only=True)
+class IdMixin:
+    id: UniqueIdUuid = model_field(default_factory=uuid.uuid4, init=False, repr=True, frozen=True)
+    alias: t.Optional[UniqueAlias] = model_field(default=None, init=True, repr=True, frozen=True)
+
+@dataclass(kw_only=True)
+class CallableMixin:
+    @model_method(protected=True)
+    def _caller_get_config(self, *args, **kwargs):
+        kwargs = _data().append(kwargs, '__caller.bind.annotations', self)        
         
-#         return [args, kwargs]
-
-#     def _caller_make_call(self, callback: t.Optional[t.Callable], *args, **kwargs) -> t.Any:
-#         if not callback:
-#             return
+        return [args, kwargs]
+    
+    @model_method(protected=True)
+    def _caller_make_call(self, callback: t.Optional[t.Callable], *args, **kwargs) -> t.Any:
+        if not callback:
+            return
         
-#         args, kwargs = self._caller_get_config(*args, **kwargs)
+        args, kwargs = self._caller_get_config(*args, **kwargs)
 
-#         return _utils().call(callback, *args, **kwargs)
+        return _utils().call(callback, *args, **kwargs)
 
-# class StatusMixin(BaseModel, CallableMixin):
-#     status: GenericStatus = field(default=GenericStatus.READY, init=False, repr=True, protected=True)
-#     on_status_change: t.Optional[EventCallback] = field(default=None, init=True, repr=True, frozen=True)
-
-#     def _set_status(self, status: GenericStatus) -> te.Self:
-#         kwargs = {
-#             'status_previous': self.status,
-#             'status_current': status,
-#         }
-
-#         if kwargs['status_previous'] == status:
-#             return self
+@dataclass(kw_only=True)
+class StatusMixin:
+    status: GenericStatus = model_field(default=GenericStatus.READY, init=False, repr=True, protected=True)
+    on_status_change: t.Optional[EventCallback] = model_field(default=None, init=True, repr=True, frozen=True)
+    
+    @model_method(protected=True)
+    def _set_status(self, status: GenericStatus) -> te.Self:
+        if self.status == status:
+            return self
         
-#         self.status = status
+        previous = self.status
+        self.status = status
 
-#         self._caller_make_call(self.on_status_change, **kwargs)
+        if not self.on_status_change:
+            return self
 
-#         return self
+        kwargs = {
+            '__caller': {
+                'bind': {
+                    'annotations': [StatusChangedEvent(related=self, previous=previous, current=status)],
+                },
+            },
+        }
+    
+        _utils().call(self.on_status_change, **kwargs)
+
+        return self
 # END: Mixins

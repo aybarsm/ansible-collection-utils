@@ -13,6 +13,26 @@ Validate = _validate()
 
 def dump(*args, **kwargs):
     import rich, rich.pretty, rich.console
+    from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import Separator
+    
+    separator = kwargs.pop('separator', None)
+    separator = separator if isinstance(separator, Separator) else None
+    
+    if separator:
+        new_args = []
+        for idx, arg in enumerate(args):
+            if idx == len(args) - 1:
+                new_args.append(arg.make() if isinstance(arg, Separator) else arg)
+                break
+            
+            if isinstance(arg, Separator):
+                new_args.append(arg.make())
+                continue
+
+            new_args.extend([arg, separator.make()])
+        
+        args=new_args
+
     if Validate.is_ansible_env():
         import io
         from ansible.utils.display import Display
@@ -60,16 +80,16 @@ def json_save(data, path: PathlibPath|str, **kwargs) -> None:
 ### END: Json
 
 ### BEGIN: Callable
-def call(callback: t.Callable, *args, **kwargs) -> t.Any:
+def call_raw(callback: t.Callable, *args, **kwargs) -> t.Any:
     if Validate.blank(args) and Validate.blank(kwargs):
         return callback()
-
+    
+    conf = kwargs.pop('__caller', {})
     segments = Convert.as_callable_segments(callback)
     args = list(args)
     kwargs = dict(kwargs)
     send_args = []
     send_kwargs = {}
-    conf = kwargs.pop('__caller', {})
     
     if Data.filled(conf, 'bind.annotations'):
         if not Data.has(conf, 'bind.annotation'):
@@ -108,19 +128,38 @@ def call(callback: t.Callable, *args, **kwargs) -> t.Any:
                     send_kwargs[key_] = kwargs[key_]
                 
             kwargs = {}
-
+    
     return callback(*send_args, **send_kwargs)
 
-async def call_async(callback: t.Callable, *args, **kwargs)-> t.Any:
-    return call(callback, *args, **kwargs)
+def call(callback: t.Callable, *args, **kwargs) -> t.Any:
+    return call_raw(callback, *args, **kwargs)
+
+async def call_async(callback: t.Callable, *args, **kwargs) -> t.Any:
+    return await call_raw(callback, *args, **kwargs)
+
+# def call(callback: t.Callable, *args, **kwargs) -> t.Any:
+#     result = call_raw(callback, *args, **kwargs)
+#     if asyncio.iscoroutine(result):
+#         try:
+#             asyncio.get_running_loop()
+#         except RuntimeError:
+#             return asyncio.run(result)
+#         else:
+#             raise RuntimeError("Async code detected in sync call while event loop is running in this thread.")
+#     return result
+
+# async def call_async(callback: t.Callable, *args, **kwargs) -> t.Any:
+#     result = call_raw(callback, *args, **kwargs)
+#     if asyncio.iscoroutine(result):
+#         return await result
+#     return result
 
 async def call_semaphore(semaphore: asyncio.Semaphore, callback: t.Callable, *args, **kwargs) -> t.Any:
     async with semaphore:
-        if asyncio.iscoroutinefunction(callback):
-            result = await call_async(callback, *args, **kwargs)
+        if Validate.callable_is_coroutine(callback):
+            result = await call_raw(callback, *args, **kwargs)
         else:
-            loop = asyncio.get_running_loop()
-            result = await loop.run_in_executor(None, lambda: call(callback, *args, **kwargs))
+            result = await asyncio.get_running_loop().run_in_executor(None, lambda: call_raw(callback, *args, **kwargs))
     
         return result
 

@@ -1,26 +1,31 @@
 import typing as t
 import typing_extensions as te
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    PositiveInt, TaskResult, TaskCallback, EventCallback
+    PositiveInt, TaskResult, TaskCallback
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import (
-    BaseModel, Field, PrivateAttr, computed_field, GenericStatus, StatusMixin
+    dataclass, BaseModel, model_field, GenericStatus, IdMixin, StatusMixin, CallableMixin
 )
 
-class TaskGroup(BaseModel):
-    is_concurrent: bool = Field(init=True, frozen=True)
-    size_concurrent: t.Optional[PositiveInt] = Field(default=None, init=True, frozen=True)
+@dataclass(kw_only=True)
+class TaskGroup(BaseModel, IdMixin):
+    is_concurrent: bool = model_field(init=True, frozen=True)
+    size_concurrent: t.Optional[PositiveInt] = model_field(default=None, init=True, frozen=True)
 
-class Task(BaseModel, StatusMixin):
-    callback: TaskCallback = Field(init=True, frozen=True)
-    group: t.Optional[TaskGroup] = Field(default=None, init=True, frozen=True)
-    _result: TaskResult = PrivateAttr(init=False)
-
-    @computed_field
-    @property
-    def result(self) -> TaskResult:
-        return self._result if hasattr(self, '_result') else self.status
+@dataclass(kw_only=True)
+class Task(BaseModel, IdMixin, CallableMixin, StatusMixin):
+    callback: TaskCallback = model_field(init=True, frozen=True)
+    group: t.Optional[TaskGroup] = model_field(default=None, init=True, frozen=True)
+    result: TaskResult = model_field(default=None, init=False, protected=True)
     
+    def queue(self) -> te.Self:
+        if not self.status.ready():
+            raise RuntimeError('Only ready task can be queued.')
+        
+        self._set_status(GenericStatus.QUEUED)
+
+        return self
+
     def cancel(self) -> te.Self:
         if not self.status.cancellable():
             raise RuntimeError('Only ready or queued task can be cancelled.')
@@ -43,10 +48,10 @@ class Task(BaseModel, StatusMixin):
         
         self._set_status(GenericStatus.RUNNING)
         try:
-            self._result = self._caller_make_call(self.callback)
+            self.result = self._caller_make_call(self.callback)
             self._set_status(GenericStatus.COMPLETED)
         except Exception as e:
-            self._result = e
+            self.result = e
             self._set_status(GenericStatus.FAILED)
         
         return self

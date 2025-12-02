@@ -1,5 +1,5 @@
 import typing as t
-import inspect
+import inspect, asyncio
 from pathlib import Path as PathlibPath
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
     _CONF, _convert, _data, _str, _utils
@@ -190,13 +190,27 @@ def is_http_response(data: t.Any)-> bool:
 
 def is_type_name(data: t.Any, *of: str)-> bool:
     for type_ in Convert.to_iterable(of):
-        if Convert.to_type_name(data) == type_:
+        if type(data).__name__ == type_:
             return True
     
     return False
 
 def is_type_module(data: t.Any, of: str)-> bool:
-    return Convert.to_type_module(data) == of
+    return type(data).__module__ == of
+
+def is_type_python_native(data: t.Any)-> t.Optional[bool]:
+    module = None
+    
+    try:
+        module = data.__module__
+    except Exception:
+        pass
+    
+    if module == None:
+        return None
+    
+    return module in ['builtins', 'typing', 'typing_extensions', 'dataclasses']
+
 
 def is_type_of(data: t.Any, check: str)-> bool:
     import re
@@ -298,6 +312,9 @@ def require_mutable_mappings(a, b):
 
 def is_callable_parameter(data: t.Any)-> bool:
     return isinstance(data, inspect.Parameter)
+
+def is_coroutine(data: t.Any) -> bool:
+    return asyncio.iscoroutine(data)
 ### END: Type
 
 
@@ -401,7 +418,7 @@ def str_matches(data: str|t.Sequence[str], patterns, **kwargs)-> bool:
 
 ### BEGIN: Callable
 def callable_is_coroutine(data: t.Callable) -> bool:
-    return inspect.iscoroutinefunction(data)
+    return asyncio.iscoroutinefunction(data)
 
 def callable_parameter_is_kind(data: inspect.Parameter, *args: CallableParameterKind) -> bool:
     for type_ in args:
@@ -424,7 +441,6 @@ def callable_called_within_hierarchy(container: object, origin: str) -> bool:
             frame = sys._getframe(level)
             if frame.f_code.co_name == origin:
                 level_exec = level + 1
-                # break
         except Exception:
             break
     
@@ -436,10 +452,15 @@ def callable_called_within_hierarchy(container: object, origin: str) -> bool:
     except Exception:
         return False
     
+    mros = Convert.as_non_native_types(type(container).__mro__)
+    caller_self = frame.f_locals.get('self')
+    if caller_self and caller_self.__class__ in mros:
+        return True
+
     caller_code = frame.f_code
     caller_name = caller_code.co_name
 
-    for cls in type(container).__mro__:
+    for cls in mros:
         indirect = cls.__dict__.get(caller_name)
         if indirect and getattr(indirect, '__code__', None) == caller_code:
             return True
@@ -534,17 +555,20 @@ def fs_dir_exists(path: PathlibPath|str, **kwargs)-> bool:
     return path.exists(**kwargs) and path.is_dir(**kwargs)
 ### END: FS
 
-### BEGIN: Python
-def is_python_native(data: t.Any)-> bool:
-    return is_type_module(data, 'builtins')
-### END: Python
+### BEGIN: Asyncio
+def asyncio_is_loop_running() -> bool:
+    try:
+        return asyncio.get_running_loop().is_running()
+    except Exception:
+        return False
+### END: Asyncio
 
 ### BEGIN: Ansible
 def is_ansible_omitted(data: t.Any)-> bool:
     return is_string(data) and str(data).startswith('__omit_place_holder__')
 
 def is_ansible_undefined(data: t.Any)-> bool:
-    return is_object(data) and Convert.to_type_name(data).startswith('AnsibleUndefined')
+    return is_object(data) and type(data).__name__.startswith('AnsibleUndefined')
 
 def is_ansible_defined(data: t.Any)-> bool:
     return not is_ansible_undefined(data)

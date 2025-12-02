@@ -1,9 +1,9 @@
 import typing as t
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
+    ENUMERATABLE, PositiveInt
+)
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
     _convert, _data, _utils, _validate
-)
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    PositiveInt
 )
 
 Convert = _convert()
@@ -28,21 +28,24 @@ def random_string(length: PositiveInt = 32)-> str:
     import random, string
     return ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for _ in range(length))
 
-def placeholder(rand_length: PositiveInt = 32, mod: str = ''):
-    import math
-    ret = [
-        random_string(math.ceil(rand_length/2)),
-        ts(mod='long'),
-        random_string(math.floor(rand_length/2))
-    ]
+# def placeholder(rand_length: PositiveInt = 32, mod: str = ''):
+#     import math
+#     ret = [
+#         random_string(math.ceil(rand_length/2)),
+#         ts(mod='long'),
+#         random_string(math.floor(rand_length/2))
+#     ]
 
-    ret = '|'.join(ret)
+#     ret = '|'.join(ret)
     
-    mod = mod.lower()
-    if mod in ['hash', 'hashed']:
-        return Convert.to_md5(ret)
-    else:
-        return ret
+#     mod = mod.lower()
+#     if mod in ['hash', 'hashed']:
+#         return Convert.to_md5(ret)
+#     else:
+#         return ret
+def placeholder(*args, **kwargs) -> str:
+    from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import SENTINEL_HASH
+    return SENTINEL_HASH
 
 ### BEGIN: FS
 def fs_path_tmp(file: str, *args, **kwargs)-> str:

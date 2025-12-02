@@ -1,3 +1,4 @@
+import enum
 import typing as t
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
     ENUMERATABLE
@@ -17,6 +18,20 @@ def pydash():
 
 def collections():
     return _pydash().collections
+
+# def filter_flex(
+#     data: t.Any,
+#     **kwargs
+# ) -> t.Any:
+#     ph = Factory.placeholder()
+#     is_filled = kwargs.pop('filled', ph) != ph
+#     is_unique = kwargs.pop('unique', ph)
+
+#     if Validate.is_enumeratable(data):
+#         ret = []
+#         for key, value in enumerate(data):
+#             if is_filled and Validate.blank(value):
+#                 continue         
 
 def get(data: t.Iterable[t.Any], key: int|str, default: t.Any = None)-> t.Any:
     if not str(key) == '*' and not Validate.str_contains(str(key), '.*', '*.'):
@@ -64,28 +79,39 @@ def forget(data: t.Iterable[t.Any], *args: str)-> t.Any:
     return data #type: ignore
 
 def pluck(data, key: int|str, **kwargs) -> list[t.Any]:
-    is_unique = kwargs.pop('unique', False)
-    is_filled = kwargs.pop('filled', False)
+    ph = Factory.placeholder()
+    is_filled = kwargs.pop('filled', ph) != ph
+    is_unique = kwargs.pop('unique', ph)
 
     ret = pydash().pluck(data, key)
-    if is_unique == True:
-        ret = unique(ret)
-    
-    if is_filled == True:
+    if is_filled:
         ret = [item for item in ret if Validate.filled(item)]
+    
+    if is_unique != ph:
+        ret = unique(ret, is_unique)
+    
+    return ret  
 
-    return ret
-
-def unique(data: ENUMERATABLE[t.Any]) -> list[t.Any]:
-    ret = list(set([item for item in data if Validate.is_hashable(item)]))
+def unique(
+    data: ENUMERATABLE[t.Any],
+    by: t.Optional[t.Union[t.Literal[True], str, ENUMERATABLE[str], t.Callable]] = None,
+) -> list[t.Any]:
+    ret = []
     seen = set()
-    
-    for item in [item for item in data if not Validate.is_hashable(item)]:
-        if str(id(item)) not in seen:
-            ret.append(item)
-            seen.add(str(id(item)))
+
+    for key, value in enumerate(data):
+        hash_ = Convert.as_hash(key, value, by)
+        if hash_ not in seen:
+            ret.append(value)
+            seen.add(hash_)
     
     return ret
+
+def unique_by(
+    data: ENUMERATABLE[t.Any],
+    by: t.Optional[t.Union[t.Literal[True], str, ENUMERATABLE[str], t.Callable]] = None,
+) -> list[t.Any]:
+    return unique(data, by)
 
 def invert(data):
     return pydash().invert(data)
@@ -585,28 +611,6 @@ def map(
     callback: t.Callable, 
 )-> list:
     return [Utils.call(callback, val_, key_) for key_, val_ in enumerate(data)]
-
-def unique_by(
-    data: ENUMERATABLE[t.Mapping[str, t.Any]],
-    by: ENUMERATABLE[str] | t.Callable,
-    **kwargs
-)-> list[dict]:
-    unique_hashes = []
-    ret = []
-    ph = Factory.placeholder(mod='hashed')
-    
-    for idx, item in enumerate(data):
-        if Validate.is_callable(by):
-            unique_hash = Utils.call(by, item, idx) #type: ignore
-        else:
-            unique_parts = only_with(item, *by, default_missing=ph, default_blank=ph).values() #type: ignore
-            unique_hash = Convert.to_md5('|'.join([Convert.to_text(unique_value) for unique_value in unique_parts]))
-
-        if unique_hash not in unique_hashes:
-            ret.append(item)
-            unique_hashes.append(unique_hash)
-    
-    return ret
 
 def keys(
     data: t.Iterable[t.Any],

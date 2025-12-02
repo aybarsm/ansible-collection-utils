@@ -1,6 +1,6 @@
 import typing as t
 import types as tt
-import datetime, inspect
+import datetime, inspect, uuid
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
     ENUMERATABLE, CallableParameterTypeMap, CallableParameterKind, PositiveInt
 )
@@ -193,6 +193,30 @@ def to_list_of_dicts(data, defaults={}, *args, **kwargs):
 
     return ret
 
+def as_hash(
+    key: int,
+    value: t.Any, 
+    by: t.Optional[t.Union[t.Literal[True], str, ENUMERATABLE[str], t.Callable]] = None,
+) -> str:
+    if isinstance(by, t.Callable):
+        return str(Utils.call(by, value, key))
+
+    if by == True or by == None or Validate.blank(by):
+        if Validate.is_hashable(value):
+            return str(hash(value))
+        else:
+            raise RuntimeError(f'Unhashable item type [{type(value).__name__}]')
+    
+    if isinstance(by, str) and Validate.filled(by):
+        by = [by]
+
+    ph = Factory.placeholder()
+
+    if isinstance(value, t.Mapping) or isinstance(value, object):
+        return to_md5('|'.join([to_text(Data.get(value, key_, ph)) for key_ in by])) #type: ignore
+    
+    raise RuntimeError(f'Unhashable condition for item type [{type(value).__name__}]')
+
 ### BEGIN: Ansible
 def to_text(*args, **kwargs)-> str:
     from ansible.module_utils.common.text.converters import to_text
@@ -314,11 +338,43 @@ def from_items(
 ### END: Ansible
 
 ### BEGIN: Type
-def to_type_name(data: t.Any)-> str:
-    return type(data).__name__
+# def to_type_name(data: t.Any)-> str:
+#     return type(data).__name__
 
-def to_type_module(data: t.Any)-> str:
-    return type(data).__name__
+# def to_type_module(data: t.Any)-> str:
+#     return type(data).__module__
+
+def as_non_native_types(data: t.Union[t.Any, ENUMERATABLE[t.Any]])-> tuple[t.Any, ...]:
+    return tuple([item for item in to_iterable(data) if not Validate.is_type_python_native(item)])
+
+def as_type_module_mapping(data: t.Union[t.Any, ENUMERATABLE[t.Any]]) -> list[t.Any]:
+    import inspect
+    ret = []
+
+    for item in to_iterable(data):
+        ret_item = {
+            'item': item,
+            'module': None,
+            'src_file': None,
+            'validate': Validate.is_type_python_native(item),
+        }
+        
+        try:
+            ret_item['module'] = item.__module__
+        except Exception:
+            pass
+
+        try:
+            ret_item['src_file'] = inspect.getsourcefile(item)
+        except TypeError:
+            pass
+
+        ret.append(ret_item)
+
+    return ret
+    # return [{'item': item, 'module': module, } for item in to_iterable(data)]
+    # return [{'item': item, 'module': type(item).__module__} for item in to_iterable(data)]
+    # return [{'item': item, 'module': type(item).__module__, 'class': type(item).__class__, 'class_module': type(item).__class__.__module__} for item in to_iterable(data)]
 ### END: Type
 
 ### BEGIN: Net
@@ -578,6 +634,12 @@ def to_base64(data: t.Any, **kwargs)-> str|bytes:
     return ret
 ### END: Toml
 
+### BEGIN: Uuid
+def to_uuid(data: str | bytes) -> uuid.UUID:
+    data = to_text(data)
+    return uuid.UUID(hex=data)
+### END: Uuid
+
 ### BEGIN: Roles
 def from_file_known_hosts(file_content: str)-> list[dict[str,str]]:
     import re
@@ -682,9 +744,13 @@ def as_callable_segments(callback: t.Callable) -> tt.MappingProxyType[str, t.Any
 
     return tt.MappingProxyType(ret)
 
-def as_callable_caller_segments(container: object, origin: str) -> list[tt.MappingProxyType[str, t.Any]]:
+def as_callable_caller_segments(container: object, origin: str) -> tt.MappingProxyType[str, t.Any]:
     import sys
-    ret = []
+    ret = {
+        'mros': as_non_native_types(type(container).__mro__),
+        'items': [],
+    }
+
     level = 0
     while True:
         level += 1
@@ -692,12 +758,21 @@ def as_callable_caller_segments(container: object, origin: str) -> list[tt.Mappi
             frame = sys._getframe(level)
             item = {
                 'level': level,
+                'self': frame.f_locals.get('self'),
+                'class': frame.f_locals.get('self').__class__,
                 'caller_code': frame.f_code,
                 'caller_name': frame.f_code.co_name,
+                'indirects': [],
             }
-            ret.append(tt.MappingProxyType(item))
+
+            for cls in ret['mros']:
+                indirect = cls.__dict__.get(item['caller_name'])
+                if Validate.filled(indirect):
+                    item['indirects'].append({'class': indirect.__class__, 'code': getattr(indirect, '__code__', None)})
+                
+            ret['items'].append(tt.MappingProxyType(item))
         except Exception:
             break
     
-    return ret
+    return tt.MappingProxyType(ret)
 ### END: Callable

@@ -1,7 +1,10 @@
 import typing as t
 import typing_extensions as te
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    T, ENUMERATABLE, SENTINEL_HASH
+    T, ENUMERATABLE
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import (
+    SENTINEL_HASH
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Data, Utils, Validate
 
@@ -54,12 +57,18 @@ class Collection(t.Generic[T]):
         kwargs['negate'] = True
         return self.where(callback, **kwargs)
 
-    def first(self, callback: t.Callable, **kwargs) -> t.Optional[T]:
+    def first(self, callback: t.Optional[t.Callable] = None, **kwargs) -> t.Optional[T]:
+        if callback == None:
+            return self.items[0] if self.not_empty() else None
+            
         kwargs['first'] = True
         kwargs['last'] = False
         return self.where_single(callback, **kwargs)
     
-    def last(self, callback: t.Callable, **kwargs) -> t.Optional[T]:
+    def last(self, callback: t.Optional[t.Callable] = None, **kwargs) -> t.Optional[T]:
+        if callback == None:
+            return self.items[-1] if self.not_empty() else None
+        
         kwargs['first'] = False
         kwargs['last'] = True
         return self.where_single(callback, **kwargs)
