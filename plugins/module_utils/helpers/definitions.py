@@ -7,7 +7,7 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import
     PositiveInt, EventCallback, UniqueIdUuid, UniqueAlias
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    _CONF, _convert, _data, _str, _utils, _validate
+    _CONF, _convert, _data, _factory, _str, _utils, _validate
 )
 
 # BEGIN: Data Classes
@@ -101,13 +101,13 @@ class GenericStatus(enum.StrEnum):
         return self.is_(self.READY, self.QUEUED)
     
     def dispatched(self) -> bool:
-        return not self.dispatchable()
+        return self.not_(self.READY, self.QUEUED)
     
     def finished(self) -> bool:
-        return not self.dispatchable()
+        return self.not_(self.READY, self.QUEUED, self.RUNNING)
     
     def cancellable(self) -> bool:
-        return not self.dispatched()
+        return self.is_(self.READY, self.QUEUED)
     
     def cancelable(self) -> bool:
         return self.cancelable()
@@ -161,6 +161,57 @@ class BaseModel:
         return attr
 # END: Generic - Definitions
 
+# BEGIN: Models
+@dataclass(init=True, frozen=True, kw_only=True)
+class CommandModel:
+    rc: t.Optional[int] = model_field(default=None, init=True)
+    out: t.Optional[str] = model_field(default=None, init=True)
+    err: t.Optional[str] = model_field(default=None, init=True)
+    command: t.Optional[str] = model_field(default=None, init=True)
+
+    @property
+    def output(self) -> t.Optional[str]:
+        return self.out
+    
+    @property
+    def error(self) -> t.Optional[str]:
+        return self.err
+    
+    def lines(self, cleaned: bool = False) -> list[str]:
+        return self.output_lines(cleaned) + self.error_lines(cleaned)
+    
+    def output_lines(self, cleaned: bool = False) -> list[str]:
+        return _convert().as_cleaned_lines(self.out) if cleaned else _convert().as_lines(self.out)
+
+    def error_lines(self, cleaned: bool = False) -> list[str]:
+        return _convert().as_cleaned_lines(self.err) if cleaned else _convert().as_lines(self.err)
+    
+    @property
+    def has_rc(self) -> bool:
+        return _validate().filled(self.rc)
+    
+    @property
+    def has_output(self) -> bool:
+        return _validate().filled(self.out)
+    
+    @property
+    def has_error(self) -> bool:
+        return _validate().filled(self.err)
+    
+    @property
+    def has_command(self) -> bool:
+        return _validate().filled(self.command)
+
+    @property
+    def success(self) -> bool:
+        return self.rc == 0
+    
+    @property
+    def failed(self) -> bool:
+        return not self.success
+
+# END: Models
+
 # BEGIN: Events
 @dataclass(kw_only=True, frozen=True)
 class StatusChangedEvent:
@@ -179,7 +230,27 @@ class IdMixin:
 class CallableMixin:
     @model_method(protected=True)
     def _caller_get_config(self, *args, **kwargs):
-        kwargs = _data().append(kwargs, '__caller.bind.annotations', self)        
+        args = list(args or [])
+        kwargs = dict(kwargs or {})
+
+        kwargs = _data().append(kwargs, '__caller.bind.annotations', self)
+
+        if 'context' not in kwargs:
+            ph = _factory().placeholder()
+            context = ph
+            try:
+                context = getattr(self, 'context')
+            except Exception:
+                pass
+
+            if context != ph:
+                if context not in args:
+                    args.append(context)
+                
+                is_in_map_annotations = type(context) in _data().get(kwargs, '__caller.bind.annotation', {})
+                is_in_iter_annoations = type(context) in _data().get(kwargs, '__caller.bind.annotations', [])
+                if not is_in_map_annotations and not is_in_iter_annoations:
+                    _data().append(kwargs, '__caller.bind.annotations', context)
         
         return [args, kwargs]
     
@@ -187,9 +258,9 @@ class CallableMixin:
     def _caller_make_call(self, callback: t.Optional[t.Callable], *args, **kwargs) -> t.Any:
         if not callback:
             return
-        
-        args, kwargs = self._caller_get_config(*args, **kwargs)
 
+        args, kwargs = self._caller_get_config(*args, **kwargs)
+        
         return _utils().call(callback, *args, **kwargs)
 
 @dataclass(kw_only=True)
@@ -207,15 +278,17 @@ class StatusMixin:
 
         if not self.on_status_change:
             return self
-
+        
         kwargs = {
             '__caller': {
                 'bind': {
-                    'annotations': [StatusChangedEvent(related=self, previous=previous, current=status)],
+                    'annotations': [
+                        StatusChangedEvent(related=self, previous=previous, current=status),
+                    ],
                 },
             },
         }
-    
+
         _utils().call(self.on_status_change, **kwargs)
 
         return self

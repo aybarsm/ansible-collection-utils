@@ -4,6 +4,9 @@ import datetime, inspect, uuid
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
     ENUMERATABLE, CallableParameterTypeMap, CallableParameterKind, PositiveInt
 )
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import (
+    CommandModel
+)
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
     _ansible, _data, _factory, _str, _utils, _validate, _ipaddress, _hashlib
 )
@@ -217,6 +220,84 @@ def as_hash(
     
     raise RuntimeError(f'Unhashable condition for item type [{type(value).__name__}]')
 
+def as_concurrent_command(commands: ENUMERATABLE[str]) -> str:
+    tmp_prefix = f'ansible.cmd_{Factory.placeholder()}'
+    ret = {
+        'cmd': [],
+        'wait': [],
+        'structure': [],
+        'output': [],
+    }
+
+    for idx, cmd in enumerate(commands):
+        cmd_seq = str(idx + 1)
+        path_out = f'/tmp/{tmp_prefix}.{cmd_seq}.out'
+        path_err = f'/tmp/{tmp_prefix}.{cmd_seq}.err'
+        
+        ret['cmd'].append(' '.join([
+            str(cmd).strip(),
+            f'>{path_out}',
+            f'2>{path_err}',
+            '&',
+            f'pid{cmd_seq}=$!',
+        ]))
+
+        ret['wait'].extend([
+            f'wait "$pid1"', 
+            f'rc{cmd_seq}=$?',
+            # f"out{cmd_seq}=$(cat \"{path_out}\" | sed 's/\"/\\\\\"/g')",
+            # f"err{cmd_seq}=$(cat \"{path_err}\" | sed 's/\"/\\\\\"/g')",
+        ])
+
+        ret['structure'].extend([
+            # f"out{cmd_seq}=$(printf \"%q\\n\" \"$(cat {path_out} | sed 's/\"/\\\\\"/g')\")",
+            # f"err{cmd_seq}=$(printf \"%q\\n\" \"$(cat {path_err} | sed 's/\"/\\\\\"/g')\")",
+            f"out{cmd_seq}=$(cat {path_out} | sed 's/\"/\\\\\"/g')",
+            f"err{cmd_seq}=$(cat {path_err} | sed 's/\"/\\\\\"/g')",
+            # f"err{cmd_seq}=$(printf \"%s\" \"$(cat out{cmd_seq})\" | sed 's/\"/\\\\\"/g')",
+            # f"err{cmd_seq}=$(printf \"%s\" \"$(cat err{cmd_seq})\" | sed 's/\"/\\\\\"/g')",
+            # f"out{cmd_seq}=$(sed ':a;N;$!ba;s/\"/\\\\\"/g;s/\\n/\\\\\\n/g' out{cmd_seq})",
+            # f"err{cmd_seq}=$(sed ':a;N;$!ba;s/\"/\\\\\"/g;s/\\n/\\\\\\n/g' err{cmd_seq})",
+        ])
+
+        output = [
+            f'"cmd": {cmd_seq}',
+            f'"pid": $pid{cmd_seq}',
+            f'"rc": $rc{cmd_seq}',
+            f'"out": \\"$out{cmd_seq}\\"',
+            f'"err": \\"$err{cmd_seq}\\"',
+        ]
+        ret['output'].append('{' + ', '.join(output) + '}')
+    
+    return ''.join([
+        '(',
+        Str.finish('; '.join(ret['cmd']), '; '),
+        Str.finish('; '.join(ret['wait']), '; '),
+        Str.finish('; '.join(ret['structure']), '; '),
+        'printf "[',
+        ', '.join(ret['output']),
+        Str.finish(']"', '; '),
+        # Str.finish(f'rm /tmp/{tmp_prefix}*', '; '),
+        ')',
+    ])
+
+def as_lines(data: t.Optional[str]) -> list[str]:
+    if not data or Validate.blank(data):
+        return []
+
+    return str(data).splitlines()
+
+def as_cleaned_lines(data: t.Optional[str]) -> list[str]:
+    if not data or Validate.blank(data):
+        return []
+    
+    import re
+    
+    return [line for line in Data.map(
+            as_lines(data),
+            lambda entry: re.sub(r'\s+', ' ', str(entry).strip())
+        ) if Validate.filled(line)]
+
 ### BEGIN: Ansible
 def to_text(*args, **kwargs)-> str:
     from ansible.module_utils.common.text.converters import to_text
@@ -335,6 +416,20 @@ def from_items(
         Data.set_(ret, Data.get(item, key_name, default_key), Data.get(item, value_name, default_value))
 
     return ret
+
+def as_command_model(data: t.Mapping[str, t.Any], command: t.Optional[str] = None) -> CommandModel:
+    data = dict(data)
+    data['stdout'] = to_text(data['stdout']).strip()
+    data['stderr'] = to_text(data['stderr']).strip()
+
+    ret = {
+        'rc': int(to_text(data['rc'])),
+        'out': data['stdout'] if Validate.filled(data['stdout']) else None,
+        'err': data['stderr'] if Validate.filled(data['stderr']) else None,
+        'command': command,
+    }
+    
+    return CommandModel(**ret)
 ### END: Ansible
 
 ### BEGIN: Type

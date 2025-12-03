@@ -1,10 +1,14 @@
 import typing as t
 from abc import ABC, abstractmethod
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.fluent import Fluent
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.validator import Validator
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Convert, Data, Str, Validate, Utils
 from ansible.plugins.action import ActionBase
 from ansible.plugins.lookup import LookupBase
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import (
+    CommandModel
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Task, TaskGroup, TaskPipeline
+from ansible_collections.aybarsm.utils.plugins.module_utils.tools.fluent import Fluent
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.validator import Validator
+from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Convert, Data, Str, Validate, Utils
 
 class RoleManager(ABC):
     def __init__(
@@ -109,6 +113,14 @@ class RoleManager(ABC):
         
         return None
 
+    def get_module_action(self) -> t.Optional[ActionBase]:
+        module = self.get_module()
+        return module if isinstance(module, ActionBase) else None
+
+    def get_module_lookup(self) -> t.Optional[LookupBase]:
+        module = self.get_module()
+        return module if isinstance(module, LookupBase) else None
+
     def set_module(self, module: ActionBase|LookupBase):
         if isinstance(module, ActionBase):
             self.modules['action'] = module
@@ -181,6 +193,28 @@ class RoleManager(ABC):
     
     def is_op(self, op: str) -> bool:
         return self.op('op') == op
+    
+    def _exec_cmd(self, *args, **kwargs) -> CommandModel:
+        module = self.get_module_action()
+        if not module:
+            raise RuntimeError('Action module not found to execute low level command')
+        
+        return Convert.as_command_model(
+            module._low_level_execute_command(*args, **kwargs),
+            list(args)[0] if Validate.filled(args) else kwargs.get('cmd')
+        )
+    
+    def _exec_module(self, **kwargs):
+        module = self.get_module_action()
+        if not module:
+            raise RuntimeError('Action module not found to execute module')
+        
+        kwargs = dict(kwargs)
+        kwargs['task_vars'] = self.vars.all()
+
+        return module._execute_module(**kwargs)
+    
+    # def _task_pipeline(self, )
     
     @abstractmethod
     def _get_operation_validation_schema(self, args: t.Mapping[str, t.Any], vars: t.Mapping[str, t.Any]) -> dict:

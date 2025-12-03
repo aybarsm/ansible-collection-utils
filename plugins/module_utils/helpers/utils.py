@@ -84,7 +84,7 @@ def call_raw(callback: t.Callable, *args, **kwargs) -> t.Any:
     if Validate.blank(args) and Validate.blank(kwargs):
         return callback()
     
-    conf = kwargs.pop('__caller', {})
+    conf = dict(kwargs.pop('__caller', {}))
     segments = Convert.as_callable_segments(callback)
     args = list(args)
     kwargs = dict(kwargs)
@@ -92,9 +92,9 @@ def call_raw(callback: t.Callable, *args, **kwargs) -> t.Any:
     send_kwargs = {}
     
     if Data.filled(conf, 'bind.annotations'):
-        if not Data.has(conf, 'bind.annotation'):
-            Data.set_(conf, 'bind.annotation', {})
-
+        if 'annotation' not in conf['bind']:
+            conf['bind']['annotation'] = {}
+        
         for binding_ in Data.get(conf, 'bind.annotations', []):
             if type(binding_) not in conf['bind']['annotation']:
                 conf['bind']['annotation'][type(binding_)] = binding_
@@ -128,7 +128,7 @@ def call_raw(callback: t.Callable, *args, **kwargs) -> t.Any:
                     send_kwargs[key_] = kwargs[key_]
                 
             kwargs = {}
-    
+
     return callback(*send_args, **send_kwargs)
 
 def call(callback: t.Callable, *args, **kwargs) -> t.Any:
@@ -387,4 +387,16 @@ def class_get_primary_child(self_: object, parent: type) -> bool | object:
             return mros[idx - 1]
     
     return False
+
+def value(context: t.Any, *args, **kwargs):
+    return call_raw(context, *args, **kwargs) if callable(context) else context
+    
+def when(condition: t.Any, context: t.Any, default: t.Any = None):
+    if callable(condition):
+        condition = condition()
+
+    if condition:
+        return value(context, condition)
+    else:
+        return value(default, condition)
 ### END: Generic

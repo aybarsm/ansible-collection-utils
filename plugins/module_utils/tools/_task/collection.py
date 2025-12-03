@@ -13,8 +13,8 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.tools.task import Ta
 from ansible_collections.aybarsm.utils.plugins.module_utils.tools.collection import Collection
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Convert, Data, Utils
 
-TaskCollectionFindIdentifier = t.Union[UniqueIdUuid, UniqueAlias, Task, asyncio.Task]
-TaskCollectionGetIdentifier = t.Union[TaskGroup, ENUMERATABLE[t.Union[UniqueIdUuid, UniqueAlias, Task, asyncio.Task, TaskGroup]]]
+TaskCollectionFindIdentifier = t.Union[t.Callable, UniqueIdUuid, UniqueAlias, Task, asyncio.Task]
+TaskCollectionGetIdentifier = t.Union[t.Callable, TaskGroup, ENUMERATABLE[t.Union[UniqueIdUuid, UniqueAlias, Task, asyncio.Task, TaskGroup]]]
 TaskCollectionIdentifier = t.Union[TaskCollectionFindIdentifier, TaskCollectionGetIdentifier]
 
 @dataclass(init=False, kw_only=True)
@@ -27,6 +27,7 @@ class TaskCollection(Collection[Task], BaseModel):
         context: t.Optional[t.Any] = None,
     ):
         super().__init__(tasks)
+        BaseModel.__init__(self)
         self.context: t.Optional[t.Any] = context
         
     def append(self, task: Task | ENUMERATABLE[Task]) -> te.Self:
@@ -35,10 +36,10 @@ class TaskCollection(Collection[Task], BaseModel):
     def prepend(self, task: Task | ENUMERATABLE[Task]) -> te.Self:
         return self.__append_or_prepend(False, task)
     
-    def push(self, task: Task) -> te.Self:
+    def push(self, task: Task | ENUMERATABLE[Task]) -> te.Self:
         return self.append(task)
     
-    def add(self, task: Task) -> te.Self:
+    def add(self, task: Task | ENUMERATABLE[Task]) -> te.Self:
         return self.append(task)
 
     def find(
@@ -71,18 +72,20 @@ class TaskCollection(Collection[Task], BaseModel):
         return self.pluck('id')
     
     def get_aliases(self) -> list[UniqueAlias]:
-        return self.pluck('alias')
+        return self.pluck('alias', filled=True)
     
     def get_results(self) -> list[TaskResult]:
         return self.pluck('result')
     
-    def get_mapped_results(self) -> MappingImmutable[str, TaskResult]:
-        return MappingImmutable(
-            self.each(
-                lambda task, idx, ret: Data.set_(ret, str(task.id), {'result': task.result, 'status': task.status}), 
-                {}
-            )
-        )
+    def get_mapped_results(self) -> MappingImmutable[str, t.Any]:
+        ret = {}
+        for task in self.items:
+            ret[str(task.id)] = {
+                'group': task.group,
+                'status': task.status,
+                'result': task.result,
+            }
+        return MappingImmutable(ret)
     
     def get_dispatchers(self) -> list[t.Callable]:
         return self.pluck('dispatch')
@@ -96,10 +99,19 @@ class TaskCollection(Collection[Task], BaseModel):
     def get_group_aliases(self) -> list[UniqueAlias]:
         return self.pluck('group.alias', filled=True, unique=True)
     
+    def get_status(self, status: str | GenericStatus) -> tuple[Task, ...]:
+        return self.get(lambda task: str(task.status) == str(status))
+    
+    def has_status(self, status: str | GenericStatus) -> bool:
+        return self.find_index(lambda task: str(task.status) == str(status)) != None
+    
     @staticmethod
     def resolve_retrieval_callback(
         identifier: TaskCollectionIdentifier,
     ) -> t.Callable:
+        if isinstance(identifier, t.Callable):
+            return identifier
+        
         done = set()
         callbacks = []
 
@@ -150,12 +162,16 @@ class TaskCollectionDispatchable(TaskCollection, IdMixin, StatusMixin):
 
     def __init__(
         self,
+        alias: t.Optional[UniqueAlias] = None,
         tasks: ENUMERATABLE[Task] = [],
         context: t.Optional[t.Any] = None,
         timeout: t.Optional[PositiveFloat] = None,
         abort_on_failed: bool = True,
+        on_status_change: t.Optional[EventCallback] = None,
     ):
         super().__init__(tasks, context)
+        IdMixin.__init__(self, alias=alias)
+        StatusMixin.__init__(self, on_status_change=on_status_change)
         
         self.timeout: t.Optional[PositiveFloat] = timeout
         self.abort_on_failed: bool = abort_on_failed

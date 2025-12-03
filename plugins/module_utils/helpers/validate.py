@@ -394,6 +394,21 @@ def str_is_toml(
     
     return ret
 
+def str_is_parsable(data: str, of: t.Literal['any', 'json', 'yaml', 'lua', 'toml'] = 'any')-> bool:
+    from ansible_collections.aybarsm.utils.plugins.module_utils.tools.pipe import Pipe
+    
+    return (Pipe
+            .send(
+                context=data,
+                abort_when=lambda result: result == True
+            )
+            .then(lambda of=of: of in ['any', 'json'] and str_is_json(data))
+            .then(lambda of=of: of in ['any', 'yaml'] and str_is_yaml(data))
+            .then(lambda of=of: of in ['any', 'lua'] and str_is_lua(data))
+            .then(lambda of=of: of in ['any', 'toml'] and str_is_toml(data))
+            .thenLast()
+    )
+
 def str_contains(data: str, *args: str, **kwargs: t.Mapping[str, bool])-> bool:
     if blank(data):
         return False

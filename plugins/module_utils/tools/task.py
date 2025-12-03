@@ -13,7 +13,7 @@ class TaskGroup(BaseModel, IdMixin):
     size_concurrent: t.Optional[PositiveInt] = model_field(default=None, init=True, frozen=True)
 
 @dataclass(kw_only=True)
-class Task(BaseModel, IdMixin, CallableMixin, StatusMixin):
+class Task(BaseModel, IdMixin, StatusMixin, CallableMixin):
     callback: TaskCallback = model_field(init=True, frozen=True)
     group: t.Optional[TaskGroup] = model_field(default=None, init=True, frozen=True)
     result: TaskResult = model_field(default=None, init=False, protected=True)
@@ -42,13 +42,13 @@ class Task(BaseModel, IdMixin, CallableMixin, StatusMixin):
 
         return self
 
-    def dispatch(self) -> te.Self:
+    def dispatch(self, context: t.Any = None) -> te.Self:
         if not self.status.dispatchable():
             return self
         
         self._set_status(GenericStatus.RUNNING)
         try:
-            self.result = self._caller_make_call(self.callback)
+            self.result = self._caller_make_call(self.callback, **{'context': context})
             self._set_status(GenericStatus.COMPLETED)
         except Exception as e:
             self.result = e

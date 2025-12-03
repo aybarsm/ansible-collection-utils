@@ -3,7 +3,7 @@ import typing_extensions as te
 import dataclasses as dt
 import asyncio
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    ENUMERATABLE, PositiveInt, EventCallback, PositiveFloat
+    ENUMERATABLE, PositiveInt, EventCallback, PositiveFloat, UniqueAlias
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import (
     dataclass, model_field, GenericStatus
@@ -18,13 +18,22 @@ class TaskChannel(TaskCollectionDispatchable):
 
     def __init__(
             self,
+            alias: t.Optional[UniqueAlias] = None,
             tasks: ENUMERATABLE[Task] = [],
             size: t.Optional[PositiveInt] = None,
             context: t.Optional[t.Any] = None,
             timeout: t.Optional[PositiveFloat] = None,
             abort_on_failed: bool = True,
+            on_status_change: t.Optional[EventCallback] = None,
         ):
-        super().__init__(tasks=tasks, context=context, timeout=timeout, abort_on_failed=abort_on_failed)
+        super().__init__(
+            alias=alias,
+            tasks=tasks, 
+            context=context, 
+            timeout=timeout, 
+            abort_on_failed=abort_on_failed,
+            on_status_change=on_status_change,
+        )
 
         self.size: t.Optional[PositiveInt] = size
 
@@ -38,7 +47,7 @@ class TaskChannel(TaskCollectionDispatchable):
         if not task:
             raise RuntimeError(f'Coroutine delivered task [{coro_task.get_name()}] not found.')
         
-        if task.status.failed() and self.abort_on_failed and self.status.abortable:
+        if task.status.failed() and self.abort_on_failed and self.status.abortable():
             self.abort()
         
         if task.status.cancellable() and self.status.aborted():
@@ -46,7 +55,7 @@ class TaskChannel(TaskCollectionDispatchable):
     
     async def __run(self) -> None:
         if self.status.running():
-            raise RuntimeError('Concurrency already running.')
+            raise RuntimeError('Task channel already running.')
         
         semaphore: asyncio.Semaphore = asyncio.Semaphore(self.size if self.size else self.count())
         pending: set[asyncio.Task] = set()
@@ -55,9 +64,8 @@ class TaskChannel(TaskCollectionDispatchable):
 
         for task in self.items:
             coro_task = asyncio.create_task(
-                coro=Utils.call_semaphore(semaphore, task.dispatch), 
-                name=str(task.id),
-                context=self.context
+                coro=Utils.call_semaphore(semaphore, task.dispatch, **{'context': self.context}), 
+                name=str(task.id)
             )
             
             task.queue()
