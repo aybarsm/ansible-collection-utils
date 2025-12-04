@@ -102,55 +102,80 @@ class _Kit:
         import ansible_collections.aybarsm.utils.plugins.module_utils.support.validate as Validate
         return Validate
     
-    @property
-    def Pydash(self):
-        cls = type(self)
-
-        if 'pydash' not in cls.__container:
-            import pydash
-            cls.__container['pydash'] = pydash
-        
-        return cls.__container['pydash']
+    @staticmethod
+    def Pydash():
+        import pydash
+        return pydash
     
-    @property
-    def Cerberus(self):
-        cls = type(self)
-
-        if 'cerberus' not in cls.__container:
-            import cerberus
-            cls.__container['cerberus'] = cerberus
-        
-        return cls.__container['cerberus']
+    @staticmethod
+    def Cerberus():
+        import cerberus
+        return cerberus
     
-    @property
-    def Rich(self):
-        cls = type(self)
-
-        if 'rich' not in cls.__container:
-            import rich
-            cls.__container['rich'] = rich
-        
-        return cls.__container['rich']
+    @staticmethod
+    def Rich():
+        import rich
+        return rich
     
-    @property
-    def RichPretty(self):
-        cls = type(self)
-
-        if 'rich.pretty' not in cls.__container:
-            import rich.pretty
-            cls.__container['rich.pretty'] = rich.pretty
-        
-        return cls.__container['rich.pretty']
+    @staticmethod
+    def RichPretty():
+        import rich.pretty
+        return rich.pretty
     
-    @cached_property
-    def RichConsole(self):
-        cls = type(self)
+    @staticmethod
+    def RichConsole():
+        import rich.console
+        return rich.console
+    
+    # @property
+    # def Pydash(self):
+    #     cls = type(self)
 
-        if 'rich.console' not in cls.__container:
-            import rich.console
-            cls.__container['rich.console'] = rich.console
+    #     if 'pydash' not in cls.__container:
+    #         import pydash
+    #         cls.__container['pydash'] = pydash
         
-        return cls.__container['rich.console']
+    #     return cls.__container['pydash']
+    
+    # @property
+    # def Cerberus(self):
+    #     cls = type(self)
+
+    #     if 'cerberus' not in cls.__container:
+    #         import cerberus
+    #         cls.__container['cerberus'] = cerberus
+        
+    #     return cls.__container['cerberus']
+    
+    # @property
+    # def Rich(self):
+    #     cls = type(self)
+
+    #     if 'rich' not in cls.__container:
+    #         import rich
+    #         cls.__container['rich'] = rich
+        
+    #     return cls.__container['rich']
+    
+    # @property
+    # def RichPretty(self):
+    #     cls = type(self)
+
+    #     if 'rich.pretty' not in cls.__container:
+    #         import rich.pretty
+    #         cls.__container['rich.pretty'] = rich.pretty
+        
+    #     return cls.__container['rich.pretty']
+    
+    # @cached_property
+    # def RichConsole(self):
+    #     cls = type(self)
+
+    #     if 'rich.console' not in cls.__container:
+    #         import rich.console
+    #         cls.__container['rich.console'] = rich.console
+        
+    #     return cls.__container['rich.console']
 
 # class _Kit:
 #     @cached_property

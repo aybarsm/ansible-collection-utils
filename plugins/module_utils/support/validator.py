@@ -1,7 +1,7 @@
 import typing as t
 from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import CONF_, Kit
 
-class Validator(Kit.Cerberus().Validator):
+class Validator(Kit.Cerberus.Validator):
     def __init__(self, *args, **kwargs):
         if Kit.Validate().blank(args):
             args = [

@@ -2,12 +2,10 @@ import typing as t
 from abc import ABC, abstractmethod
 from ansible.plugins.action import ActionBase
 from ansible.plugins.lookup import LookupBase
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import (
-    CommandModel
-)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import CommandModel
 from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Task, TaskGroup, TaskPipeline
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools.fluent import Fluent
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.validator import Validator
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.fluent import Fluent
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.validator import Validator
 from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Convert, Data, Str, Validate, Utils
 
 class RoleManager(ABC):

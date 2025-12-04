@@ -6,49 +6,49 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.support.types import
 from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Kit
 
 ### BEGIN: Arrays
-@functools.wraps(Kit.Pydash.chunk)
+@functools.wraps(Kit.Pydash().chunk)
 def chunk(data, size: int = 1) -> t.List[t.Sequence[t.Any]]:
-    return Kit.Pydash.chunk(data, size)
+    return Kit.Pydash().chunk(data, size)
 
-@functools.wraps(Kit.Pydash.compact)
+@functools.wraps(Kit.Pydash().compact)
 def compact(data) -> t.List[t.Any]:
-    return Kit.Pydash.compact(data)
+    return Kit.Pydash().compact(data)
 
-@functools.wraps(Kit.Pydash.concat)
+@functools.wraps(Kit.Pydash().concat)
 def concat(*data) -> t.List[t.Any]:
-    return Kit.Pydash.concat(*data)
+    return Kit.Pydash().concat(*data)
 ### END: Arrays
 
 ### BEGIN: Locate
-@functools.wraps(Kit.Pydash.find)
+@functools.wraps(Kit.Pydash().find)
 def find(data, predicate) -> t.Any:
-    return Kit.Pydash.find(data, predicate)
+    return Kit.Pydash().find(data, predicate)
 
-@functools.wraps(Kit.Pydash.find_last)
+@functools.wraps(Kit.Pydash().find_last)
 def find_last(data, predicate) -> t.Any:
-    return Kit.Pydash.find_last(data, predicate)
+    return Kit.Pydash().find_last(data, predicate)
 
-@functools.wraps(Kit.Pydash.find_key)
+@functools.wraps(Kit.Pydash().find_key)
 def find_key(data, predicate) -> t.Any:
-    return Kit.Pydash.find_key(data, predicate)
+    return Kit.Pydash().find_key(data, predicate)
 
-@functools.wraps(Kit.Pydash.find_last_key)
+@functools.wraps(Kit.Pydash().find_last_key)
 def find_last_key(data, predicate) -> t.Any:
-    return Kit.Pydash.find_last_key(data, predicate)
+    return Kit.Pydash().find_last_key(data, predicate)
 
-@functools.wraps(Kit.Pydash.find_index)
+@functools.wraps(Kit.Pydash().find_index)
 def find_index(data, predicate) -> t.Any:
-    return Kit.Pydash.find_index(data, predicate)
+    return Kit.Pydash().find_index(data, predicate)
 
-@functools.wraps(Kit.Pydash.find_last_index)
+@functools.wraps(Kit.Pydash().find_last_index)
 def find_last_index(data, predicate) -> t.Any:
-    return Kit.Pydash.find_last_index(data, predicate)
+    return Kit.Pydash().find_last_index(data, predicate)
 ### END: Locate
 
-@functools.wraps(Kit.Pydash.get)
+@functools.wraps(Kit.Pydash().get)
 def get(data, key, default = None) -> t.Any:
     if not str(key) == '*' and not Kit.Validate().str_contains(str(key), '.*', '*.'):
-        return Kit.Pydash.get(data, key, default)
+        return Kit.Pydash().get(data, key, default)
     
     skip_ = []
     ret = Kit.Convert().as_copied(data)
@@ -69,7 +69,7 @@ def get(data, key, default = None) -> t.Any:
         elif segment != '*' and Kit.Validate().is_iterable_of_mappings(ret):
             ret = pluck(ret, segment)
         elif segment != '*' and Kit.Validate().is_mapping(ret):
-            ret = Kit.Convert().as_copied(Kit.Pydash.get(ret, segment))       
+            ret = Kit.Convert().as_copied(Kit.Pydash().get(ret, segment))       
         elif segment == '*':
             ret = flatten(ret, levels=1)
         
@@ -79,28 +79,28 @@ def get(data, key, default = None) -> t.Any:
 
     return ret
 
-@functools.wraps(Kit.Pydash.set_)
+@functools.wraps(Kit.Pydash().set_)
 def set_(data, key, value: t.Any) -> t.Any:
-    return Kit.Pydash.set_(data, key, value)
+    return Kit.Pydash().set_(data, key, value)
 
-@functools.wraps(Kit.Pydash.has)
+@functools.wraps(Kit.Pydash().has)
 def has(data, key) -> bool:
-    return Kit.Pydash.has(data, key)
+    return Kit.Pydash().has(data, key)
 
-@functools.wraps(Kit.Pydash.unset)
+@functools.wraps(Kit.Pydash().unset)
 def unset(data, *args) -> t.Any:
     for key_ in args:
-        Kit.Pydash.unset(data, key_)
+        Kit.Pydash().unset(data, key_)
     
     return data
 
-@functools.wraps(Kit.Pydash.pluck)
+@functools.wraps(Kit.Pydash().pluck)
 def pluck(data, key, **kwargs) -> t.List[t.Any]:
     ph = Kit.Factory().placeholder()
     is_filled = kwargs.pop('filled', ph) != ph
     is_unique = kwargs.pop('unique', ph)
 
-    ret = Kit.Pydash.pluck(data, key)
+    ret = Kit.Pydash().pluck(data, key)
     if is_filled:
         ret = [item for item in ret if Kit.Validate().filled(item)]
     
@@ -109,7 +109,7 @@ def pluck(data, key, **kwargs) -> t.List[t.Any]:
     
     return ret  
     
-@functools.wraps(Kit.Pydash.uniq)
+@functools.wraps(Kit.Pydash().uniq)
 def uniq(
     data: ENUMERATABLE[T],
     by: t.Optional[t.Union[t.Literal[True], str, ENUMERATABLE[str], t.Callable]] = None,
@@ -125,31 +125,31 @@ def uniq(
     
     return ret
 
-@functools.wraps(Kit.Pydash.invert)
+@functools.wraps(Kit.Pydash().invert)
 def invert(data) -> t.Any:
-    return Kit.Pydash.invert(data)
+    return Kit.Pydash().invert(data)
 
-@functools.wraps(Kit.Pydash.map_)
+@functools.wraps(Kit.Pydash().map_)
 def walk(data, iteratee):
-    return Kit.Pydash.collections.map_(data, iteratee)
+    return Kit.Pydash().collections.map_(data, iteratee)
 
-@functools.wraps(Kit.Pydash.map_values_deep)
+@functools.wraps(Kit.Pydash().map_values_deep)
 def walk_values_deep(data, iteratee):
-    return Kit.Pydash.map_values_deep(data, iteratee)
+    return Kit.Pydash().map_values_deep(data, iteratee)
 
-@functools.wraps(Kit.Pydash.difference)
+@functools.wraps(Kit.Pydash().difference)
 def difference(data, *others, **kwargs)-> t.List[t.Any]:
     if Kit.Validate().blank(kwargs):
-        return Kit.Pydash.difference_with(data, *others)
+        return Kit.Pydash().difference_with(data, *others)
     else:
-        return Kit.Pydash.difference_by(data, *others, **kwargs)
+        return Kit.Pydash().difference_by(data, *others, **kwargs)
 
-@functools.wraps(Kit.Pydash.intersection)
+@functools.wraps(Kit.Pydash().intersection)
 def intersection(data, *others, **kwargs)-> t.List[t.Any]:
     if Kit.Validate().blank(kwargs):
-        return Kit.Pydash.intersection_with(data, *others)
+        return Kit.Pydash().intersection_with(data, *others)
     else:
-        return Kit.Pydash.intersection_by(data, *others, **kwargs)
+        return Kit.Pydash().intersection_by(data, *others, **kwargs)
 
 def _append_or_prepend(data: t.Iterable[t.Any], key: str, value: t.Any, is_prepend: bool, **kwargs) -> t.Iterable[t.Any]:
     is_extend = kwargs.pop('extend', False)
