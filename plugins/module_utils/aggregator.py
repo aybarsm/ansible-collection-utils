@@ -3,6 +3,7 @@ from dataclasses import dataclass as dt_dataclass, field as dt_field, MISSING as
 from re import compile as re_compile
 import datetime, hashlib
 
+
 @dt_dataclass(frozen=True, kw_only=True)
 class _Sentinel:
     raw: object = dt_field(init=True)
