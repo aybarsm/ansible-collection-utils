@@ -1,11 +1,11 @@
 import typing as t
 import typing_extensions as te
-from ansible_collections.aybarsm.utils.plugins.module_utils.support.types import (
-    PositiveInt, TaskResult, TaskCallback
-)
-from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
-    dataclass, BaseModel, model_field, GenericStatus, IdMixin, StatusMixin, CallableMixin
-)
+# BEGIN: ImportManager
+# END: ImportManager
+
+TaskResult = t.Any
+TaskCallback = t.Callable[..., TaskResult]
+TaskGroupConcurrent = PositiveInt
 
 @dataclass(kw_only=True)
 class TaskGroup(BaseModel, IdMixin):

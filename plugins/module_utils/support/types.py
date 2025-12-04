@@ -27,7 +27,6 @@ UniqueIdUuid = uuid.UUID
 UniqueAlias = str
 # END: Generic - Types
 
-
 # BEGIN: Callable
 CallableParameterKindMap = tt.MappingProxyType({
     'any': inspect.Parameter.POSITIONAL_OR_KEYWORD,

@@ -1,21 +1,7 @@
 import typing as t
 import typing_extensions as te
-from ansible_collections.aybarsm.utils.plugins.module_utils.support.types import (
-    T, ENUMERATABLE
-)
-from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
-    Sentinel
-)
-from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import (
-    where as Data_where,
-    collections as Data_collections,
-    append as Data_append,
-    prepend as Data_prepend,
-    pluck as Data_pluck,
-)
-from ansible_collections.aybarsm.utils.plugins.module_utils.support.utils import (
-    call as Utils_call,
-)
+# BEGIN: ImportManager
+# END: ImportManager
 
 class Collection(t.Generic[T]):
     on_save: t.Optional[t.Callable] = None

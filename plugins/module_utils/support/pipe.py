@@ -1,8 +1,7 @@
 import typing as t
 import typing_extensions as te
-from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
-    dataclass, model_field, GenericStatus, BaseModel, IdMixin, StatusMixin, CallableMixin
-)
+# BEGIN: ImportManager
+# END: ImportManager
 
 AbortWhenCallback = t.Callable[..., bool]
 
