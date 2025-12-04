@@ -89,7 +89,7 @@ def main():
             ret['lines'] = []
 
             for line_ in ret_lines:
-                if Kit.Validate().filled(line_):
+                if Validate_filled(line_):
                     ret['lines'].append(line_)
         else:
             ret['lines'] = ret_lines

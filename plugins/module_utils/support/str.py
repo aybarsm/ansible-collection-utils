@@ -4,7 +4,7 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Ki
 
 ### BEGIN: Locate
 def find(data: str, needle: str, reverse: bool = False, before: bool = True, **kwargs) -> str:
-    ph = Kit.Factory().placeholder(mod='hashed')
+    ph = Factory_placeholder(mod='hashed')
     default = str(kwargs.pop('default', ph))
 
     index = data.rfind(needle) if reverse else data.find(needle)
@@ -31,16 +31,16 @@ def matches(data: str|t.Sequence[str], patterns: str|t.Sequence[str], **kwargs)-
     is_escape_pattern = kwargs.get('escape_pattern', False) == True
     is_first = kwargs.get('first', False) == True
     
-    data = Kit.Convert().to_iterable(data)
-    patterns = Kit.Convert().to_iterable(patterns)
+    data = Convert_to_iterable(data)
+    patterns = Convert_to_iterable(patterns)
     
-    if Kit.Validate().blank(patterns):
+    if Validate_blank(patterns):
         return []
     
     if is_cli:
-        patterns = Kit.Data().flatten(Kit.Data().map(
+        patterns = Data_flatten(Data_map(
             patterns,
-            lambda entry: Kit.Convert().from_cli(entry, iterable=True, stripped=True)
+            lambda entry: Convert_from_cli(entry, iterable=True, stripped=True)
         ))
     
     ret = []
@@ -64,10 +64,10 @@ def matches(data: str|t.Sequence[str], patterns: str|t.Sequence[str], **kwargs)-
             elif is_all and not res:
                 break
         
-        if is_first and Kit.Validate().filled(ret):
+        if is_first and Validate_filled(ret):
             break
     
-    if is_first and Kit.Validate().filled(ret):
+    if is_first and Validate_filled(ret):
         return ret[0]
 
     return ret
@@ -125,14 +125,14 @@ def pad(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
         raise ValueError(f'Invalid padding type [{padding}]. Available: left, right, both')
 
     count = max([count, 0])
-    data = str(Kit.Convert().to_text(data))
+    data = str(Convert_to_text(data))
     is_strip = kwargs.pop('strip', True)
     is_dent = kwargs.pop('dent', False)
 
-    if not Kit.Validate().is_falsy(is_strip):
+    if not Validate_is_falsy(is_strip):
         data = data.strip()
             
-    if Kit.Validate().is_truthy(is_dent):
+    if Validate_is_truthy(is_dent):
         padding = 'left' if padding == 'right' else ('right' if padding == 'left' else padding)
         count += len(data)
     

@@ -1,11 +1,11 @@
 import typing as t
 import typing_extensions as te
 import dataclasses as dt
-import enum, functools, uuid, sys, inspect
+import enum, functools, uuid, datetime, hashlib
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.types import (
     PositiveInt, EventCallback, UniqueIdUuid, UniqueAlias
 )
-from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import CONF_, Kit
+from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import CONF_
 
 # BEGIN: Data Classes
 dataclass = dt.dataclass
@@ -18,9 +18,9 @@ def model_class(cls=None, /, **kwargs):
 
 @functools.wraps(dt.field)
 def model_field(**kwargs):
-    options = Kit.Data().all_except(kwargs, *CONF_['data_classes']['kwargs'].keys())
-    kwargs = Kit.Data().only_with(kwargs, *CONF_['data_classes']['kwargs'].keys())
-    kwargs = Kit.Data().combine(kwargs, {'metadata': {'_options': options}}, recursive=True)
+    options = Data_all_except(kwargs, *CONF_['data_classes']['kwargs'].keys())
+    kwargs = Data_only_with(kwargs, *CONF_['data_classes']['kwargs'].keys())
+    kwargs = Data_combine(kwargs, {'metadata': {'_options': options}}, recursive=True)
     return dt.field(**kwargs)
 
 def model_method(**kwargs):
@@ -31,6 +31,25 @@ def model_method(**kwargs):
 # END: Data Classes
 
 # BEGIN: Generic - Definitions
+@dataclass(frozen=True, kw_only=True)
+class _Sentinel:
+    raw: object = model_field(init=True)
+    ts: datetime.datetime = model_field(init=True)
+    ts_str: str = model_field(init=True)
+    ts_safe: str = model_field(init=True)
+    id: str = model_field(init=True)
+    hash: str = model_field(init=True)
+
+    @staticmethod
+    def make() -> "_Sentinel":
+        raw_ = object()
+        ts_ = datetime.datetime.now(datetime.timezone.utc)
+        ts_str_ = str(ts_.strftime('%Y-%m-%dT%H:%M:%SZ'))
+        ts_safe_ = str(ts_.strftime('%Y%m%dT%H%M%SZ'))
+        id_ = f'{str(id(raw_))}_{str(ts_.strftime('%Y-%m-%dT%H:%M:%S'))}.{ts_.microsecond * 1000:09d}Z'
+        hash_ = hashlib.md5(id_.encode()).hexdigest()
+        return _Sentinel(raw=raw_, ts=ts_, ts_str=ts_str_, ts_safe=ts_safe_, id=id_, hash=hash_)
+
 @dataclass(frozen=True)
 class Separator:
     char: str = model_field(default='-', init=True)
@@ -115,21 +134,21 @@ class BaseModel:
         if key.strip() == '':
             return attr        
 
-        return Kit.Data().get(attr, key, default)
+        return Data_get(attr, key, default)
         
     def __delattr__(self, name: str) -> None:
         if self.__dataclass_field(name, 'metadata._options.frozen') == True:
             raise RuntimeError(f'Frozen attribute [{name}] cannot be deleted.')
         
         is_protected = self.__dataclass_field(name, 'metadata._options.protected') == True
-        if is_protected and not Kit.Validate().callable_called_within_hierarchy(self, '__delattr__'):
+        if is_protected and not Validate_callable_called_within_hierarchy(self, '__delattr__'):
             raise RuntimeError(f'Protected attribute [{name}] cannot be deleted externally.')
         
         super().__delattr__(name)
     
     def __setattr__(self, name: str, value: t.Any) -> None:
         is_protected = self.__dataclass_field(name, 'metadata._options.protected') == True
-        if is_protected and not Kit.Validate().callable_called_within_hierarchy(self, '__setattr__'):
+        if is_protected and not Validate_callable_called_within_hierarchy(self, '__setattr__'):
             raise RuntimeError(f'Protected attribute [{name}] cannot be manipulated externally.')
         
         super().__setattr__(name, value)
@@ -140,14 +159,14 @@ class BaseModel:
         if name in ['__class__', '__dataclass_fields__', '__dataclass_field']:
             return attr
         
-        is_callable = Kit.Validate().is_callable(attr)
-        is_protected_method = is_callable and Kit.Data().get(attr, '__metadata__.protected') == True
+        is_callable = Validate_is_callable(attr)
+        is_protected_method = is_callable and Data_get(attr, '__metadata__.protected') == True
         is_hidden_field = not is_callable and self.__dataclass_field(name, 'metadata._options.hidden') == True
 
-        if is_protected_method and not Kit.Validate().callable_called_within_hierarchy(self, '__getattribute__'):
-            # Kit.Utils().dump(Kit.Convert().as_callable_caller_segments(self, '__getattribute__'))
+        if is_protected_method and not Validate_callable_called_within_hierarchy(self, '__getattribute__'):
+            # Utils_dump(Convert_as_callable_caller_segments(self, '__getattribute__'))
             raise RuntimeError(f'Protected method [{name}] cannot be called externally.')
-        elif is_hidden_field and not Kit.Validate().callable_called_within_hierarchy(self, '__getattribute__'):
+        elif is_hidden_field and not Validate_callable_called_within_hierarchy(self, '__getattribute__'):
             raise RuntimeError(f'Hidden attribute [{name}] cannot be accessed externally.')
 
         return attr
@@ -173,26 +192,26 @@ class CommandModel:
         return self.output_lines(cleaned) + self.error_lines(cleaned)
     
     def output_lines(self, cleaned: bool = False) -> list[str]:
-        return Kit.Convert().as_cleaned_lines(self.out) if cleaned else Kit.Convert().as_lines(self.out)
+        return Convert_as_cleaned_lines(self.out) if cleaned else Convert_as_lines(self.out)
 
     def error_lines(self, cleaned: bool = False) -> list[str]:
-        return Kit.Convert().as_cleaned_lines(self.err) if cleaned else Kit.Convert().as_lines(self.err)
+        return Convert_as_cleaned_lines(self.err) if cleaned else Convert_as_lines(self.err)
     
     @property
     def has_rc(self) -> bool:
-        return Kit.Validate().filled(self.rc)
+        return Validate_filled(self.rc)
     
     @property
     def has_output(self) -> bool:
-        return Kit.Validate().filled(self.out)
+        return Validate_filled(self.out)
     
     @property
     def has_error(self) -> bool:
-        return Kit.Validate().filled(self.err)
+        return Validate_filled(self.err)
     
     @property
     def has_command(self) -> bool:
-        return Kit.Validate().filled(self.command)
+        return Validate_filled(self.command)
 
     @property
     def success(self) -> bool:
@@ -205,7 +224,7 @@ class CommandModel:
     # def is_(self, src: t.Literal['output', 'error'], of: t.Literal['json', 'yaml', 'lua', 'toml']) -> bool:
     #     rel = self.output if src == 'output' else self.err
         
-    #     if not rel or Kit.Validate().blank(rel):
+    #     if not rel or Validate_blank(rel):
     #         return False
     
 
@@ -232,10 +251,10 @@ class CallableMixin:
         args = list(args or [])
         kwargs = dict(kwargs or {})
 
-        kwargs = Kit.Data().append(kwargs, '__caller.bind.annotations', self)
+        kwargs = Data_append(kwargs, '__caller.bind.annotations', self)
 
         if 'context' not in kwargs:
-            ph = Kit.Factory().placeholder()
+            ph = Factory_placeholder()
             context = ph
             try:
                 context = getattr(self, 'context')
@@ -246,10 +265,10 @@ class CallableMixin:
                 if context not in args:
                     args.append(context)
                 
-                is_in_map_annotations = type(context) in Kit.Data().get(kwargs, '__caller.bind.annotation', {})
-                is_in_iter_annoations = type(context) in Kit.Data().get(kwargs, '__caller.bind.annotations', [])
+                is_in_map_annotations = type(context) in Data_get(kwargs, '__caller.bind.annotation', {})
+                is_in_iter_annoations = type(context) in Data_get(kwargs, '__caller.bind.annotations', [])
                 if not is_in_map_annotations and not is_in_iter_annoations:
-                    Kit.Data().append(kwargs, '__caller.bind.annotations', context)
+                    Data_append(kwargs, '__caller.bind.annotations', context)
         
         return [args, kwargs]
     
@@ -260,7 +279,7 @@ class CallableMixin:
 
         args, kwargs = self._caller_get_config(*args, **kwargs)
         
-        return Kit.Utils().call(callback, *args, **kwargs)
+        return Utils_call(callback, *args, **kwargs)
 
 @dataclass(kw_only=True)
 class StatusMixin:
@@ -288,7 +307,11 @@ class StatusMixin:
             },
         }
 
-        Kit.Utils().call(self.on_status_change, **kwargs)
+        Utils_call(self.on_status_change, **kwargs)
 
         return self
 # END: Mixins
+
+# BEGIN: Singletons
+Sentinel = _Sentinel.make()
+# END: Singletons

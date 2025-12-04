@@ -7,7 +7,9 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.support.types import
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
     dataclass, model_field, GenericStatus
 )
-from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Kit
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.utils import (
+    call_semaphore as Utils_call_semaphore,
+)
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.task import Task
 from ansible_collections.aybarsm.utils.plugins.module_utils.support._task.collection import TaskCollectionDispatchable
 
@@ -63,7 +65,7 @@ class TaskChannel(TaskCollectionDispatchable):
 
         for task in self.items:
             coro_task = asyncio.create_task(
-                coro=Kit.Utils().call_semaphore(semaphore, task.dispatch, **{'context': self.context}), 
+                coro=Utils_call_semaphore(semaphore, task.dispatch, **{'context': self.context}), 
                 name=str(task.id)
             )
             

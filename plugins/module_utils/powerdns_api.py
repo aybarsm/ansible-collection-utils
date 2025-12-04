@@ -36,32 +36,32 @@ class PowerdnsApi():
         self._meta = {'cfg': _DEFAULTS.copy()}
         self._swagger = Swagger(self.meta('cfg.swagger', {}))
         
-        if Kit.Validate().filled(params):
+        if Validate_filled(params):
             self._swagger.params_set(dict(params))
 
         self._operation_set(op)
     
     def _get_value(self, container, key = '', default = None) -> Any:   
-        return Kit.Data().get(container, key, default) if Kit.Validate().filled(key) else container
+        return Data_get(container, key, default) if Validate_filled(key) else container
     
     def meta(self, key: str  = '', default: Any = None) -> Any:
         return self._get_value(self._meta, key, default)
     
     def _meta_set(self, key: str, value: Any) -> None:
-        Kit.Data().set(self._meta, key, value)
+        Data_set(self._meta, key, value)
     
     def _meta_forget(self, key: str) -> None:        
-        Kit.Data().forget(self._meta, key)
+        Data_forget(self._meta, key)
     
     def meta_has(self, key: str) -> bool:
-        return Kit.Data().has(self._meta, key)
+        return Data_has(self._meta, key)
     
     def swagger(self):
         return self._swagger
     
     def _operation_set(self, op: PdnsOperation) -> None:        
         docs_source = self._swagger.params('docs_source', '')
-        if Kit.Validate().blank(docs_source):
+        if Validate_blank(docs_source):
             return
         
         self._swagger.load_swagger(docs_source)
@@ -146,7 +146,7 @@ class PowerdnsApi():
         kwargs = self._swagger.get_ansible_module_arguments(self.operation_path(), self.operation_method(), only_primary = True)
 
         if self.operation_type() == PdnsOperation.auth_zone and self.operation_state() == 'rrsets':
-            Kit.Data().set(kwargs, 'argument_spec.rrsets.required', True)
+            Data_set(kwargs, 'argument_spec.rrsets.required', True)
         
         return kwargs
     
@@ -189,11 +189,11 @@ class PowerdnsApi():
     def _op_auth_zone_before_finalise_callback(self, ret: dict)-> dict:
         state = self.operation_state()
         if state == 'rrsets':
-            Kit.Data().set(ret, 'data.rrsets', Kit.Data().get(ret, 'data.zone_struct.rrsets'))
-            Kit.Data().forget(ret, 'data.zone_struct')
+            Data_set(ret, 'data.rrsets', Data_get(ret, 'data.zone_struct.rrsets'))
+            Data_forget(ret, 'data.zone_struct')
         elif state in ['present', 'update']:
-            zone_struct = Kit.Data().get(ret, 'data.zone_struct', {})
-            Kit.Data().set(ret, 'data', zone_struct.copy())
+            zone_struct = Data_get(ret, 'data.zone_struct', {})
+            Data_set(ret, 'data', zone_struct.copy())
         
         return ret
 

@@ -31,21 +31,21 @@ class RoleManager(ABC):
     
         self.set_op(args, vars)
 
-        if Kit.Validate().object_has_method(self, '_calback_post_init'):
+        if Validate_object_has_method(self, '_calback_post_init'):
             getattr(self, '_calback_post_init')()
 
     def set_op(self, args: t.Mapping[str, t.Any], vars: t.Mapping[str, t.Any]) -> None:
         op = args.get('op')
-        if Kit.Validate().blank(op):
+        if Validate_blank(op):
             raise ValueError('Operation argument op value cannot be blank')
 
-        if Kit.Validate().object_has_method(self, '_calback_pre_op'):
+        if Validate_object_has_method(self, '_calback_pre_op'):
             getattr(self, '_calback_pre_op')()
         
         schema = self._get_operation_validation_schema(args, vars)
         
-        if Kit.Validate().filled(schema):
-            args = Kit.Convert().to_primitive(args)
+        if Validate_filled(schema):
+            args = Convert_to_primitive(args)
             v = Validator(schema, allow_unknown = True)
             if v.validate(args) != True:
                 raise ValueError(v.error_message())
@@ -72,12 +72,12 @@ class RoleManager(ABC):
         if self.meta.has('role.name'):
             return
 
-        role = Kit.Utils().class_get_primary_child(self, RoleManager)
-        if not Kit.Validate().is_object(role):
+        role = Utils_class_get_primary_child(self, RoleManager)
+        if not Validate_is_object(role):
             return
         
         role_name = role.__name__ #type: ignore
-        role_name = Kit.Str().case_snake(str(role_name).strip()).strip().strip('_')
+        role_name = Str_case_snake(str(role_name).strip()).strip().strip('_')
         self.meta.set('role.name', role_name)
     
     def _resolve_role_cfg(self, **kwargs)-> None:
@@ -85,19 +85,19 @@ class RoleManager(ABC):
             return
         
         role_name = self.meta.get('role.name', '')
-        if Kit.Validate().blank(role_name):
+        if Validate_blank(role_name):
             return
         
         host = self.host()
         role_name = str(role_name).strip().strip('_').strip()
-        self.meta.set('role.var.keys', Kit.Data().where(
+        self.meta.set('role.var.keys', Data_where(
             list(set(self.vars.keys() + list(self.host_vars(host, '', {}).keys()))),
             lambda entry: str(entry).startswith(f'{role_name}__'),
             default=[],
         ))
 
         for var_name in self.meta.get('role.var.keys', []):
-            cfg_key = Kit.Str().chop_start(var_name, f'{role_name}__')
+            cfg_key = Str_chop_start(var_name, f'{role_name}__')
             self.meta.set(
                 f'role.cfg.{cfg_key}',
                 self.host_var_default(host, var_name)
@@ -126,7 +126,7 @@ class RoleManager(ABC):
 
     def get_result(self):
         op_name = self.op('')
-        if Kit.Validate().filled(op_name) and Kit.Validate().object_has_method(self, op_name):
+        if Validate_filled(op_name) and Validate_object_has_method(self, op_name):
             getattr(self, op_name)()
 
         self.cache.save()
@@ -134,13 +134,13 @@ class RoleManager(ABC):
         return {'result': self.ret.all()}
     
     def _template(self, data: t.Any, **kwargs)-> t.Any:
-        if Kit.Validate().blank(data):
+        if Validate_blank(data):
             return data
 
         if not self.get_module():
             raise RuntimeError('No module found to access templar')
         
-        return Kit.Convert().from_ansible_template(self.get_module()._templar, data, **kwargs) #type: ignore
+        return Convert_from_ansible_template(self.get_module()._templar, data, **kwargs) #type: ignore
 
     def op(self, default: t.Any = '')-> t.Any:
         return self.args.get('op', default)
@@ -152,18 +152,18 @@ class RoleManager(ABC):
         inventory = list(self.vars.get('groups.all', []))
         
         if kwargs.pop('remote', False) == True:
-            inventory = Kit.Data().difference(inventory, ['vars'])
+            inventory = Data_difference(inventory, ['vars'])
 
         return inventory
 
     def host_vars(self, host: str, key: str, default: t.Any = None) -> t.Any:
-        return self.vars.get(Kit.Convert().to_data_key('hostvars', host, key), default)
+        return self.vars.get(Convert_to_data_key('hostvars', host, key), default)
     
     def host_ansible_facts(self, host: str, key: str, default: t.Any = None) -> t.Any:
-        return self.vars.get(Kit.Convert().to_data_key('hostvars', host, 'ansible_facts', key), default)
+        return self.vars.get(Convert_to_data_key('hostvars', host, 'ansible_facts', key), default)
 
     def domain(self, host: str = '')-> str:
-        if Kit.Validate().blank(host):
+        if Validate_blank(host):
             host = self.host()
         
         return self.host_var_default(host, '_domain', 'blrm')
@@ -186,7 +186,7 @@ class RoleManager(ABC):
             
             return False
 
-        return Kit.Validate().filled(Kit.Data().intersect(tags_run, list(set(list(args) + ['all'])))) and Kit.Validate().blank(Kit.Data().intersect(tags_skip, args))
+        return Validate_filled(Data_intersect(tags_run, list(set(list(args) + ['all'])))) and Validate_blank(Data_intersect(tags_skip, args))
     
     def is_op(self, op: str) -> bool:
         return self.op('op') == op
@@ -196,9 +196,9 @@ class RoleManager(ABC):
         if not module:
             raise RuntimeError('Action module not found to execute low level command')
         
-        return Kit.Convert().as_command_model(
+        return Convert_as_command_model(
             module._low_level_execute_command(*args, **kwargs),
-            list(args)[0] if Kit.Validate().filled(args) else kwargs.get('cmd')
+            list(args)[0] if Validate_filled(args) else kwargs.get('cmd')
         )
     
     def _exec_module(self, **kwargs):

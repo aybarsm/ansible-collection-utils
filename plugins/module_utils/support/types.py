@@ -28,12 +28,6 @@ UniqueAlias = str
 # END: Generic - Types
 
 
-# BEGIN: Task
-TaskResult = t.Any
-TaskCallback = t.Callable[..., TaskResult]
-TaskGroupConcurrent = PositiveInt
-# END: Task
-
 # BEGIN: Callable
 CallableParameterKindMap = tt.MappingProxyType({
     'any': inspect.Parameter.POSITIONAL_OR_KEYWORD,

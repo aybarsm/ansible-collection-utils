@@ -1,6 +1,22 @@
 import typing as t
 import time
-from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Kit
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.ansible import (
+    filter_selectattr as Ansible_filter_selectattr,
+    filter_rejectattr as Ansible_filter_rejectattr,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.convert import (
+    as_copied as Convert_as_copied,
+    to_items as Convert_to_items,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import (
+    pluck as Data_pluck,
+    append as Data_append,
+    has as Data_has,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.validate import (
+    blank as Validate_blank, 
+    filled as Validate_filled,
+)
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.data_query import DataQuery
 
 class DataQueryExecutor(DataQuery):
@@ -9,7 +25,7 @@ class DataQueryExecutor(DataQuery):
             start = time.perf_counter()
 
         ret_default = self.get_default_return()
-        if Kit.Validate().blank(self.data):
+        if Validate_blank(self.data):
             return ret_default
 
         if not self.context:
@@ -19,14 +35,14 @@ class DataQueryExecutor(DataQuery):
         ret = []
         for item in self.get_executor_data():
             res = self._execute_token_group([item], token_group)
-            if Kit.Validate().filled(res):
+            if Validate_filled(res):
                 ret.append(res[0])
             
-            if self.is_first_result() and Kit.Validate().filled(ret):
+            if self.is_first_result() and Validate_filled(ret):
                 break
 
-        if Kit.Validate().filled(ret):
-            ret = [item for idx, item in enumerate(self.data) if idx in set(Kit.Data().pluck(ret, 'key'))]
+        if Validate_filled(ret):
+            ret = [item for idx, item in enumerate(self.data) if idx in set(Data_pluck(ret, 'key'))]
 
             if self.is_first_result():
                 ret = ret[0]
@@ -40,7 +56,7 @@ class DataQueryExecutor(DataQuery):
         return ret
 
     def _execute_token_group(self, data: list[dict[str, t.Any]], token_group: dict[str, t.Any]) -> list[dict[str, t.Any]]:
-        if Kit.Validate().blank(data):
+        if Validate_blank(data):
             return []
 
         queue = self._resolve_token_group_execution_queue(token_group)
@@ -56,7 +72,7 @@ class DataQueryExecutor(DataQuery):
         current_data = data
 
         for item in queue:
-            if Kit.Validate().blank(current_data):
+            if Validate_blank(current_data):
                 return []
 
             if item['type'] == 'test':
@@ -68,10 +84,10 @@ class DataQueryExecutor(DataQuery):
 
     def _execute_condition_any(self, data: list[dict[str, t.Any]], queue: list[dict[str, t.Any]]) -> list[dict[str, t.Any]]:
         results = []
-        candidates = Kit.Convert().as_copied(data)
+        candidates = Convert_as_copied(data)
         
         for item in queue:
-            if Kit.Validate().blank(candidates):
+            if Validate_blank(candidates):
                 break
 
             matches = []
@@ -81,11 +97,11 @@ class DataQueryExecutor(DataQuery):
                 payload = item['payload'] if isinstance(item, dict) else item
                 matches = self._execute_token_group(candidates, payload)
             
-            if Kit.Validate().filled(matches):
-                results = list(Kit.Data().append(results, '', Kit.Data().pluck(matches, 'key'), extend=True, unique=True, sort=True))
+            if Validate_filled(matches):
+                results = list(Data_append(results, '', Data_pluck(matches, 'key'), extend=True, unique=True, sort=True))
                 candidates = [item for item in candidates if item['key'] not in results]
         
-        if Kit.Validate().blank(results):
+        if Validate_blank(results):
             return []
         else:
             return [item for item in data if item['key'] in set(results)]
@@ -101,9 +117,9 @@ class DataQueryExecutor(DataQuery):
         args.insert(0, self.context)
 
         if test['negate']:
-            return list(Kit.Ansible().filter_rejectattr(*args, **kwargs))
+            return list(Ansible_filter_rejectattr(*args, **kwargs))
         else:
-            return list(Kit.Ansible().filter_selectattr(*args, **kwargs))
+            return list(Ansible_filter_selectattr(*args, **kwargs))
     
     def get_executor_initial_token_group(self) -> dict:
         tokens = self.get_tokens()
@@ -121,21 +137,21 @@ class DataQueryExecutor(DataQuery):
         return ret
     
     def get_executor_data(self) -> list:
-        return Kit.Convert().to_items(Kit.Convert().as_copied(self.data))
+        return Convert_to_items(Convert_as_copied(self.data))
     
     @staticmethod
     def _resolve_test_eligible_data(data: list[dict[str, t.Any]], data_key: str) -> list[dict[str, t.Any]]:
-        return [item for item in data if Kit.Data().has(item, data_key)]
+        return [item for item in data if Data_has(item, data_key)]
     
     @staticmethod
     def _resolve_token_group_execution_queue(token_group: dict[str, t.Any]) -> list[dict[str, t.Any]]:
         ret = []
 
-        if Kit.Validate().filled(token_group.get('tests', [])):
+        if Validate_filled(token_group.get('tests', [])):
             for test in token_group['tests']:
                 ret.append({'type': 'test', 'payload': test})
                 
-        if Kit.Validate().filled(token_group.get('subs', [])):
+        if Validate_filled(token_group.get('subs', [])):
             for sub in dict(sorted(dict(token_group['subs']).items())).values():
                 ret.append({'type': 'sub', 'payload': sub})
         

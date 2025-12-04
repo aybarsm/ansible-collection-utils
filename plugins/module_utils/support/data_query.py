@@ -1,7 +1,38 @@
 import typing as t
 import re
 from jinja2.runtime import Context
-from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import CONF_, Kit
+from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import CONF_
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.convert import (
+    to_iterable as Convert_to_iterable,
+    from_querystring as Convert_from_querystring,
+    to_data_key as Convert_to_data_key,
+    to_text as Convert_to_text,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import (
+    combine as Data_combine,
+    flatten as Data_flatten,
+    first as Data_first,
+    difference as Data_difference,
+    intersection as Data_intersection,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.str import (
+    chop_start as Str_chop_start,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.validate import (
+    blank as Validate_blank, 
+    filled as Validate_filled,
+    is_string as Validate_is_string,
+    contains as Validate_contains,
+    is_int_even as Validate_is_int_even,
+    is_enumeratable_of_mappings as Validate_is_enumeratable_of_mappings,
+    str_wrapped as Validate_str_wrapped,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.str import (
+    chop_both as Str_chop_both,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.utils import (
+    product as Utils_product,
+)
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.fluent import Fluent
 
 class DataQuery:
@@ -68,14 +99,14 @@ class DataQuery:
             elif segment == ')':
                 stack.pop()
                 
-                if Kit.Validate().blank(stack):
+                if Validate_blank(stack):
                     stack.append(master)
             
             if segment in ['(', ')']:
                 key_segments = [str(n['idx']) for n in stack]
                 
                 if len(key_segments) > 1:
-                    key_segments = [key_segments[0]] + Kit.Data().flatten(Kit.Utils().product(['subs'], key_segments[1:]))
+                    key_segments = [key_segments[0]] + Data_flatten(Utils_product(['subs'], key_segments[1:]))
 
                 self.tokens.set('_meta.stack.key', '.'.join(key_segments))
                 # self.tokens.set('_meta.stack.key', '_'.join(str(n['idx']) for n in stack))
@@ -114,14 +145,14 @@ class DataQuery:
            self.tokens.append('_meta.batch.args', item)
            return
         
-        qs_ = Kit.Convert().from_qs(Kit.Str().chop_both(item, '`'), keep_blank_values=True)
+        qs_ = Convert_from_querystring(Str_chop_both(item, '`'), keep_blank_values=True)
         for key_, val_ in qs_.items():
-            val_ = Kit.Data().first(Kit.Convert().to_iterable(val_))
-            if self.is_token_segment_item_binding(key_) and Kit.Validate().filled(val_):
+            val_ = Data_first(Convert_to_iterable(val_))
+            if self.is_token_segment_item_binding(key_) and Validate_filled(val_):
                 raise ValueError('Extra arguments bound to bindings cannot have value.')
             
             key_item = self._resolve_token_segment_item(key_)
-            if Kit.Validate().blank(val_):
+            if Validate_blank(val_):
                 self.tokens.append('_meta.batch.args', key_item)
                 continue
 
@@ -151,13 +182,13 @@ class DataQuery:
         if not self.is_mod_attr():
             ret['args'].insert(0, 'value')
         else:
-            ret['args'][0] = Kit.Convert().to_data_key('value', ret['args'][0])
+            ret['args'][0] = Convert_to_data_key('value', ret['args'][0])
         
         if self.is_mod_attr():
             self.tokens.append('_meta.data_keys', ret['args'][0], unique=True)
         
         if len(ret['args']) < 2:
-            raise ValueError(f'Test not found in query syntax: {Kit.Convert().to_text(ret)}')
+            raise ValueError(f'Test not found in query syntax: {Convert_to_text(ret)}')
 
         if ret['args'][1] == 'not':
             ret['negate'] = True
@@ -169,11 +200,11 @@ class DataQuery:
     
     def _resolve_token_test_fqn(self, test: str) -> str:
         if '.' not in test:
-            return Kit.Convert().to_data_key('ansible.builtin.', test)
+            return Convert_to_data_key('ansible.builtin.', test)
         else:
             for prefix, namespace in dict(self.cfg.get('test.prefixes', {})).items():
                 if test.startswith(prefix):
-                    test = Kit.Convert().to_data_key(namespace, Kit.Str().chop_start(test, prefix))
+                    test = Convert_to_data_key(namespace, Str_chop_start(test, prefix))
                     break
 
         if test.count('.') != 2:
@@ -201,12 +232,12 @@ class DataQuery:
         if query.count('(') != query.count(')'):
             raise ValueError('Invalid query syntax: Number of parentheses not matching.')
 
-        if not Kit.Validate().is_int_even(query.count('`')):
+        if not Validate_is_int_even(query.count('`')):
             raise ValueError('Invalid query syntax: Number of backticks not even.')
         
         pattern_operators = re.compile(rf'\\s+({'|'.join([re.escape(oper) for oper in self.operators_and + operators_or])})\\s+')
         pattern_query_parenthese = re.compile(r'\\(\\s*([a-z][a-z0-9_.]*\\s+[a-z][a-z0-9_.]*(?:\\s+(?:\\?|\\:[a-z][a-z0-9_]*))?)\\s*\\)')
-        bindings_named = Kit.Data().combine(self.cfg.get('defaults.bindings.named', {}), bindings_named)
+        bindings_named = Data_combine(self.cfg.get('defaults.bindings.named', {}), bindings_named)
 
         query = re.sub(r'\)', ') ', query)
         query = re.sub(r'\(', '( ', query)
@@ -230,7 +261,7 @@ class DataQuery:
         
         b_named = list(set(re.findall(r'[\(+|\s]?:+([A-Za-z0-9_]+)[\)+|\s]?', query)))
         
-        if not Kit.Validate().contains(bindings_named, *b_named, all = True):
+        if not Validate_contains(bindings_named, *b_named, all = True):
             raise ValueError('Missing named bindings')
         
         self.query = query
@@ -241,16 +272,16 @@ class DataQuery:
     def __set_operators(self, operators_and: list[str] = [], operators_or: list[str] = []) -> None:
         opposites_ = {'and': 'or', 'or': 'and'}
         for type_, operators in {'and': operators_and, 'or': operators_or}.items():
-            if Kit.Validate().blank(operators):
+            if Validate_blank(operators):
                 continue
 
             opposite_ = opposites_[type_]
-            intersect = Kit.Data().intersect(operators, getattr(self, f'operators_{opposite_}'))
-            if Kit.Validate().filled(intersect):
+            intersect = Data_intersection(operators, getattr(self, f'operators_{opposite_}'))
+            if Validate_filled(intersect):
                 raise ValueError(f'{type_.upper()} operators [{', '.join(intersect)}] already exist as `{opposite_.upper()}` operators.')
             
             current = getattr(self, f'operators_{type_}')
-            if Kit.Validate().filled(Kit.Data().difference(operators, current)):
+            if Validate_filled(Data_difference(operators, current)):
                 setattr(self, f'operators_{type_}', operators)
     
     def get_query_segments(self) -> list:
@@ -288,7 +319,7 @@ class DataQuery:
         return self.cfg.get('settings.debug') == True
     
     def is_mod_attr(self) -> bool:
-        return Kit.Validate().is_enumeratable_of_mappings(self.data)
+        return Validate_is_enumeratable_of_mappings(self.data)
     
     def is_token_segment_operator_and(self, segment: str) -> bool:
         return segment in self.operators_and
@@ -310,11 +341,11 @@ class DataQuery:
 
     @staticmethod
     def is_token_segment_item_extra_args(item: t.Any) -> bool:
-        return Kit.Validate().is_string(item) and Kit.Validate().str_wrapped(item, '`')
+        return Validate_is_string(item) and Validate_str_wrapped(item, '`')
 
     @staticmethod
     def is_token_segment_item_binding(item: t.Any) -> bool:
-        return Kit.Validate().is_string(item) and (item == '?' or item.startswith(':'))
+        return Validate_is_string(item) and (item == '?' or item.startswith(':'))
     
     @staticmethod
     def is_token_segment_item_binding_positional(item: t.Any) -> bool:

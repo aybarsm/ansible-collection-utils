@@ -72,13 +72,13 @@ class Swagger:
     def __init__(self, cfg: dict = {}):
         # base_config = Registry.config().copy()
         # defaults = _DEFAULTS.copy()
-        # Kit.Data().forget(base_config, 'defaults')
-        # essentials = Kit.Data().get(defaults, '_', {})
-        # Kit.Data().forget(defaults, '_')
-        # cfg = Kit.Data().combine(defaults, cfg, essentials, base_config, {'_': essentials}, recursive = True)
-        # Kit.Data().set(cfg, 'path.file.cache', self._get_path_file_cache(Kit.Data().get(cfg, 'path.dir.tmp')))
+        # Data_forget(base_config, 'defaults')
+        # essentials = Data_get(defaults, '_', {})
+        # Data_forget(defaults, '_')
+        # cfg = Data_combine(defaults, cfg, essentials, base_config, {'_': essentials}, recursive = True)
+        # Data_set(cfg, 'path.file.cache', self._get_path_file_cache(Data_get(cfg, 'path.dir.tmp')))
         
-        self._meta = {'cfg': Kit.Data().combine(_DEFAULTS, cfg, recursive = True)}
+        self._meta = {'cfg': Data_combine(_DEFAULTS, cfg, recursive = True)}
         self._swagger = {}
 
         self._handle_config_changes()
@@ -87,7 +87,7 @@ class Swagger:
         from ansible.module_utils.basic import _load_params
         ansible_load_params = self.cfg('settings.ansible.load_params', False)
         if  ansible_load_params == True and not self.meta_has('params'):
-            self.params_set(Kit.Data().all_except(Helper.to_safe_json(_load_params()), meta=True)) #type: ignore
+            self.params_set(Data_all_except(Helper.to_safe_json(_load_params()), meta=True)) #type: ignore
     
     def get_cerberus_validation_schema(self, path: str, method: str, remap: bool = True, ignore: bool = True) -> dict:
         is_ansible = self.is_validation_ansible()
@@ -136,61 +136,61 @@ class Swagger:
             meta = ret['argument_spec']['_'].copy()
             del ret['argument_spec']['_']
 
-        if Kit.Data().has(meta, 'ansible.kwargs'):
-            ret = Kit.Data().combine(Kit.Data().get(meta, 'ansible.kwargs', {}), ret, recursive=True)
+        if Data_has(meta, 'ansible.kwargs'):
+            ret = Data_combine(Data_get(meta, 'ansible.kwargs', {}), ret, recursive=True)
         
         if merge_defaults:
             combine_args = self.cfg('settings.combine.ansible.kwargs', {})
-            ret = Kit.Data().combine(self.cfg('settings.ansible.kwargs', {}), ret, **combine_args)
+            ret = Data_combine(self.cfg('settings.ansible.kwargs', {}), ret, **combine_args)
         
         if only_primary:
             primary_keys = list(ret['argument_spec'].keys())
             for primary_key in primary_keys:
-                type_ = Kit.Data().get(ret, f'argument_spec.{primary_key}.type', '')
+                type_ = Data_get(ret, f'argument_spec.{primary_key}.type', '')
                 if type_ in ['dict', 'list']:
-                    Kit.Data().forget(ret, f'argument_spec.{primary_key}.options')
+                    Data_forget(ret, f'argument_spec.{primary_key}.options')
         
         self.cfg_set('settings.ansible.validation', is_ansible)
         
         return ret
     
     def prepare_execution(self, path: str, method: str, params: dict = {}, before_finalise: Callable | None = None) -> dict:
-        if Kit.Validate().blank(params):
+        if Validate_blank(params):
             params = self.params().copy()
         
         remap = self.cfg('remap', {})
         
-        if Kit.Validate().filled(remap):
+        if Validate_filled(remap):
             ignore_missing = self.cfg('settings.remap.ignore_missing', False)
 
             for target, source in remap.items():
-                if not Kit.Data().has(params, source):
+                if not Data_has(params, source):
                     if ignore_missing:
                         continue
                     else:
                         raise ValueError(f'Parameters source key [{source}] does not exist')
 
-                Kit.Data().set(params, target, Kit.Data().get(params, source))
-                Kit.Data().forget(params, source)
+                Data_set(params, target, Data_get(params, source))
+                Data_forget(params, source)
         
         url_path = path
         for arg, val in params.get('path', {}).items():
             url_path = url_path.replace(f'{{{arg}}}', str(val))
         
         url_query = ''
-        if Kit.Validate().filled(params.get('query', {})):
-            url_query = '?' + Kit.Str().urlencode(params.get('query', {}))
+        if Validate_filled(params.get('query', {})):
+            url_query = '?' + Str_urlencode(params.get('query', {}))
 
         for header, target in {'Content-Type': 'consumes', 'Accept': 'produces'}.items():
-            if Kit.Validate().filled(Kit.Data().get(params, f'header.{header}')):
+            if Validate_filled(Data_get(params, f'header.{header}')):
                 continue
 
-            if 'application/json' in self.swagger(target, []) or Kit.Validate().blank(self.swagger(target, [])):
+            if 'application/json' in self.swagger(target, []) or Validate_blank(self.swagger(target, [])):
                 header_val = self.cfg(f'settings.defaults.header.{header}', 'application/json')
             else:
                 header_val = self.swagger(target, [])[0]
             
-            Kit.Data().set(params, f'header.{header}', header_val)
+            Data_set(params, f'header.{header}', header_val)
             
         ret = {
             'url': params.get('url_base', '').rstrip('/') + url_path + url_query,
@@ -198,13 +198,13 @@ class Swagger:
         }
 
         for source, target in {'header': 'headers', 'body': 'data'}.items():
-            if Kit.Validate().filled(Kit.Data().get(params, source)):
+            if Validate_filled(Data_get(params, source)):
                 ret[target] = params[source].copy()
         
         if before_finalise:
             ret = before_finalise(ret)
 
-        if 'data' in ret and 'application/json' in ret['headers']['Content-Type'] and not Kit.Validate().is_string(ret['data']):
+        if 'data' in ret and 'application/json' in ret['headers']['Content-Type'] and not Validate_is_string(ret['data']):
             ret['data'] = json.dumps(ret['data']).encode("utf-8")
 
         return ret
@@ -212,14 +212,14 @@ class Swagger:
     def get_validation_schema(self, path: str, method: str, remap: bool = True, ignore: bool = True, keep_meta: bool = False) -> dict:
         docs = self._swagger.get('paths', {})
         
-        if path not in docs or Kit.Validate().blank(docs):
-            avail = f'Available: {', '.join(docs.keys())}' if not Kit.Validate().blank(docs) else 'Blank docs!!!'
+        if path not in docs or Validate_blank(docs):
+            avail = f'Available: {', '.join(docs.keys())}' if not Validate_blank(docs) else 'Blank docs!!!'
             raise ValueError(f'Path [{path}] entry not found in docs. {avail}')
         
         docs = docs[path]
         
-        if method.lower() not in docs or Kit.Validate().blank(docs):
-            avail = f'Available: {', '.join(docs.keys())}' if not Kit.Validate().blank(docs) else 'Blank docs!!!'
+        if method.lower() not in docs or Validate_blank(docs):
+            avail = f'Available: {', '.join(docs.keys())}' if not Validate_blank(docs) else 'Blank docs!!!'
             raise ValueError(f'Method [{method.lower()}] not found for path [{path}] in docs. {avail}')
         
         docs = docs[method.lower()]
@@ -243,7 +243,7 @@ class Swagger:
         return ret
     
     def _resolve_validation_schema_parameters(self, ret: dict, docs: dict) -> dict:
-        if Kit.Validate().blank(docs.get('parameters', {})):
+        if Validate_blank(docs.get('parameters', {})):
             return ret
         
         nest_key = self.get_validation_nest_key()
@@ -271,7 +271,7 @@ class Swagger:
         secs = list(set([list(sec.keys())[0] for sec in secs if list(sec.keys())[0] in sec_defs]))
         # secs.append('basicAuth')
         
-        if Kit.Validate().blank(secs):
+        if Validate_blank(secs):
             return ret
         
         nest_key = self.get_validation_nest_key()
@@ -287,7 +287,7 @@ class Swagger:
         
         for sec_def_name in secs:
             sec_def = sec_defs[sec_def_name].copy()
-            if Kit.Validate().blank(sec_def):
+            if Validate_blank(sec_def):
                 raise ValueError(f'Security definition for [{sec_def_name}] could not be found')
 
             type_ = sec_def.get('type', '')
@@ -305,10 +305,10 @@ class Swagger:
                     ret['url_password']['no_log'] = True
                 # TODO: Implement
                 # req_together = ['url_username', 'url_password']
-                # Kit.Data().append(ret, '_.ansible.required_together', req_together, ioi_extend = True)
+                # Data_append(ret, '_.ansible.required_together', req_together, ioi_extend = True)
 
                 # for key in req_together:
-                #     Kit.Data().append(ret, f'cerberus.{key}.dependencies', req_together, exclude = key, unique = True)
+                #     Data_append(ret, f'cerberus.{key}.dependencies', req_together, exclude = key, unique = True)
 
                 # if len(secs) > 1:
                 #     meta['ansible']['mutually_exclusive'].append('url_username')
@@ -335,25 +335,25 @@ class Swagger:
                     del ret[in_]['default']
         # TODO: Implement
         # for meta_key, meta_val in meta['ansible'].items():
-        #     if Kit.Validate().blank(meta_val):
+        #     if Validate_blank(meta_val):
         #         continue
             
-        #     meta_key = Kit.Str().start(meta_key, '_.ansible.kwargs.')
-        #     current_val = Kit.Data().get(ret, meta_key, [])
+        #     meta_key = Str_start(meta_key, '_.ansible.kwargs.')
+        #     current_val = Data_get(ret, meta_key, [])
             
-        #     if Kit.Validate().is_iterable_of_iterables(meta_val):
+        #     if Validate_is_iterable_of_iterables(meta_val):
         #         current_val.extend(meta_val.copy())
         #     else:
         #         current_val.append(meta_val.copy())
             
-        #     Kit.Data().set(ret, meta_key, current_val)
+        #     Data_set(ret, meta_key, current_val)
 
         return ret
     
     def _resolve_validation_schema_real_key_paths(self, ret: dict) -> dict:
-        ret_dot = dict(Kit.Data().dot_sort_keys(Kit.Data().dot(ret)))
+        ret_dot = dict(Data_dot_sort_keys(Data_dot(ret)))
 
-        Kit.Data().set(ret, '_.key_map', {})
+        Data_set(ret, '_.key_map', {})
         
         nested = []
         nest_key = self.get_validation_nest_key()
@@ -361,7 +361,7 @@ class Swagger:
             if not str(key).endswith('.type') or str(key).startswith('_'):
                 continue
             
-            target_key = Kit.Str().before_last(key, '.type')
+            target_key = Str_before_last(key, '.type')
             
             if value in ['list', 'dict']:
                 nested.append(f'{target_key}.{nest_key}')
@@ -370,16 +370,16 @@ class Swagger:
                 ret['_']['key_map'][target_key] = target_key
                 continue
             
-            real_key = [Kit.Str().after_last(target_key, '.')]
+            real_key = [Str_after_last(target_key, '.')]
             current_key = target_key
             for i in range(0, key.count('.')):
-                current_key = Kit.Str().before_last(current_key, '.')
+                current_key = Str_before_last(current_key, '.')
                 if '.' not in current_key:
                     real_key.append(current_key)
                     break
 
                 if current_key not in nested:
-                    real_key.append(Kit.Str().after_last(current_key, '.'))
+                    real_key.append(Str_after_last(current_key, '.'))
             
             real_key = '.'.join(list(reversed(real_key)))
             ret['_']['key_map'][real_key] = target_key
@@ -389,7 +389,7 @@ class Swagger:
     def _resolve_validation_schema_remapping(self, ret: dict) -> dict:
         remap = self.cfg('remap', {})
         
-        if Kit.Validate().blank(remap):
+        if Validate_blank(remap):
             return ret
         
         overwrite = self.cfg('settings.remap.overwrite', False)
@@ -404,13 +404,13 @@ class Swagger:
             
             source = ret['_']['key_map'][source]
             
-            if not overwrite and Kit.Data().has(ret, target):
+            if not overwrite and Data_has(ret, target):
                 raise ValueError(f'Remapping target key [{target}] already exists')
             
-            component = Kit.Data().get(ret, source).copy()
-            component = Kit.Data().combine(component, self.cfg(f'defaults.{target}._validation', {}))
-            Kit.Data().set(ret, target, component)
-            Kit.Data().forget(ret, source)
+            component = Data_get(ret, source).copy()
+            component = Data_combine(component, self.cfg(f'defaults.{target}._validation', {}))
+            Data_set(ret, target, component)
+            Data_forget(ret, source)
 
         return ret
     
@@ -421,29 +421,29 @@ class Swagger:
             if ignore not in ret['_']['key_map']:
                 raise ValueError(f'Ignore source key [{ignore}] could not be found in real key mappings')
             
-            Kit.Data().forget(ret, ret['_']['key_map'][ignore])
+            Data_forget(ret, ret['_']['key_map'][ignore])
         
         return ret
     
     def _cleanup_validation_schema(self, ret: dict) -> dict:
         nest_key = self.get_validation_nest_key()
         
-        for key, value in (dict(Kit.Data().dot_sort_keys(Kit.Data().dot(ret), asc=False))).items():
+        for key, value in (dict(Data_dot_sort_keys(Data_dot(ret), asc=False))).items():
             if str(key).startswith('_') or not str(key).endswith('.type') or value != 'dict':
                 continue
             
-            item_master_key = Kit.Str().chop_end(key, '.type')
+            item_master_key = Str_chop_end(key, '.type')
             item_is_sub = f'.{nest_key}.' in item_master_key
             item_nest_key = f'{item_master_key}.{nest_key}'
-            is_item_nest_blank = Kit.Validate().blank(Kit.Data().get(ret, item_nest_key, {}))
+            is_item_nest_blank = Validate_blank(Data_get(ret, item_nest_key, {}))
             if not is_item_nest_blank:
                 continue
             if item_is_sub:
-                Kit.Data().forget(ret, item_master_key)
+                Data_forget(ret, item_master_key)
             else:
-                Kit.Data().forget(ret, item_nest_key)
-                Kit.Data().set(ret, f'{item_master_key}.required', False)
-                Kit.Data().set(ret, f'{item_master_key}.default', {})
+                Data_forget(ret, item_nest_key)
+                Data_set(ret, f'{item_master_key}.required', False)
+                Data_set(ret, f'{item_master_key}.default', {})
         
         return ret
     
@@ -474,36 +474,36 @@ class Swagger:
             'required': item.get('required', False),
         }
 
-        if self.is_validation_ansible() and Kit.Validate().filled(item.get('_ansible', {})):
-            ret = Kit.Data().combine(ret, item.get('_ansible', {}), recursive = True)
-        elif self.is_validation_ansible() and Kit.Validate().filled(item.get('_cerberus', {})):
-            ret = Kit.Data().combine(ret, item.get('_cerberus', {}), recursive = True)
+        if self.is_validation_ansible() and Validate_filled(item.get('_ansible', {})):
+            ret = Data_combine(ret, item.get('_ansible', {}), recursive = True)
+        elif self.is_validation_ansible() and Validate_filled(item.get('_cerberus', {})):
+            ret = Data_combine(ret, item.get('_cerberus', {}), recursive = True)
 
-        if Kit.Validate().filled(item.get('_validation', {})):
-            ret = Kit.Data().combine(ret, item.get('_validation', {}), recursive = True)
+        if Validate_filled(item.get('_validation', {})):
+            ret = Data_combine(ret, item.get('_validation', {}), recursive = True)
 
-        props_ = Kit.Data().get(item, 'properties', Kit.Data().get(item, 'schema.properties', {}))
-        items_ = Kit.Data().get(item, 'items', {})
+        props_ = Data_get(item, 'properties', Data_get(item, 'schema.properties', {}))
+        items_ = Data_get(item, 'items', {})
 
-        if self.is_validation_cerberus() and Kit.Validate().filled(item.get('default', '')):
+        if self.is_validation_cerberus() and Validate_filled(item.get('default', '')):
             ret['default'] = item.get('default', '')
 
-        if Kit.Validate().blank(ret['type']):
-            if Kit.Validate().filled(props_):
+        if Validate_blank(ret['type']):
+            if Validate_filled(props_):
                 ret['type'] = 'object'
-            elif Kit.Validate().filled(items_):
+            elif Validate_filled(items_):
                 ret['type'] = 'array'
         
-        if Kit.Validate().blank(ret['type']):
+        if Validate_blank(ret['type']):
             self._error_value('Type could not be resolved', ret)
         
         ret['type'] = self.get_validation_type(ret['type'], item.get('format', ''))
         
-        if Kit.Validate().filled(item.get('enum', {})):
+        if Validate_filled(item.get('enum', {})):
             ret[self.get_validation_enum_key()] = item.get('enum', {}).copy()
         
-        items_missing = require_items and ret['type'] == 'list' and Kit.Validate().blank(items_)
-        props_missing = require_props and ret['type'] == 'dict' and Kit.Validate().blank(props_)
+        items_missing = require_items and ret['type'] == 'list' and Validate_blank(items_)
+        props_missing = require_props and ret['type'] == 'dict' and Validate_blank(props_)
         if (items_missing or props_missing):
             self._error_value(f'Schema does not have children', ret)
         
@@ -525,53 +525,53 @@ class Swagger:
         ret[nest_key] = {}
         for child_key, child_val in props_.items():
             child_ref = child_val.copy()
-            if Kit.Validate().is_sequence(ret['required']) and child_key in ret['required']:
+            if Validate_is_sequence(ret['required']) and child_key in ret['required']:
                 child_ref['required'] = True
             ret[nest_key][child_key] = self._build_component_validation_schema(child_ref)
         
-        if Kit.Validate().is_sequence(ret['required']):
+        if Validate_is_sequence(ret['required']):
             ret['required'] = False
             
         return ret
 
     def _get_value(self, container, key = '', default = None) -> Any:   
-        return Kit.Data().get(container, key, default) if Kit.Validate().filled(key) else container
+        return Data_get(container, key, default) if Validate_filled(key) else container
     
     def params(self, key: str  = '', default: Any = None) -> Any:
         return self._get_value(self._meta.get('params', {}), key, default)
     
     def document(self) -> dict:
-        return dict(Kit.Data().all_except(self.params(), meta=True)) #type: ignore
+        return dict(Data_all_except(self.params(), meta=True)) #type: ignore
     
     def meta(self, key: str  = '', default: Any = None) -> Any:
         return self._get_value(self._meta, key, default)
     
     def _meta_set(self, key: str, value: Any) -> None:
-        Kit.Data().set(self._meta, key, value)
+        Data_set(self._meta, key, value)
     
     def _meta_forget(self, key: str) -> None:        
-        Kit.Data().forget(self._meta, key)
+        Data_forget(self._meta, key)
     
     def meta_has(self, key: str) -> bool:
-        return Kit.Data().has(self._meta, key)
+        return Data_has(self._meta, key)
     
     def cfg(self, key: str  = '', default: Any = None) -> Any:
         return self._get_value(self._meta['cfg'], key, default)
     
     def cfg_set(self, key: str, value: Any) -> None:
-        Kit.Data().set(self._meta['cfg'], key, value)
+        Data_set(self._meta['cfg'], key, value)
     
     def cfg_combine(self, *args, **kwargs) -> None:
         args = list(args)
         args.insert(0, self._meta['cfg'])
-        self._meta['cfg'] = Kit.Data().combine(*args, **kwargs)
+        self._meta['cfg'] = Data_combine(*args, **kwargs)
 
     def cfg_has(self, key: str) -> bool:
-        return Kit.Data().has(self._meta['cfg'], key)
+        return Data_has(self._meta['cfg'], key)
 
     def remap(self, key: str  = '', default: Any = None) -> Any:
         remap = self.cfg('remap', {})
-        return remap[key] if Kit.Validate().filled(key) and key in remap else default
+        return remap[key] if Validate_filled(key) and key in remap else default
     
     def remap_set(self, source: str, target: str) -> None:
         remap = self.cfg('remap', {})
@@ -602,12 +602,12 @@ class Swagger:
     def params_combine(self, *args, **kwargs) -> None:
         args = list(args)
         args.insert(0, self._meta['params'])
-        Kit.Data().combine(*args, **kwargs)
+        Data_combine(*args, **kwargs)
     
     def _save_cache(self, cache: Mapping):
         # TODO: Implement
         path_file_cache = self.meta('_.path.file.cache')
-        if Kit.Validate().filled(path_file_cache):
+        if Validate_filled(path_file_cache):
             with open(path_file_cache, "w", encoding="utf-8") as f:
                 json.dump(dict(cache), f, ensure_ascii=False)
 
@@ -634,7 +634,7 @@ class Swagger:
     
     def _get_path_file_cache(self, path_tmp: str) -> str:
         filename = 'cache_tool_swagger.json'
-        if not Kit.Validate().is_dir_writable(path_tmp):
+        if not Validate_is_dir_writable(path_tmp):
             return Helper.path_tmp(filename)
         else:
             return Helper.join_paths(path_tmp, filename)
@@ -686,11 +686,11 @@ class Swagger:
         parts = [f'[{msg.strip()}]']
 
         info = []
-        infoable = Kit.Data().only_with(item, 'name', 'parent_key', 'in', 'type', 'path', 'method')
+        infoable = Data_only_with(item, 'name', 'parent_key', 'in', 'type', 'path', 'method')
         
-        if Kit.Validate().filled(infoable):
+        if Validate_filled(infoable):
             for key, value in infoable.items(): #type: ignore
-                if Kit.Validate().blank(value):
+                if Validate_blank(value):
                     continue
                 title = str(key).title()
                 info.append(f'{title}: {str(value)}')
@@ -700,48 +700,48 @@ class Swagger:
     
     @staticmethod
     def resolve_ref_key(ref) -> str:
-        return Kit.Str().replace(Kit.Str().chop_start(ref, '#/'), '/', '.')
+        return Str_replace(Str_chop_start(ref, '#/'), '/', '.')
     
     @staticmethod
     def docs_extract(swagger: dict, cfg: dict = {}):
-        pattern_ = Kit.Data().get(cfg, 'ref_pattern', '.*\\.\\$ref.*$')
+        pattern_ = Data_get(cfg, 'ref_pattern', '.*\\.\\$ref.*$')
         pattern = re.compile(pattern_)
         ret = swagger.copy()
-        dotted = Kit.Data().dot(swagger)
+        dotted = Data_dot(swagger)
         dotted_keys = [item for item in dotted.keys() if pattern.match(item)]
-        ref_keys = Kit.Data().dot_sort_keys(dotted_keys, asc = False)
-        ref_map = Kit.Data().dot_sort_keys(Kit.Data().only_with(dotted, *ref_keys, no_dot = True), asc = False) #type: ignore
+        ref_keys = Data_dot_sort_keys(dotted_keys, asc = False)
+        ref_map = Data_dot_sort_keys(Data_only_with(dotted, *ref_keys, no_dot = True), asc = False) #type: ignore
         ref_sources_keys = [Swagger.resolve_ref_key(ref_source_key) for ref_source_key in set(ref_map.values())] #type: ignore
-        ref_sources_dotted = Kit.Data().dot(Kit.Data().only_with(swagger, *ref_sources_keys))
+        ref_sources_dotted = Data_dot(Data_only_with(swagger, *ref_sources_keys))
         ref_sources_dotted_keys = [item for item in ref_sources_dotted.keys() if pattern.match(item)]
-        ref_sources_ref_keys_primary = Kit.Data().dot_sort_keys(ref_sources_dotted_keys, asc = False)
+        ref_sources_ref_keys_primary = Data_dot_sort_keys(ref_sources_dotted_keys, asc = False)
         ref_sources_ref_keys_secondary = [item for item in ref_keys if item not in ref_sources_ref_keys_primary]
         iterate_ref_keys = ref_sources_ref_keys_primary + ref_sources_ref_keys_secondary #type: ignore
     
         for ref_key in iterate_ref_keys:
-            ref_source = Kit.Data().get(ret, ref_key)
-            if Kit.Validate().blank(ref_source):
+            ref_source = Data_get(ret, ref_key)
+            if Validate_blank(ref_source):
                 continue
             
             ref_source = Swagger.resolve_ref_key(ref_source)
-            ref = Kit.Data().get(swagger, ref_source, {})
+            ref = Data_get(swagger, ref_source, {})
             
-            if Kit.Validate().blank(ref):
+            if Validate_blank(ref):
                 raise ValueError(f'Could not extract reference source {ref_key} [{ref_source}]')
             
             ref_dest = re.sub(r"\.\$ref(?!.*\.\$ref)", '', ref_key)
-            Kit.Data().forget(ret, ref_key)
-            Kit.Data().set(ret, ref_dest, ref.copy())
+            Data_forget(ret, ref_key)
+            Data_set(ret, ref_dest, ref.copy())
         
         return ret
     
     def load_swagger(self, source: Mapping | str, **kwargs) -> None:
-        if Kit.Validate().blank(source):
+        if Validate_blank(source):
             raise ValueError('Blank swagger source')
         
-        if Kit.Validate().is_mapping(source):
+        if Validate_is_mapping(source):
             swagger = dict(source) #type: ignore
-        elif Kit.Validate().str_is_url(str(source)):
+        elif Validate_str_is_url(str(source)):
             kwargs.pop('url', None)
             if self.is_validation_ansible():
                 from ansible.module_utils.urls import open_url
@@ -751,17 +751,17 @@ class Swagger:
                 response = requests.get(str(source), params, **kwargs)
                 response.raise_for_status()
                 swagger = response.json().copy()
-        elif Kit.Validate().file_exists(source):
+        elif Validate_file_exists(source):
             swagger = json.loads((lambda f: f.read())(open(str(source))))
-        elif Kit.Validate().str_is_json(str(source)):
+        elif Validate_str_is_json(str(source)):
             swagger = json.loads(str(source))
-        elif Kit.Validate().str_is_yaml(str(source)):
+        elif Validate_str_is_yaml(str(source)):
             swagger = yaml.safe_load(str(source))
         else:
             raise ValueError('Unable to identify swagger source type to load')
         
-        self._meta_set('_.swagger_source', Kit.Str().to_md5(json.dumps(swagger)))
-        self._meta_set('_.swagger_hash', Kit.Str().to_md5(json.dumps(swagger)))
+        self._meta_set('_.swagger_source', Str_to_md5(json.dumps(swagger)))
+        self._meta_set('_.swagger_hash', Str_to_md5(json.dumps(swagger)))
         self._meta_set('_.swagger_timestamp', Helper.ts(mod = 'timestamp'))
 
         self._swagger = self.docs_extract(swagger, self.cfg('extraction', {}))

@@ -22,17 +22,17 @@ def dump(*args, **kwargs):
         
         args=new_args
 
-    if Kit.Validate().is_ansible_env():
+    if Validate_is_ansible_env():
         import io
         buffer = io.StringIO()
-        console = Kit.RichConsole().Console(file=buffer, force_terminal=False)
+        console = RichConsole_Console(file=buffer, force_terminal=False)
         for arg in args:
-            console.print(Kit.RichPretty().Pretty(arg, **kwargs))
+            console.print(RichPretty_Pretty(arg, **kwargs))
 
-        Kit.Ansible().display().display(buffer.getvalue())
+        Ansible_display().display(buffer.getvalue())
     else:
         for arg in args:
-            Kit.RichPretty().pprint(arg, **kwargs)
+            RichPretty_pprint(arg, **kwargs)
 
 def dd(*args, **kwargs):
     dump(*args, **kwargs)
@@ -44,7 +44,7 @@ def product(*args, **kwargs):
 
 ### BEGIN: Json
 def json_load(path: PathlibPath|str, **kwargs)-> dict|list:
-    return Kit.Convert().from_json(fs_read(path), **kwargs)
+    return Convert_from_json(fs_read(path), **kwargs)
 
 def json_save(data, path: PathlibPath|str, **kwargs) -> None:
         path = PathlibPath(path)
@@ -53,43 +53,43 @@ def json_save(data, path: PathlibPath|str, **kwargs) -> None:
         if path.exists() and not overwrite:
             raise ValueError(f'Json file [{str(path)}] already exists.')
         
-        kwargs_path = Kit.Data().only_with(kwargs, 'encoding', 'errors')
-        kwargs_json = Kit.Data().all_except(kwargs, 'encoding', 'errors', 'newline')
+        kwargs_path = Data_only_with(kwargs, 'encoding', 'errors')
+        kwargs_json = Data_all_except(kwargs, 'encoding', 'errors', 'newline')
         
-        data = Kit.Convert().from_yaml(Kit.Convert().to_text(data))
+        data = Convert_from_yaml(Convert_to_text(data))
 
-        if Kit.Validate().is_mapping(data):
-            data = Kit.Convert().to_json(dict(data), **kwargs_json) #type: ignore
-        elif Kit.Validate().is_sequence(data):
-            data = Kit.Convert().to_json(list(data), **kwargs_json) #type: ignore
+        if Validate_is_mapping(data):
+            data = Convert_to_json(dict(data), **kwargs_json) #type: ignore
+        elif Validate_is_sequence(data):
+            data = Convert_to_json(list(data), **kwargs_json) #type: ignore
         
         fs_write(path, str(data), **kwargs_path) #type: ignore
 ### END: Json
 
 ### BEGIN: Callable
 def call_raw(callback: t.Callable, *args, **kwargs) -> t.Any:
-    if Kit.Validate().blank(args) and Kit.Validate().blank(kwargs):
+    if Validate_blank(args) and Validate_blank(kwargs):
         return callback()
     
     conf = dict(kwargs.pop('__caller', {}))
-    segments = Kit.Convert().as_callable_segments(callback)
+    segments = Convert_as_callable_segments(callback)
     args = list(args)
     kwargs = dict(kwargs)
     send_args = []
     send_kwargs = {}
     
-    if Kit.Data().filled(conf, 'bind.annotations'):
+    if Data_filled(conf, 'bind.annotations'):
         if 'annotation' not in conf['bind']:
             conf['bind']['annotation'] = {}
         
-        for binding_ in Kit.Data().get(conf, 'bind.annotations', []):
+        for binding_ in Data_get(conf, 'bind.annotations', []):
             if type(binding_) not in conf['bind']['annotation']:
                 conf['bind']['annotation'][type(binding_)] = binding_
 
         del conf['bind']['annotations']
     
     for param in segments['params']:
-        if param['has']['annotation'] and param['annotation'] in Kit.Data().get(conf, 'bind.annotation', {}):
+        if param['has']['annotation'] and param['annotation'] in Data_get(conf, 'bind.annotation', {}):
             bound = conf['bind']['annotation'][param['annotation']]
             del conf['bind']['annotation'][param['annotation']]
             
@@ -97,16 +97,16 @@ def call_raw(callback: t.Callable, *args, **kwargs) -> t.Any:
                 send_args.insert(param['pos'], bound)
             else:
                 send_kwargs[param['name']] = bound
-        elif param['type'] == 'pos' and len(send_args) < segments['has']['params']['pos'] and Kit.Validate().filled(args):
+        elif param['type'] == 'pos' and len(send_args) < segments['has']['params']['pos'] and Validate_filled(args):
             send_args.append(args[0])
             del args[0]
-        elif param['type'] == 'any' and param['name'] not in kwargs and Kit.Validate().filled(args):
+        elif param['type'] == 'any' and param['name'] not in kwargs and Validate_filled(args):
             send_kwargs[param['name']] = args[0]
             del args[0]
         elif param['type'] in ['any', 'key'] and param['name'] in kwargs:
             send_kwargs[param['name']] = kwargs.pop(param['name'])
         elif param['type'] == 'args':
-            if Kit.Validate().filled(args):
+            if Validate_filled(args):
                 send_args.extend(args)
             args = []
         elif param['type'] == 'kwargs':
@@ -143,7 +143,7 @@ async def call_async(callback: t.Callable, *args, **kwargs) -> t.Any:
 
 async def call_semaphore(semaphore: asyncio.Semaphore, callback: t.Callable, *args, **kwargs) -> t.Any:
     async with semaphore:
-        if Kit.Validate().callable_is_coroutine(callback):
+        if Validate_callable_is_coroutine(callback):
             result = await call_raw(callback, *args, **kwargs)
         else:
             result = await asyncio.get_running_loop().run_in_executor(None, lambda: call_raw(callback, *args, **kwargs))
@@ -187,7 +187,7 @@ def fs_read_bytes(path: PathlibPath|str, **kwargs)-> bytes:
 
 def fs_write(path: PathlibPath|str, data: str|bytes, **kwargs)-> None:
     path = PathlibPath(path)
-    if Kit.Validate().is_string(data):
+    if Validate_is_string(data):
         path.write_text(str(data), **kwargs)
     else:
         path.write_bytes(data, **kwargs) #type: ignore
@@ -196,12 +196,12 @@ def fs_top_level_dirs(paths: str|t.Sequence[str], *args: str)-> list[str]:
     import os
 
     paths = list(paths)
-    if Kit.Validate().filled(args):
+    if Validate_filled(args):
         paths.extend(args)
     
     paths = list(set(paths))
 
-    if Kit.Validate().blank(paths):
+    if Validate_blank(paths):
         return []
 
     ret = []
@@ -227,16 +227,16 @@ def net_subnets_collapse(data: t.Sequence[str], **kwargs) -> list:
     ret = []
 
     for subnet in data:
-        addr = Kit.Convert().as_ip_address(subnet)
+        addr = Convert_as_ip_address(subnet)
         
-        if (only_private and Kit.Validate().is_ip_public(addr)) or (only_public and Kit.Validate().is_ip_private(addr)):
+        if (only_private and Validate_is_ip_public(addr)) or (only_public and Validate_is_ip_private(addr)):
             continue
 
-        if (only_v4 and Kit.Validate().is_ip_v6(addr)) or (only_v6 and Kit.Validate().is_ip_v4(addr)):
+        if (only_v4 and Validate_is_ip_v6(addr)) or (only_v6 and Validate_is_ip_v4(addr)):
             continue
 
         supernets = list(set(data) - set([subnet]))
-        if not any([Kit.Validate().is_subnet_of(subnet, supernet) for supernet in supernets]):
+        if not any([Validate_is_subnet_of(subnet, supernet) for supernet in supernets]):
             ret.append(subnet)
 
     return list(set(ret))
@@ -296,7 +296,7 @@ def crypto_convert_relative_to_datetime(
         offset += datetime.timedelta(seconds=int(parsed_result.group("seconds")))
 
     if now is None:
-        now = Kit.Factory().ts() #type: ignore
+        now = Factory_ts() #type: ignore
     else:
         now = datetime_add_or_remove_timezone(now, with_timezone=with_timezone)
 
@@ -317,7 +317,7 @@ def crypto_get_relative_time_option(
 
     The return value will be a datetime object.
     """
-    result = Kit.Convert().to_text(input_string)
+    result = Convert_to_text(input_string)
     if result is None:
         raise ValueError(
             f'The timespec "{input_string}" for {input_name} is not valid'
@@ -367,7 +367,7 @@ def class_get_primary_child(self_: object, parent: type) -> bool | object:
 
     mros = type(self_).__mro__
     for idx, mro in enumerate(mros):
-        if not Kit.Validate().is_object(mro):
+        if not Validate_is_object(mro):
             break
         
         if mro is parent:

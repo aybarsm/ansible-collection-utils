@@ -3,7 +3,7 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import CO
 
 class Validator(Kit.Cerberus.Validator):
     def __init__(self, *args, **kwargs):
-        if Kit.Validate().blank(args):
+        if Validate_blank(args):
             args = [
                 kwargs.pop('schema', {}),
                 kwargs.pop('ignore_none_values', False),
@@ -27,8 +27,8 @@ class Validator(Kit.Cerberus.Validator):
     def _lookup_path(self, path: str, prefix: str = '^')-> set:
         path = path.strip()
         prefix = prefix.strip()
-        if Kit.Validate().filled(prefix):
-            path = Kit.Str().start(path, prefix)
+        if Validate_filled(prefix):
+            path = Str_start(path, prefix)
         
         return self._lookup_field(path) #type: ignore
     
@@ -63,12 +63,12 @@ class Validator(Kit.Cerberus.Validator):
             mod,
             f'[{foreign_field}]',
             'field set to',
-            f'[{Kit.Convert().to_text(foreign_value)}]'
+            f'[{Convert_to_text(foreign_value)}]'
         ]
         error_message = ' '.join(error_message)
         
         if (mod == 'when' and expected_value) or (mod == 'unless' and not_expected_value):
-            if (expect_filled and not Kit.Validate().filled(value)) or (expect_blank and not Kit.Validate().blank(value)):
+            if (expect_filled and not Validate_filled(value)) or (expect_blank and not Validate_blank(value)):
                 return error_message
         
         return None
@@ -100,23 +100,23 @@ class Validator(Kit.Cerberus.Validator):
     
     def _validate_path_exists(self, constraint, field, value):
         """{'type': 'boolean'}"""
-        if constraint is True and not Kit.Validate().fs_path_exists(value):
+        if constraint is True and not Validate_fs_path_exists(value):
             self._error(field, f"Must be an [{value}] existing path") #type: ignore
-        elif constraint is False and Kit.Validate().fs_path_exists(value):
+        elif constraint is False and Validate_fs_path_exists(value):
             self._error(field, f"Must be a [{value}] missing path") #type: ignore
     
     def _validate_file_exists(self, constraint, field, value):
         """{'type': 'boolean'}"""
-        if constraint is True and not Kit.Validate().fs_file_exists(value):
+        if constraint is True and not Validate_fs_file_exists(value):
             self._error(field, f"Must be an [{value}] existing file") #type: ignore
-        elif constraint is False and Kit.Validate().fs_file_exists(value):
+        elif constraint is False and Validate_fs_file_exists(value):
             self._error(field, f"Must be a [{value}] missing file") #type: ignore
     
     def _validate_dir_exists(self, constraint, field, value):
         """{'type': 'boolean'}"""
-        if constraint is True and not Kit.Validate().fs_dir_exists(value):
+        if constraint is True and not Validate_fs_dir_exists(value):
             self._error(field, f"Must be an [{value}] existing directory") #type: ignore
-        elif constraint is False and Kit.Validate().fs_dir_exists(value):
+        elif constraint is False and Validate_fs_dir_exists(value):
             self._error(field, f"Must be a [{value}] missing directory") #type: ignore
     
     def _exec_validate_regex(self, value, key_: str)-> bool:
@@ -129,7 +129,7 @@ class Validator(Kit.Cerberus.Validator):
         if not isinstance(value, str):
             return False
         
-        suffix = f'_{type_}' if Kit.Validate().filled(type_) else ''
+        suffix = f'_{type_}' if Validate_filled(type_) else ''
         keys = [f'ipv4{suffix}', f'ipv6{suffix}'] if version == 46 else [f'ipv{str(version)}{suffix}']
         
         for key_ in keys:
@@ -180,7 +180,7 @@ class Validator(Kit.Cerberus.Validator):
 
     def error_message(self) -> str:
         parts = []
-        for key_name, error in (Kit.Data().dot(self.errors)).items(): #type: ignore
+        for key_name, error in (Data_dot(self.errors)).items(): #type: ignore
             parts.append(f'{key_name}: {error}')
         
         return ' | '.join(parts)

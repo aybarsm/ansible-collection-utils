@@ -4,24 +4,24 @@ from re import compile as re_compile
 import datetime, hashlib
 
 
-@dt_dataclass(frozen=True, kw_only=True)
-class _Sentinel:
-    raw: object = dt_field(init=True)
-    ts: datetime.datetime = dt_field(init=True)
-    ts_str: str = dt_field(init=True)
-    ts_safe: str = dt_field(init=True)
-    id: str = dt_field(init=True)
-    hash: str = dt_field(init=True)
+# @dt_dataclass(frozen=True, kw_only=True)
+# class _Sentinel:
+#     raw: object = dt_field(init=True)
+#     ts: datetime.datetime = dt_field(init=True)
+#     ts_str: str = dt_field(init=True)
+#     ts_safe: str = dt_field(init=True)
+#     id: str = dt_field(init=True)
+#     hash: str = dt_field(init=True)
 
-    @staticmethod
-    def make() -> "_Sentinel":
-        raw_ = object()
-        ts_ = datetime.datetime.now(datetime.timezone.utc)
-        ts_str_ = str(ts_.strftime('%Y-%m-%dT%H:%M:%SZ'))
-        ts_safe_ = str(ts_.strftime('%Y%m%dT%H%M%SZ'))
-        id_ = f'{str(id(raw_))}_{str(ts_.strftime('%Y-%m-%dT%H:%M:%S'))}.{ts_.microsecond * 1000:09d}Z'
-        hash_ = hashlib.md5(id_.encode()).hexdigest()
-        return _Sentinel(raw=raw_, ts=ts_, ts_str=ts_str_, ts_safe=ts_safe_, id=id_, hash=hash_)
+#     @staticmethod
+#     def make() -> "_Sentinel":
+#         raw_ = object()
+#         ts_ = datetime.datetime.now(datetime.timezone.utc)
+#         ts_str_ = str(ts_.strftime('%Y-%m-%dT%H:%M:%SZ'))
+#         ts_safe_ = str(ts_.strftime('%Y%m%dT%H%M%SZ'))
+#         id_ = f'{str(id(raw_))}_{str(ts_.strftime('%Y-%m-%dT%H:%M:%S'))}.{ts_.microsecond * 1000:09d}Z'
+#         hash_ = hashlib.md5(id_.encode()).hexdigest()
+#         return _Sentinel(raw=raw_, ts=ts_, ts_str=ts_str_, ts_safe=ts_safe_, id=id_, hash=hash_)
 
 class _Kit:
     @staticmethod
@@ -89,7 +89,7 @@ class _Kit:
         import rich.console
         return rich.console
 
-Sentinel = _Sentinel.make()
+# Sentinel = _Sentinel.make()
 Kit = _Kit()
 CONF_ = tt_MappingProxyType(
     {

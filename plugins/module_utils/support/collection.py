@@ -3,7 +3,19 @@ import typing_extensions as te
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.types import (
     T, ENUMERATABLE
 )
-from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Kit
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
+    Sentinel
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import (
+    where as Data_where,
+    collections as Data_collections,
+    append as Data_append,
+    prepend as Data_prepend,
+    pluck as Data_pluck,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.utils import (
+    call as Utils_call,
+)
 
 class Collection(t.Generic[T]):
     on_save: t.Optional[t.Callable] = None
@@ -11,7 +23,7 @@ class Collection(t.Generic[T]):
 
     def __init__(self, items: ENUMERATABLE[T] = []):
         self.items: list[T] = list(items).copy()
-        self.__sentinel: str = Kit.Factory().placeholder()
+        self.__sentinel: str = Sentinel.hash
     
     @property
     def sentinel(self) -> str:
@@ -19,14 +31,14 @@ class Collection(t.Generic[T]):
     
     def map(self, callback: t.Callable) -> t.Self:
         for idx in self.indexes():
-            self.items[idx] = Kit.Utils().call(callback, self.items[idx], idx)
+            self.items[idx] = Utils_call(callback, self.items[idx], idx)
         
         return self
     
     def each(self, callback: t.Callable, initial: t.Any = None) -> t.Any:
         ret = initial
         for idx_, val_ in enumerate(self.items):
-            ret = Kit.Utils().call(callback, val_, idx_, ret, self)
+            ret = Utils_call(callback, val_, idx_, ret, self)
             if ret == self.sentinel:
                 break
         
@@ -34,11 +46,11 @@ class Collection(t.Generic[T]):
     
     def where_index(self, callback: t.Callable, **kwargs) -> tuple[int, ...]:
         kwargs['key'] = True
-        return tuple(Kit.Data().where(self.items, callback, [], **kwargs))
+        return tuple(Data_where(self.items, callback, [], **kwargs))
     
     def where_index_single(self, callback: t.Callable, **kwargs) -> t.Optional[int]:
         kwargs['key'] = True
-        return Kit.Data().where(self.items, callback, None, **kwargs)
+        return Data_where(self.items, callback, None, **kwargs)
     
     def where(self, callback: t.Callable, **kwargs) -> tuple[T, ...]:
         return tuple([self.items[idx] for idx in self.indexes() if idx in self.where_index(callback, **kwargs)])
@@ -85,16 +97,16 @@ class Collection(t.Generic[T]):
         return self.where_index_single(callback, **kwargs)
     
     def sort_by(self, callback: str | t.Callable, reverse: bool = False) -> te.Self:
-        return self.__class__(Kit.Data().collections().sort_by(self.all(), callback, reverse))
+        return self.__class__(Data_collections().sort_by(self.all(), callback, reverse))
     
     def sort(self, callback: str | t.Callable, reverse: bool = False) -> t.Any:
         return self.sort_by(callback, reverse)
     
     def append(self, value: T, **kwargs) -> None:
-        self.items = list(Kit.Data().append(self.items, '', value, **kwargs))
+        self.items = list(Data_append(self.items, '', value, **kwargs))
     
     def prepend(self, value: T, **kwargs) -> None:
-        self.items = list(Kit.Data().prepend(self.items, '', value, **kwargs))
+        self.items = list(Data_prepend(self.items, '', value, **kwargs))
     
     def push(self, value: T, **kwargs) -> None:
         self.append(value, **kwargs)
@@ -106,7 +118,7 @@ class Collection(t.Generic[T]):
         return self.items.pop()
 
     def pluck(self, key: str, **kwargs) -> list[t.Any]:
-        return Kit.Data().pluck(self.all(), key, **kwargs)
+        return Data_pluck(self.all(), key, **kwargs)
     
     def all(self)-> list[T]:
         return list(self.items.copy())
@@ -136,10 +148,10 @@ class Collection(t.Generic[T]):
         if not self.on_save:
             return
         
-        Kit.Utils().call(self.on_save, self.all())
+        Utils_call(self.on_save, self.all())
     
     def destroy(self)-> None:
         if not self.on_destroy:
             return
         
-        Kit.Utils().call(self.on_destroy, self)
+        Utils_call(self.on_destroy, self)
