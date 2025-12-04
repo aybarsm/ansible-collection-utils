@@ -1,8 +1,8 @@
 from __future__ import annotations
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Str
 
 class FilterModule(object):
-    def filters(self):        
+    def filters(self):
+        from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Kit
         return {
             'str_before': Kit.Str().before,
             'str_before_last': Kit.Str().before_last,

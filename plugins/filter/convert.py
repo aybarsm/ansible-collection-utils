@@ -1,8 +1,9 @@
 from __future__ import annotations
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Convert
 
 class FilterModule(object):
-    def filters(self):        
+    def filters(self):
+        from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Kit
+        
         return {
             'to_querystring': Kit.Convert().to_querystring,
             'to_iterable': Kit.Convert().to_iterable,

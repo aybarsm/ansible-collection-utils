@@ -409,6 +409,12 @@ def as_command_model(data: t.Mapping[str, t.Any], command: t.Optional[str] = Non
 ### END: Ansible
 
 ### BEGIN: Type
+def to_type_name(data: t.Any) -> str:
+    return type(data).__name__
+
+def to_type_module(data: t.Any) -> str:
+    return type(data).__module__
+
 def as_non_native_types(data: t.Union[t.Any, ENUMERATABLE[t.Any]])-> tuple[t.Any, ...]:
     return tuple([item for item in to_iterable(data) if not Kit.Validate().is_type_python_native(item)])
 

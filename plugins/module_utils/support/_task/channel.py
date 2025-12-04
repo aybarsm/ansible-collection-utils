@@ -1,6 +1,5 @@
 import typing as t
 import typing_extensions as te
-import dataclasses as dt
 import asyncio
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.types import (
     ENUMERATABLE, PositiveInt, EventCallback, PositiveFloat, UniqueAlias
