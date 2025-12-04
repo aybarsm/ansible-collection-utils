@@ -1,9 +1,9 @@
 import typing as t
 import typing_extensions as te
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.types import (
     PositiveInt, TaskResult, TaskCallback
 )
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import (
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
     dataclass, BaseModel, model_field, GenericStatus, IdMixin, StatusMixin, CallableMixin
 )
 

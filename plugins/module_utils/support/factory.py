@@ -1,23 +1,16 @@
 import typing as t
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    ENUMERATABLE, PositiveInt
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.types import (
+    PositiveInt
 )
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    _convert, _data, _utils, _validate
-)
-
-Convert = _convert()
-Data = _data()
-Utils = _utils()
-Validate = _validate()
+from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Kit, Sentinel
 
 def ts(**kwargs):
     import datetime
     ts = datetime.datetime.now(datetime.timezone.utc)
     mod = kwargs.pop('mod', '')
     
-    if Validate.filled(mod):
-        return Convert.as_ts_mod(ts, mod)
+    if Kit.Validate().filled(mod):
+        return Kit.Convert().as_ts_mod(ts, mod)
 
     return ts
 
@@ -28,24 +21,8 @@ def random_string(length: PositiveInt = 32)-> str:
     import random, string
     return ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for _ in range(length))
 
-# def placeholder(rand_length: PositiveInt = 32, mod: str = ''):
-#     import math
-#     ret = [
-#         random_string(math.ceil(rand_length/2)),
-#         ts(mod='long'),
-#         random_string(math.floor(rand_length/2))
-#     ]
-
-#     ret = '|'.join(ret)
-    
-#     mod = mod.lower()
-#     if mod in ['hash', 'hashed']:
-#         return Convert.to_md5(ret)
-#     else:
-#         return ret
 def placeholder(*args, **kwargs) -> str:
-    from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import SENTINEL_HASH
-    return SENTINEL_HASH
+    return Sentinel.hash
 
 ### BEGIN: FS
 def fs_path_tmp(file: str, *args, **kwargs)-> str:
@@ -54,11 +31,11 @@ def fs_path_tmp(file: str, *args, **kwargs)-> str:
     args = list(args)
     ensure_directory_exists = is_dir or len(args) > 1
     args = [tempfile.gettempdir()] + args + [file]
-    ret = Utils.fs_join_paths(*args)
+    ret = Kit.Utils().fs_join_paths(*args)
     
     if ensure_directory_exists:
-        path_dir = ret if is_dir else Utils.fs_dirname(ret)
-        Utils.fs_ensure_directory_exists(path_dir)
+        path_dir = ret if is_dir else Kit.Utils().fs_dirname(ret)
+        Kit.Utils().fs_ensure_directory_exists(path_dir)
     
     return ret
 ### END: FS
@@ -72,39 +49,39 @@ def play_meta(vars: t.Mapping, **kwargs)-> dict:
     play_hosts = ','.join(vars.get('ansible_play_hosts_all', []))
     play_batch = ','.join(vars.get('ansible_play_batch', []))
     ret = {
-        'ph': 'N/A' if Validate.blank(play_hosts) else play_hosts,
+        'ph': 'N/A' if Kit.Validate().blank(play_hosts) else play_hosts,
         'if': vars.get('inventory_file', 'N/A'),
         'cf': vars.get('ansible_config_file', 'N/A'),
         'pbd': vars.get('playbook_dir', 'N/A'),
         'pbn': vars.get('ansible_play_name', 'N/A'),
-        'pb': 'N/A' if Validate.blank(play_batch) else play_batch,
-        'ts': Convert.as_ts_mod(ts_, 'long_safe'), #type: ignore
+        'pb': 'N/A' if Kit.Validate().blank(play_batch) else play_batch,
+        'ts': Kit.Convert().as_ts_mod(ts_, 'long_safe'), #type: ignore
     }
 
     kwargs['encoding'] = kwargs.get('encoding', 'utf-8')
-    play_id = Convert.to_url_encode(ret, **kwargs)
+    play_id = Kit.Convert().to_url_encode(ret, **kwargs)
     play_id = urllib.parse.unquote(play_id, encoding='utf-8', errors='strict')
     ret = {
         'id': {
             'raw': play_id,
-            'hash': Convert.to_md5(play_id),
+            'hash': Kit.Convert().to_md5(play_id),
         },
         'ts': {
             'raw': ts_,
-            'str': Convert.as_ts_mod(ts_, 'str'), #type: ignore
-            'safe': Convert.as_ts_mod(ts_, 'safe'), #type: ignore
-            'long': Convert.as_ts_mod(ts_, 'long'), #type: ignore
-            'long_safe': Convert.as_ts_mod(ts_, 'long_safe'), #type: ignore
-            'timestamp': Convert.as_ts_mod(ts_, 'timestamp'), #type: ignore
+            'str': Kit.Convert().as_ts_mod(ts_, 'str'), #type: ignore
+            'safe': Kit.Convert().as_ts_mod(ts_, 'safe'), #type: ignore
+            'long': Kit.Convert().as_ts_mod(ts_, 'long'), #type: ignore
+            'long_safe': Kit.Convert().as_ts_mod(ts_, 'long_safe'), #type: ignore
+            'timestamp': Kit.Convert().as_ts_mod(ts_, 'timestamp'), #type: ignore
         },
         'placeholder': placeholder(mod='hash'),
-        'cache_file': fs_path_tmp(f'play_{Convert.to_md5(play_id)}.json'),
+        'cache_file': fs_path_tmp(f'play_{Kit.Convert().to_md5(play_id)}.json'),
     }
 
-    if make_cache and not Validate.fs_file_exists(ret['cache_file']):
+    if make_cache and not Kit.Validate().fs_file_exists(ret['cache_file']):
         cache_defaults = kwargs.pop('cache_defaults', {})
-        cache_content = Data.combine(cache_defaults, {'play': Convert.as_copied(ret)}, recursive=True)
-        Utils.json_save(cache_content, ret['cache_file'])
+        cache_content = Kit.Data().combine(cache_defaults, {'play': Kit.Convert().as_copied(ret)}, recursive=True)
+        Kit.Utils().json_save(cache_content, ret['cache_file'])
 
     return ret
 ### END: Play

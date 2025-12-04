@@ -1,17 +1,16 @@
 import typing as t
-from pydantic import PositiveInt
 import typing_extensions as te
 import asyncio
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.types import (
     ENUMERATABLE, MappingImmutable, EventCallback, UniqueIdUuid, UniqueAlias, PositiveFloat,
     TaskResult, EventCallback, 
 )
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import (
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
     dataclass, BaseModel, model_field, GenericStatus, IdMixin, StatusMixin
 )
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools.task import Task, TaskGroup
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools.collection import Collection
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Convert, Data, Utils
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.task import Task, TaskGroup
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.collection import Collection
+from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Kit
 
 TaskCollectionFindIdentifier = t.Union[t.Callable, UniqueIdUuid, UniqueAlias, Task, asyncio.Task]
 TaskCollectionGetIdentifier = t.Union[t.Callable, TaskGroup, ENUMERATABLE[t.Union[UniqueIdUuid, UniqueAlias, Task, asyncio.Task, TaskGroup]]]
@@ -115,7 +114,7 @@ class TaskCollection(Collection[Task], BaseModel):
         done = set()
         callbacks = []
 
-        for ident in Convert.to_iterable(identifier):
+        for ident in Kit.Convert().to_iterable(identifier):
             if isinstance(ident, UniqueIdUuid):
                 key, val = 'id', ident
             elif isinstance(ident, UniqueAlias):
@@ -123,7 +122,7 @@ class TaskCollection(Collection[Task], BaseModel):
             elif isinstance(ident, Task):
                 key, val = 'id', ident.id
             elif isinstance(ident, asyncio.Task):
-                key, val = 'id', Convert.to_uuid(str(ident.get_name()))
+                key, val = 'id', Kit.Convert().to_uuid(str(ident.get_name()))
             elif isinstance(ident, TaskGroup):
                 key, val = 'group.id', ident.id
             
@@ -131,13 +130,13 @@ class TaskCollection(Collection[Task], BaseModel):
             if key_done in done:
                 continue
 
-            callbacks.append(lambda task, key=key, val=val: Data.get(task, key) == val)
+            callbacks.append(lambda task, key=key, val=val: Kit.Data().get(task, key) == val)
             done.add(key_done)
         
         return lambda task: any([cb(task) for cb in callbacks])
     
     def __append_or_prepend(self, is_append: bool, task: Task | ENUMERATABLE[Task]) -> te.Self:
-        for item in Convert.to_iterable(task):
+        for item in Kit.Convert().to_iterable(task):
             if is_append:
                 super().append(item)
             else:

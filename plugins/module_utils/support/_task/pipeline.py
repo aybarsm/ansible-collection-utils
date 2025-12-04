@@ -1,14 +1,14 @@
 import typing as t
 import typing_extensions as te
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.types import (
     ENUMERATABLE, PositiveFloat, EventCallback, UniqueAlias
 )
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import (
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
     dataclass, GenericStatus
 )
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools.task import Task, TaskGroup
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools._task.collection import TaskCollectionDispatchable
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools._task.channel import TaskChannel
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.task import Task
+from ansible_collections.aybarsm.utils.plugins.module_utils.support._task.collection import TaskCollectionDispatchable
+from ansible_collections.aybarsm.utils.plugins.module_utils.support._task.channel import TaskChannel
 
 @dataclass(init=False, kw_only=True)
 class TaskPipeline(TaskCollectionDispatchable):

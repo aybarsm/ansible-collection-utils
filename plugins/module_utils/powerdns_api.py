@@ -36,32 +36,32 @@ class PowerdnsApi():
         self._meta = {'cfg': _DEFAULTS.copy()}
         self._swagger = Swagger(self.meta('cfg.swagger', {}))
         
-        if Validate.filled(params):
+        if Kit.Validate().filled(params):
             self._swagger.params_set(dict(params))
 
         self._operation_set(op)
     
     def _get_value(self, container, key = '', default = None) -> Any:   
-        return Data.get(container, key, default) if Validate.filled(key) else container
+        return Kit.Data().get(container, key, default) if Kit.Validate().filled(key) else container
     
     def meta(self, key: str  = '', default: Any = None) -> Any:
         return self._get_value(self._meta, key, default)
     
     def _meta_set(self, key: str, value: Any) -> None:
-        Data.set(self._meta, key, value)
+        Kit.Data().set(self._meta, key, value)
     
     def _meta_forget(self, key: str) -> None:        
-        Data.forget(self._meta, key)
+        Kit.Data().forget(self._meta, key)
     
     def meta_has(self, key: str) -> bool:
-        return Data.has(self._meta, key)
+        return Kit.Data().has(self._meta, key)
     
     def swagger(self):
         return self._swagger
     
     def _operation_set(self, op: PdnsOperation) -> None:        
         docs_source = self._swagger.params('docs_source', '')
-        if Validate.blank(docs_source):
+        if Kit.Validate().blank(docs_source):
             return
         
         self._swagger.load_swagger(docs_source)
@@ -146,7 +146,7 @@ class PowerdnsApi():
         kwargs = self._swagger.get_ansible_module_arguments(self.operation_path(), self.operation_method(), only_primary = True)
 
         if self.operation_type() == PdnsOperation.auth_zone and self.operation_state() == 'rrsets':
-            Data.set(kwargs, 'argument_spec.rrsets.required', True)
+            Kit.Data().set(kwargs, 'argument_spec.rrsets.required', True)
         
         return kwargs
     
@@ -160,7 +160,7 @@ class PowerdnsApi():
 
         # The Ansible modules validator is highly unreliable:
         # Especially entries with default values and nested schemas.
-        # So we provide primary entries only and then validate all parameters with Cerberus.
+        # So we provide primary entries only and then validate all parameters with Kit.Cerberus().
         schema = self._swagger.get_cerberus_validation_schema(self.operation_path(), self.operation_method())
         
         v = Validator(schema, allow_unknown = True) # type: ignore
@@ -189,11 +189,11 @@ class PowerdnsApi():
     def _op_auth_zone_before_finalise_callback(self, ret: dict)-> dict:
         state = self.operation_state()
         if state == 'rrsets':
-            Data.set(ret, 'data.rrsets', Data.get(ret, 'data.zone_struct.rrsets'))
-            Data.forget(ret, 'data.zone_struct')
+            Kit.Data().set(ret, 'data.rrsets', Kit.Data().get(ret, 'data.zone_struct.rrsets'))
+            Kit.Data().forget(ret, 'data.zone_struct')
         elif state in ['present', 'update']:
-            zone_struct = Data.get(ret, 'data.zone_struct', {})
-            Data.set(ret, 'data', zone_struct.copy())
+            zone_struct = Kit.Data().get(ret, 'data.zone_struct', {})
+            Kit.Data().set(ret, 'data', zone_struct.copy())
         
         return ret
 

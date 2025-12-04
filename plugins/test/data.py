@@ -4,13 +4,13 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Valid
 class TestModule(object):
     def tests(self):
         return {
-            'blank': Validate.blank,
-            'filled': Validate.filled,
-            'truthy': Validate.is_truthy,
-            'falsy': Validate.is_falsy,
-            'omitted': Validate.is_ansible_omitted,
-            'type_name': Validate.is_type_name,
-            'item_exec': Validate.is_item_exec,
-            'mapping': Validate.is_mapping,
-            'sequence': Validate.is_sequence,
+            'blank': Kit.Validate().blank,
+            'filled': Kit.Validate().filled,
+            'truthy': Kit.Validate().is_truthy,
+            'falsy': Kit.Validate().is_falsy,
+            'omitted': Kit.Validate().is_ansible_omitted,
+            'type_name': Kit.Validate().is_type_name,
+            'item_exec': Kit.Validate().is_item_exec,
+            'mapping': Kit.Validate().is_mapping,
+            'sequence': Kit.Validate().is_sequence,
         }

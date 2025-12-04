@@ -1,22 +1,13 @@
 import typing as t
 import types as tt
-import datetime, inspect, uuid
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
+import datetime, inspect, uuid, hashlib, ipaddress, inspect, copy, re, netaddr
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.types import (
     ENUMERATABLE, CallableParameterTypeMap, CallableParameterKind, PositiveInt
 )
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import (
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
     CommandModel
 )
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    _ansible, _data, _factory, _str, _utils, _validate, _ipaddress, _hashlib
-)
-
-Ansible = _ansible()
-Data = _data()
-Factory = _factory()
-Str = _str()
-Utils = _utils()
-Validate = _validate()
+from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Kit
 
 def as_id(
     data: t.Any, 
@@ -29,10 +20,10 @@ def as_id(
     ret = [str(id(data))]
     
     if use_ts:
-        ret.append(str(Factory.ts(mod='long')))
+        ret.append(str(Kit.Factory().ts(mod='long')))
     
     if random_string:
-        ret.append(Factory.random_string(random_string))
+        ret.append(Kit.Factory().random_string(random_string))
     
     ret = f'{prefix}{'_'.join(ret)}{suffix}'
 
@@ -42,13 +33,13 @@ def as_id(
         return ret
 
 def to_pydash(data: t.Iterable[t.Any])-> dict | list:
-    if Validate.is_mapping(data):
+    if Kit.Validate().is_mapping(data):
         return dict(data)
     else:
         return list(data)
 
 def to_md5(data: t.Any)-> str:
-    return _hashlib().md5(str(to_text(data)).encode()).hexdigest()
+    return hashlib.md5(str(to_text(data)).encode()).hexdigest()
 
 def as_ts_mod(ts: datetime.datetime, mod: str)-> str|int:
     mod = mod.lower()
@@ -72,14 +63,12 @@ def to_iterable(data)-> list:
     return list(data) if isinstance(data, (list, set, tuple)) else [data]
 
 def to_enumeratable(data: t.Any) -> list:
-    if Validate.is_mapping(data):
+    if Kit.Validate().is_mapping(data):
         return list(dict(data).values())
     
     return list(data) if isinstance(data, (list, set, tuple)) else [data]
 
 def as_copied(data):
-    import copy
-
     try:
         return copy.deepcopy(data)
     except Exception:
@@ -98,30 +87,29 @@ def from_mapping_to_callable(data: t.Mapping[str, t.Any], **kwargs)-> t.Callable
     if no_dot:
         return lambda entry: all([key in entry and entry[key] == val for key, val in data.items()])
     else:
-        return lambda entry: all([Data.has(entry, key) and Data.get(entry, key) == val for key, val in data.items()])
+        return lambda entry: all([Kit.Data().has(entry, key) and Kit.Data().get(entry, key) == val for key, val in data.items()])
 
 def to_data_key(*args: str, **kwargs)-> str:
-    import re
-    include_blanks = Validate.truthy(kwargs.pop('blanks', False))
+    include_blanks = Kit.Validate().truthy(kwargs.pop('blanks', False))
     ret = []
     
     for key in args:
         key = re.sub(r'\.+', '.', key).strip('.')
-        if include_blanks or Validate.filled(key):
+        if include_blanks or Kit.Validate().filled(key):
             ret.append(key)
     
     return '.'.join(ret)
 
 def to_safe_json(data):
-    if Validate.is_bytes(data):
+    if Kit.Validate().is_bytes(data):
         return to_safe_json(to_text(data))
-    elif Validate.is_string(data) and Validate.str_is_json(data):
+    elif Kit.Validate().is_string(data) and Kit.Validate().str_is_json(data):
         return to_safe_json(from_json(data))
-    elif Validate.is_string(data) and Validate.str_is_yaml(data):
+    elif Kit.Validate().is_string(data) and Kit.Validate().str_is_yaml(data):
         return to_safe_json(from_yaml(data))
     elif isinstance(data, (str, int, float, bool)) or data is None:
         return data
-    elif Validate.is_ansible_mapping(data):
+    elif Kit.Validate().is_ansible_mapping(data):
         return to_safe_json(to_text(data))
     elif isinstance(data, dict):
         return {str(k): to_safe_json(v) for k, v in data.items()}
@@ -141,7 +129,7 @@ def to_url_encode(data: t.Mapping[str, t.Any], **kwargs)-> str:
     
     data = dict(data)
     for key in list(data.keys()):
-        if Validate.is_bool(data[key]):
+        if Kit.Validate().is_bool(data[key]):
             data[key] = 'true' if data[key] else 'false'
     
     return urllib.parse.urlencode(data, **kwargs)
@@ -183,14 +171,14 @@ def to_list_of_dicts(data, defaults={}, *args, **kwargs):
     for idx_item in range(0, len(data[data_keys[0]])):
         new_item = defaults.copy()
 
-        if Validate.filled(combines) and Validate.filled(Data.get(combines, str(idx_item))):
-            new_item = Data.combine(new_item, Data.get(combines, str(idx_item)), **combine_args)
+        if Kit.Validate().filled(combines) and Kit.Validate().filled(Kit.Data().get(combines, str(idx_item))):
+            new_item = Kit.Data().combine(new_item, Kit.Data().get(combines, str(idx_item)), **combine_args)
 
         for data_key in data_keys:
             if no_dot:
                 new_item[data_key] = data[data_key][idx_item]
             else:
-                Data.set_(new_item, data_key, data[data_key][idx_item])
+                Kit.Data().set_(new_item, data_key, data[data_key][idx_item])
 
         ret.append(new_item)
 
@@ -202,26 +190,26 @@ def as_hash(
     by: t.Optional[t.Union[t.Literal[True], str, ENUMERATABLE[str], t.Callable]] = None,
 ) -> str:
     if isinstance(by, t.Callable):
-        return str(Utils.call(by, value, key))
+        return str(Kit.Utils().call(by, value, key))
 
-    if by == True or by == None or Validate.blank(by):
-        if Validate.is_hashable(value):
+    if by == True or by == None or Kit.Validate().blank(by):
+        if Kit.Validate().is_hashable(value):
             return str(hash(value))
         else:
             raise RuntimeError(f'Unhashable item type [{type(value).__name__}]')
     
-    if isinstance(by, str) and Validate.filled(by):
+    if isinstance(by, str) and Kit.Validate().filled(by):
         by = [by]
 
-    ph = Factory.placeholder()
+    ph = Kit.Factory().placeholder()
 
     if isinstance(value, t.Mapping) or isinstance(value, object):
-        return to_md5('|'.join([to_text(Data.get(value, key_, ph)) for key_ in by])) #type: ignore
+        return to_md5('|'.join([to_text(Kit.Data().get(value, key_, ph)) for key_ in by])) #type: ignore
     
     raise RuntimeError(f'Unhashable condition for item type [{type(value).__name__}]')
 
 def as_concurrent_command(commands: ENUMERATABLE[str]) -> str:
-    tmp_prefix = f'ansible.cmd_{Factory.placeholder()}'
+    tmp_prefix = f'ansible.cmd_{Kit.Factory().placeholder()}'
     ret = {
         'cmd': [],
         'wait': [],
@@ -245,19 +233,11 @@ def as_concurrent_command(commands: ENUMERATABLE[str]) -> str:
         ret['wait'].extend([
             f'wait "$pid1"', 
             f'rc{cmd_seq}=$?',
-            # f"out{cmd_seq}=$(cat \"{path_out}\" | sed 's/\"/\\\\\"/g')",
-            # f"err{cmd_seq}=$(cat \"{path_err}\" | sed 's/\"/\\\\\"/g')",
         ])
 
         ret['structure'].extend([
-            # f"out{cmd_seq}=$(printf \"%q\\n\" \"$(cat {path_out} | sed 's/\"/\\\\\"/g')\")",
-            # f"err{cmd_seq}=$(printf \"%q\\n\" \"$(cat {path_err} | sed 's/\"/\\\\\"/g')\")",
             f"out{cmd_seq}=$(cat {path_out} | sed 's/\"/\\\\\"/g')",
             f"err{cmd_seq}=$(cat {path_err} | sed 's/\"/\\\\\"/g')",
-            # f"err{cmd_seq}=$(printf \"%s\" \"$(cat out{cmd_seq})\" | sed 's/\"/\\\\\"/g')",
-            # f"err{cmd_seq}=$(printf \"%s\" \"$(cat err{cmd_seq})\" | sed 's/\"/\\\\\"/g')",
-            # f"out{cmd_seq}=$(sed ':a;N;$!ba;s/\"/\\\\\"/g;s/\\n/\\\\\\n/g' out{cmd_seq})",
-            # f"err{cmd_seq}=$(sed ':a;N;$!ba;s/\"/\\\\\"/g;s/\\n/\\\\\\n/g' err{cmd_seq})",
         ])
 
         output = [
@@ -271,32 +251,30 @@ def as_concurrent_command(commands: ENUMERATABLE[str]) -> str:
     
     return ''.join([
         '(',
-        Str.finish('; '.join(ret['cmd']), '; '),
-        Str.finish('; '.join(ret['wait']), '; '),
-        Str.finish('; '.join(ret['structure']), '; '),
+        Kit.Str().finish('; '.join(ret['cmd']), '; '),
+        Kit.Str().finish('; '.join(ret['wait']), '; '),
+        Kit.Str().finish('; '.join(ret['structure']), '; '),
         'printf "[',
         ', '.join(ret['output']),
-        Str.finish(']"', '; '),
-        # Str.finish(f'rm /tmp/{tmp_prefix}*', '; '),
+        Kit.Str().finish(']"', '; '),
+        Kit.Str().finish(f'rm /tmp/{tmp_prefix}*', '; '),
         ')',
     ])
 
 def as_lines(data: t.Optional[str]) -> list[str]:
-    if not data or Validate.blank(data):
+    if not data or Kit.Validate().blank(data):
         return []
 
     return str(data).splitlines()
 
 def as_cleaned_lines(data: t.Optional[str]) -> list[str]:
-    if not data or Validate.blank(data):
+    if not data or Kit.Validate().blank(data):
         return []
     
-    import re
-    
-    return [line for line in Data.map(
+    return [line for line in Kit.Data().map(
             as_lines(data),
             lambda entry: re.sub(r'\s+', ' ', str(entry).strip())
-        ) if Validate.filled(line)]
+        ) if Kit.Validate().filled(line)]
 
 ### BEGIN: Ansible
 def to_text(*args, **kwargs)-> str:
@@ -318,9 +296,9 @@ def to_string(*args, **kwargs)-> str:
 
 def to_primitive(*args, **kwargs) -> t.Any:
     ret = to_text(*args, **kwargs)
-    if Validate.str_is_yaml(ret):
+    if Kit.Validate().str_is_yaml(ret):
         ret = from_yaml(ret)
-        if Validate.is_mapping(ret):
+        if Kit.Validate().is_mapping(ret):
             return dict(ret)
         else:
             return list(ret)
@@ -338,11 +316,11 @@ def from_cli(data, *args, **kwargs):
     
     ret = data.strip().strip('\'"')
 
-    if Validate.str_is_json(data):
+    if Kit.Validate().str_is_json(data):
         return from_json(data)
-    elif Validate.str_is_yaml(data):
+    elif Kit.Validate().str_is_yaml(data):
         return from_yaml(data)
-    elif as_iterable and Validate.contains(ret, ','):
+    elif as_iterable and Kit.Validate().contains(ret, ','):
         return [x for x in ','.split((ret if as_stripped else data)) if x]
     elif as_iterable:
         return to_iterable((ret if as_stripped else data))
@@ -350,16 +328,14 @@ def from_cli(data, *args, **kwargs):
         return to_iterable(ret if as_stripped else data) if as_iterable else (ret if as_stripped else data)
 
 def __from_ansible_template(templar, variable, **kwargs) -> t.Any:
-    from ansible.template import is_trusted_as_template, trust_as_template
-    
-    if Validate.is_string(variable) and not is_trusted_as_template(variable):
-        variable = trust_as_template(variable)
+    if Kit.Validate().is_string(variable) and not Kit.Ansible().is_trusted_as_template(variable):
+        variable = Kit.Ansible().trust_as_template(variable)
     
     variable = templar.template(variable, **kwargs)
     
-    if Validate.is_mapping(variable):
+    if Kit.Validate().is_mapping(variable):
         return dict(variable)
-    elif Validate.is_enumeratable(variable):
+    elif Kit.Validate().is_enumeratable(variable):
         return to_iterable(variable)
     else:
         return variable
@@ -371,24 +347,24 @@ def from_ansible_template(templar, variable, **kwargs)-> t.Any:
     for var_key, var_value in extra_vars.items():
         templar.available_variables[var_key] = var_value
     
-    if Validate.is_iterable(variable):
-        variable = Data.walk_values_deep(variable, lambda value_: __from_ansible_template(templar, value_, **kwargs))
+    if Kit.Validate().is_iterable(variable):
+        variable = Kit.Data().walk_values_deep(variable, lambda value_: __from_ansible_template(templar, value_, **kwargs))
     else:
         variable = __from_ansible_template(templar, variable, **kwargs)
     
-    if not Validate.falsy(remove_extra_vars):
+    if not Kit.Validate().falsy(remove_extra_vars):
         for var_key, var_value in extra_vars.items():
             del templar.available_variables[var_key]
     
-    if Validate.is_mapping(variable):
+    if Kit.Validate().is_mapping(variable):
         return dict(variable)
-    elif Validate.is_enumeratable(variable):
+    elif Kit.Validate().is_enumeratable(variable):
         return to_iterable(variable)
     else:
         return variable
 
 def from_ansible(data: t.Any)-> t.Any:
-    if Validate.is_mapping(data) or Validate.is_sequence(data):
+    if Kit.Validate().is_mapping(data) or Kit.Validate().is_sequence(data):
         return from_yaml(to_native(data))
     
     return data
@@ -398,7 +374,7 @@ def to_items(
     key_name: str = 'key',
     value_name: str = 'value',
 )-> list[dict[str, t.Any]]:
-    iteratee = dict(data).items() if Validate.is_mapping(data) else enumerate(to_iterable(data))
+    iteratee = dict(data).items() if Kit.Validate().is_mapping(data) else enumerate(to_iterable(data))
     return [{key_name: key_, value_name: val_} for key_, val_ in iteratee]
 
 def from_items(
@@ -409,11 +385,11 @@ def from_items(
 )-> dict[str, t.Any]:
     default_key_prefix = kwargs.pop('default_key_prefix', 'unknown')
     default_value = kwargs.pop('default_value')
-    default_key = f'{default_key_prefix}_{Factory.placeholder(mod='hashed')}'
+    default_key = f'{default_key_prefix}_{Kit.Factory().placeholder(mod='hashed')}'
     
     ret = {}
     for item in data:
-        Data.set_(ret, Data.get(item, key_name, default_key), Data.get(item, value_name, default_value))
+        Kit.Data().set_(ret, Kit.Data().get(item, key_name, default_key), Kit.Data().get(item, value_name, default_value))
 
     return ret
 
@@ -424,8 +400,8 @@ def as_command_model(data: t.Mapping[str, t.Any], command: t.Optional[str] = Non
 
     ret = {
         'rc': int(to_text(data['rc'])),
-        'out': data['stdout'] if Validate.filled(data['stdout']) else None,
-        'err': data['stderr'] if Validate.filled(data['stderr']) else None,
+        'out': data['stdout'] if Kit.Validate().filled(data['stdout']) else None,
+        'err': data['stderr'] if Kit.Validate().filled(data['stderr']) else None,
         'command': command,
     }
     
@@ -433,17 +409,10 @@ def as_command_model(data: t.Mapping[str, t.Any], command: t.Optional[str] = Non
 ### END: Ansible
 
 ### BEGIN: Type
-# def to_type_name(data: t.Any)-> str:
-#     return type(data).__name__
-
-# def to_type_module(data: t.Any)-> str:
-#     return type(data).__module__
-
 def as_non_native_types(data: t.Union[t.Any, ENUMERATABLE[t.Any]])-> tuple[t.Any, ...]:
-    return tuple([item for item in to_iterable(data) if not Validate.is_type_python_native(item)])
+    return tuple([item for item in to_iterable(data) if not Kit.Validate().is_type_python_native(item)])
 
 def as_type_module_mapping(data: t.Union[t.Any, ENUMERATABLE[t.Any]]) -> list[t.Any]:
-    import inspect
     ret = []
 
     for item in to_iterable(data):
@@ -451,7 +420,7 @@ def as_type_module_mapping(data: t.Union[t.Any, ENUMERATABLE[t.Any]]) -> list[t.
             'item': item,
             'module': None,
             'src_file': None,
-            'validate': Validate.is_type_python_native(item),
+            'validate': Kit.Validate().is_type_python_native(item),
         }
         
         try:
@@ -467,18 +436,15 @@ def as_type_module_mapping(data: t.Union[t.Any, ENUMERATABLE[t.Any]]) -> list[t.
         ret.append(ret_item)
 
     return ret
-    # return [{'item': item, 'module': module, } for item in to_iterable(data)]
-    # return [{'item': item, 'module': type(item).__module__} for item in to_iterable(data)]
-    # return [{'item': item, 'module': type(item).__module__, 'class': type(item).__class__, 'class_module': type(item).__class__.__module__} for item in to_iterable(data)]
 ### END: Type
 
 ### BEGIN: Net
 def to_ip_address(data, **kwargs):
-    ph = Factory.placeholder(mod='hashed')
+    ph = Kit.Factory().placeholder(mod='hashed')
     default = kwargs.get('default', ph)
 
     try:
-        return _ipaddress().ip_address(data)
+        return ipaddress.ip_address(data)
     except Exception as e:
         if default == ph:
             raise e
@@ -486,11 +452,11 @@ def to_ip_address(data, **kwargs):
         return default
     
 def to_ip_network(data, **kwargs):
-    ph = Factory.placeholder(mod='hashed')
+    ph = Kit.Factory().placeholder(mod='hashed')
     default = kwargs.get('default', ph)
 
     try:
-        return _ipaddress().ip_network(data)
+        return ipaddress.ip_network(data)
     except Exception as e:
         if default == ph:
             raise e
@@ -498,117 +464,116 @@ def to_ip_network(data, **kwargs):
         return default
 
 def as_ip_address(data: str, **kwargs)-> str:
-    ph = Factory.placeholder(mod='hashed')
+    ph = Kit.Factory().placeholder(mod='hashed')
     default = kwargs.pop('default', ph)
     
-    addr = Str.before(data, '/')
-    proto = 'v4' if Validate.is_ip_v4(addr) else ('v6' if Validate.is_ip_v6(addr) else None)
+    addr = Kit.Str().before(data, '/')
+    proto = 'v4' if Kit.Validate().is_ip_v4(addr) else ('v6' if Kit.Validate().is_ip_v6(addr) else None)
 
-    if Validate.blank(proto):
+    if Kit.Validate().blank(proto):
         return default if default != ph else data
             
     from_network = kwargs.pop('from_network', True)
 
-    if not Validate.is_falsy(from_network):
-        if Validate.is_ip_v4(addr) and Str.after_last(addr, '.') == '0':
-            return Str.before_last(addr, '.') + '.1'
-        elif Validate.is_ip_v6(addr):
+    if not Kit.Validate().is_falsy(from_network):
+        if Kit.Validate().is_ip_v4(addr) and Kit.Str().after_last(addr, '.') == '0':
+            return Kit.Str().before_last(addr, '.') + '.1'
+        elif Kit.Validate().is_ip_v6(addr):
             if addr.endswith('::'):
-                return Str.before_last(addr, '::') + '::1'
+                return Kit.Str().before_last(addr, '::') + '::1'
             elif addr.endswith('::0'):
-                return Str.before_last(addr, '::0') + '::1'
+                return Kit.Str().before_last(addr, '::0') + '::1'
             elif addr.endswith(':0'):
-                return Str.before_last(addr, ':0') + ':1'
+                return Kit.Str().before_last(addr, ':0') + ':1'
             elif addr.endswith(':'):
-                return Str.before_last(addr, ':') + ':1'
+                return Kit.Str().before_last(addr, ':') + ':1'
     
     return addr
 
 def as_ip_segments(data: str)-> dict:
-    type_ = Ansible.utils_ipaddr(data, 'type')
+    type_ = Kit.Ansible().utils_ipaddr(data, 'type')
     type_ = 'addr' if type_ == 'address' else ('net' if type_ == 'network' else None)
     
-    net = Ansible.utils_ipaddr(data, 'network/prefix')
+    net = Kit.Ansible().utils_ipaddr(data, 'network/prefix')
     if net and data == net:
         cidr = net
-        addr = Str.before(cidr, '/')
+        addr = Kit.Str().before(cidr, '/')
         addr_net = addr
     else:
-        cidr = Ansible.utils_ipaddr(data, 'address/prefix')
-        addr = Ansible.utils_ipaddr(data, 'address')
-        addr_net = Ansible.utils_ipaddr(net, 'address') if net else None
+        cidr = Kit.Ansible().utils_ipaddr(data, 'address/prefix')
+        addr = Kit.Ansible().utils_ipaddr(data, 'address')
+        addr_net = Kit.Ansible().utils_ipaddr(net, 'address') if net else None
 
-    v4 = Ansible.utils_ipaddr(data, 'ipv4')
-    v6 = Ansible.utils_ipaddr(data, 'ipv6')
+    v4 = Kit.Ansible().utils_ipaddr(data, 'ipv4')
+    v6 = Kit.Ansible().utils_ipaddr(data, 'ipv6')
     proto = 'v6' if v6 in [data, cidr, addr] else ('v4' if v4 in [data, cidr, addr] else None)
 
-    pub = Ansible.utils_ipaddr(addr, 'public') if addr else None
-    pri = Ansible.utils_ipaddr(addr, 'private') if addr else None
+    pub = Kit.Ansible().utils_ipaddr(addr, 'public') if addr else None
+    pri = Kit.Ansible().utils_ipaddr(addr, 'private') if addr else None
 
-    size_net = Ansible.utils_ipaddr(net, 'size') if net else None
-    host_cidr = Ansible.utils_ipaddr(data, 'host/prefix')
+    size_net = Kit.Ansible().utils_ipaddr(net, 'size') if net else None
+    host_cidr = Kit.Ansible().utils_ipaddr(data, 'host/prefix')
     return {
         'raw': data,
         'type': type_,
         'addr': addr,
         'cidr': cidr,
-        'prefix': Ansible.utils_ipaddr(data, 'prefix'),
+        'prefix': Kit.Ansible().utils_ipaddr(data, 'prefix'),
         'proto': proto,
         'ctrl': {
             'v4': proto == 'v4',
             'v6': proto == 'v6',
             'pub': pub in [data, cidr, addr],
             'pri': pri in [data, cidr, addr],
-            'valid': Validate.filled(type_) and Validate.filled(proto),
+            'valid': Kit.Validate().filled(type_) and Kit.Validate().filled(proto),
         },
         'net': {
             'addr': addr_net,
             'cidr': net,
-            # 'subnet': Ansible.utils_ipaddr(net, 'subnet') if net else None,
+            # 'subnet': Kit.Ansible().utils_ipaddr(net, 'subnet') if net else None,
             'size': size_net,
-            'mask': Ansible.utils_ipaddr(net, 'netmask') if net else None,
-            'broadcast': Ansible.utils_ipaddr(net, 'broadcast') if net else None,
+            'mask': Kit.Ansible().utils_ipaddr(net, 'netmask') if net else None,
+            'broadcast': Kit.Ansible().utils_ipaddr(net, 'broadcast') if net else None,
         },
         'host': {
-            'addr': Ansible.utils_ipaddr(host_cidr, 'address') if host_cidr else None,
+            'addr': Kit.Ansible().utils_ipaddr(host_cidr, 'address') if host_cidr else None,
             'cidr': host_cidr,
         },
         'wrap': {
-            'addr': Ansible.utils_ipaddr(addr, 'wrap') if addr else None,
-            'cidr': Ansible.utils_ipaddr(cidr, 'wrap') if cidr else None,
+            'addr': Kit.Ansible().utils_ipaddr(addr, 'wrap') if addr else None,
+            'cidr': Kit.Ansible().utils_ipaddr(cidr, 'wrap') if cidr else None,
         },
         'first': {
-            'addr': Ansible.utils_ipaddr(Ansible.utils_ipaddr(net, '1'), 'address') if net else None,
-            'cidr': Ansible.utils_ipaddr(net, '1') if net else None,
-            'usable': Ansible.utils_ipaddr(net, 'first_usable') if net else None,
+            'addr': Kit.Ansible().utils_ipaddr(Kit.Ansible().utils_ipaddr(net, '1'), 'address') if net else None,
+            'cidr': Kit.Ansible().utils_ipaddr(net, '1') if net else None,
+            'usable': Kit.Ansible().utils_ipaddr(net, 'first_usable') if net else None,
         },
         'last': {
-            'addr': Ansible.utils_ipaddr(Ansible.utils_ipaddr(net, '-1'), 'address') if net else None,
-            'cidr': Ansible.utils_ipaddr(net, '-1') if net else None,
-            'usable': Ansible.utils_ipaddr(net, 'last_usable') if net else None,
+            'addr': Kit.Ansible().utils_ipaddr(Kit.Ansible().utils_ipaddr(net, '-1'), 'address') if net else None,
+            'cidr': Kit.Ansible().utils_ipaddr(net, '-1') if net else None,
+            'usable': Kit.Ansible().utils_ipaddr(net, 'last_usable') if net else None,
         },
         'range': {
-            'usable': str(Ansible.utils_ipaddr(net, 'range_usable')).split('-', 2) if net and size_net and size_net > 1 else None,
+            'usable': str(Kit.Ansible().utils_ipaddr(net, 'range_usable')).split('-', 2) if net and size_net and size_net > 1 else None,
         }
     }
 
 def as_ip_segments_validated(data, on_invalid: t.Optional[t.Callable] = None, **kwargs)-> list:
-    ret = Data.map(to_iterable(data), lambda ip_: as_ip_segments(ip_))
+    ret = Kit.Data().map(to_iterable(data), lambda ip_: as_ip_segments(ip_))
 
-    if Validate.filled(ret) and Validate.filled(on_invalid):
+    if Kit.Validate().filled(ret) and Kit.Validate().filled(on_invalid):
         for idx, item in enumerate(ret):
-            if Data.get(item, 'ctrl.valid') == True:
+            if Kit.Data().get(item, 'ctrl.valid') == True:
                 continue
             
             if on_invalid:
-                e = Utils.call(on_invalid, item, idx)
-                if Validate.is_exception(e):
+                e = Kit.Utils().call(on_invalid, item, idx)
+                if Kit.Validate().is_exception(e):
                     raise e
         
     return list(ret)
 
 def as_ip_merged_cidrs(value, action="merge"):
-    import netaddr
     if not hasattr(value, "__iter__"):
         raise ValueError("cidr_merge: expected iterable, got " + repr(value))
 
@@ -707,7 +672,7 @@ def from_base64(data: t.Any, **kwargs)-> str|bytes:
 
     ret = base64.b64decode(to_text(data), **kwargs)
 
-    if Validate.filled(decode_as):
+    if Kit.Validate().filled(decode_as):
         return ret.decode(decode_as)
     
     return ret
@@ -718,12 +683,12 @@ def to_base64(data: t.Any, **kwargs)-> str|bytes:
     encode_as = kwargs.pop('encode', 'utf-8')
     
     data = str(to_text(data))
-    if Validate.filled(encode_as):
+    if Kit.Validate().filled(encode_as):
         data = data.encode(encode_as)
     
     ret = base64.b64encode(data, **kwargs)
 
-    if Validate.filled(decode_as):
+    if Kit.Validate().filled(decode_as):
         return ret.decode(decode_as)
 
     return ret
@@ -743,19 +708,19 @@ def from_file_known_hosts(file_content: str)-> list[dict[str,str]]:
     for line in iter(str(file_content).splitlines()):
         normalised = re.sub(r'\s+', ' ', str(line).strip())
         segments = list(normalised.split(maxsplit=2))
-        hash_ = str(Data.get(segments, '0', ''))
-        type_ = str(Data.get(segments, '1', ''))
-        key_ = str(Data.get(segments, '2', ''))
+        hash_ = str(Kit.Data().get(segments, '0', ''))
+        type_ = str(Kit.Data().get(segments, '1', ''))
+        key_ = str(Kit.Data().get(segments, '2', ''))
 
-        if Validate.blank(hash_) or Validate.blank(type_) or Validate.blank(key_) or not type_.startswith('ssh-'):
+        if Kit.Validate().blank(hash_) or Kit.Validate().blank(type_) or Kit.Validate().blank(key_) or not type_.startswith('ssh-'):
             ret.append({'raw': line})
             continue
 
         if hash_.startswith('|1|'):
-            hash_segments = list(Str.chop_start(hash_, '|1|').split(sep='|', maxsplit=2))
-            hmac_key = str(Data.get(hash_segments, '0', ''))
-            hmac_hash = str(Data.get(hash_segments, '1', ''))
-            if Validate.blank(hmac_key) or Validate.blank(hmac_hash):
+            hash_segments = list(Kit.Str().chop_start(hash_, '|1|').split(sep='|', maxsplit=2))
+            hmac_key = str(Kit.Data().get(hash_segments, '0', ''))
+            hmac_hash = str(Kit.Data().get(hash_segments, '1', ''))
+            if Kit.Validate().blank(hmac_key) or Kit.Validate().blank(hmac_hash):
                 raise ValueError(f'Unable to resolve known_hosts hash [{hash_}]')
 
             item = {
@@ -785,9 +750,9 @@ def to_callable_parameters(
     ret = to_callable_signature(callback).parameters
 
     if kinds:
-        ret = Data.where(
+        ret = Kit.Data().where(
             ret, 
-            lambda param: Validate.callable_parameter_is_kind(param, *kinds),
+            lambda param: Kit.Validate().callable_parameter_is_kind(param, *kinds),
             {},
         )
 
@@ -819,8 +784,8 @@ def as_callable_segments(callback: t.Callable) -> tt.MappingProxyType[str, t.Any
         param = sig.parameters[name]
         type_ = CallableParameterTypeMap[param.kind]
         
-        has_default = Validate.callable_parameter_has(param, 'default')
-        has_annotation = Validate.callable_parameter_has(param, 'annotation')
+        has_default = Kit.Validate().callable_parameter_has(param, 'default')
+        has_annotation = Kit.Validate().callable_parameter_has(param, 'annotation')
         ret['params'].append({
             'pos': pos,
             'type': type_,
@@ -862,7 +827,7 @@ def as_callable_caller_segments(container: object, origin: str) -> tt.MappingPro
 
             for cls in ret['mros']:
                 indirect = cls.__dict__.get(item['caller_name'])
-                if Validate.filled(indirect):
+                if Kit.Validate().filled(indirect):
                     item['indirects'].append({'class': indirect.__class__, 'code': getattr(indirect, '__code__', None)})
                 
             ret['items'].append(tt.MappingProxyType(item))

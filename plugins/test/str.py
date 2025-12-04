@@ -4,8 +4,8 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.helpers import Valid
 class TestModule(object):
     def tests(self):
         return {
-            'str_starts': Validate.str_starts,
-            'str_ends': Validate.str_ends,
-            'str_contains': Validate.str_contains,
-            'str_matches': Validate.str_matches,
+            'str_starts': Kit.Validate().str_starts,
+            'str_ends': Kit.Validate().str_ends,
+            'str_contains': Kit.Validate().str_contains,
+            'str_matches': Kit.Validate().str_matches,
         }

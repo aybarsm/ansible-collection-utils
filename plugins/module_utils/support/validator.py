@@ -1,17 +1,9 @@
 import typing as t
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    _CONF, _cerberus, _convert, _data, _str, _validate
-)
+from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import CONF_, Kit
 
-Convert = _convert()
-Data = _data()
-Str = _str()
-Validate = _validate()
-BaseValidator = _cerberus().Validator
-
-class Validator(BaseValidator):
+class Validator(Kit.Cerberus().Validator):
     def __init__(self, *args, **kwargs):
-        if Validate.blank(args):
+        if Kit.Validate().blank(args):
             args = [
                 kwargs.pop('schema', {}),
                 kwargs.pop('ignore_none_values', False),
@@ -35,8 +27,8 @@ class Validator(BaseValidator):
     def _lookup_path(self, path: str, prefix: str = '^')-> set:
         path = path.strip()
         prefix = prefix.strip()
-        if Validate.filled(prefix):
-            path = Str.start(path, prefix)
+        if Kit.Validate().filled(prefix):
+            path = Kit.Str().start(path, prefix)
         
         return self._lookup_field(path) #type: ignore
     
@@ -71,12 +63,12 @@ class Validator(BaseValidator):
             mod,
             f'[{foreign_field}]',
             'field set to',
-            f'[{Convert.to_text(foreign_value)}]'
+            f'[{Kit.Convert().to_text(foreign_value)}]'
         ]
         error_message = ' '.join(error_message)
         
         if (mod == 'when' and expected_value) or (mod == 'unless' and not_expected_value):
-            if (expect_filled and not Validate.filled(value)) or (expect_blank and not Validate.blank(value)):
+            if (expect_filled and not Kit.Validate().filled(value)) or (expect_blank and not Kit.Validate().blank(value)):
                 return error_message
         
         return None
@@ -108,36 +100,36 @@ class Validator(BaseValidator):
     
     def _validate_path_exists(self, constraint, field, value):
         """{'type': 'boolean'}"""
-        if constraint is True and not Validate.fs_path_exists(value):
+        if constraint is True and not Kit.Validate().fs_path_exists(value):
             self._error(field, f"Must be an [{value}] existing path") #type: ignore
-        elif constraint is False and Validate.fs_path_exists(value):
+        elif constraint is False and Kit.Validate().fs_path_exists(value):
             self._error(field, f"Must be a [{value}] missing path") #type: ignore
     
     def _validate_file_exists(self, constraint, field, value):
         """{'type': 'boolean'}"""
-        if constraint is True and not Validate.fs_file_exists(value):
+        if constraint is True and not Kit.Validate().fs_file_exists(value):
             self._error(field, f"Must be an [{value}] existing file") #type: ignore
-        elif constraint is False and Validate.fs_file_exists(value):
+        elif constraint is False and Kit.Validate().fs_file_exists(value):
             self._error(field, f"Must be a [{value}] missing file") #type: ignore
     
     def _validate_dir_exists(self, constraint, field, value):
         """{'type': 'boolean'}"""
-        if constraint is True and not Validate.fs_dir_exists(value):
+        if constraint is True and not Kit.Validate().fs_dir_exists(value):
             self._error(field, f"Must be an [{value}] existing directory") #type: ignore
-        elif constraint is False and Validate.fs_dir_exists(value):
+        elif constraint is False and Kit.Validate().fs_dir_exists(value):
             self._error(field, f"Must be a [{value}] missing directory") #type: ignore
     
     def _exec_validate_regex(self, value, key_: str)-> bool:
         if not isinstance(value, str):
             return False
         
-        return bool(_CONF['regex'][key_].match(value))
+        return bool(CONF_['regex'][key_].match(value))
         
     def _exec_validate_type_ip(self, value, version: t.Literal[4, 6, 46], type_: t.Literal['address', 'subnet', ''] = '')-> bool:
         if not isinstance(value, str):
             return False
         
-        suffix = f'_{type_}' if Validate.filled(type_) else ''
+        suffix = f'_{type_}' if Kit.Validate().filled(type_) else ''
         keys = [f'ipv4{suffix}', f'ipv6{suffix}'] if version == 46 else [f'ipv{str(version)}{suffix}']
         
         for key_ in keys:
@@ -188,7 +180,7 @@ class Validator(BaseValidator):
 
     def error_message(self) -> str:
         parts = []
-        for key_name, error in (Data.dot(self.errors)).items(): #type: ignore
+        for key_name, error in (Kit.Data().dot(self.errors)).items(): #type: ignore
             parts.append(f'{key_name}: {error}')
         
         return ' | '.join(parts)

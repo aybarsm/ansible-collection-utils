@@ -1,160 +1,167 @@
-import enum
 import typing as t
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    ENUMERATABLE
+import functools
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.types import (
+    T, ENUMERATABLE
 )
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    _convert, _factory, _str, _utils, _validate, _pydash
-)
+from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Kit
 
-Convert = _convert()
-Factory = _factory()
-Str = _str()
-Utils = _utils()
-Validate = _validate()
+### BEGIN: Arrays
+@functools.wraps(Kit.Pydash.chunk)
+def chunk(data, size: int = 1) -> t.List[t.Sequence[t.Any]]:
+    return Kit.Pydash.chunk(data, size)
 
-def pydash():
-    return _pydash()
+@functools.wraps(Kit.Pydash.compact)
+def compact(data) -> t.List[t.Any]:
+    return Kit.Pydash.compact(data)
 
-def collections():
-    return _pydash().collections
+@functools.wraps(Kit.Pydash.concat)
+def concat(*data) -> t.List[t.Any]:
+    return Kit.Pydash.concat(*data)
+### END: Arrays
 
-# def filter_flex(
-#     data: t.Any,
-#     **kwargs
-# ) -> t.Any:
-#     ph = Factory.placeholder()
-#     is_filled = kwargs.pop('filled', ph) != ph
-#     is_unique = kwargs.pop('unique', ph)
+### BEGIN: Locate
+@functools.wraps(Kit.Pydash.find)
+def find(data, predicate) -> t.Any:
+    return Kit.Pydash.find(data, predicate)
 
-#     if Validate.is_enumeratable(data):
-#         ret = []
-#         for key, value in enumerate(data):
-#             if is_filled and Validate.blank(value):
-#                 continue         
+@functools.wraps(Kit.Pydash.find_last)
+def find_last(data, predicate) -> t.Any:
+    return Kit.Pydash.find_last(data, predicate)
 
-def get(data: t.Iterable[t.Any], key: int|str, default: t.Any = None)-> t.Any:
-    if not str(key) == '*' and not Validate.str_contains(str(key), '.*', '*.'):
-        return pydash().get(data, key, default)
+@functools.wraps(Kit.Pydash.find_key)
+def find_key(data, predicate) -> t.Any:
+    return Kit.Pydash.find_key(data, predicate)
+
+@functools.wraps(Kit.Pydash.find_last_key)
+def find_last_key(data, predicate) -> t.Any:
+    return Kit.Pydash.find_last_key(data, predicate)
+
+@functools.wraps(Kit.Pydash.find_index)
+def find_index(data, predicate) -> t.Any:
+    return Kit.Pydash.find_index(data, predicate)
+
+@functools.wraps(Kit.Pydash.find_last_index)
+def find_last_index(data, predicate) -> t.Any:
+    return Kit.Pydash.find_last_index(data, predicate)
+### END: Locate
+
+@functools.wraps(Kit.Pydash.get)
+def get(data, key, default = None) -> t.Any:
+    if not str(key) == '*' and not Kit.Validate().str_contains(str(key), '.*', '*.'):
+        return Kit.Pydash.get(data, key, default)
     
     skip_ = []
-    ret = Convert.as_copied(data)
+    ret = Kit.Convert().as_copied(data)
     segments = str(key).strip('.').split('.')
     for idx_, segment in enumerate(segments):
         if idx_ in skip_:
             continue
         
-        if segment == '*' and len(segments) > 1 and idx_ < len(segments) - 1 and segments[idx_ + 1] != '*' and Validate.is_iterable_of_not_mappings(ret):
+        if segment == '*' and len(segments) > 1 and idx_ < len(segments) - 1 and segments[idx_ + 1] != '*' and Kit.Validate().is_iterable_of_not_mappings(ret):
             _flatten = flatten(ret, levels=1)
-            if Validate.is_iterable_of_mappings(_flatten):
+            if Kit.Validate().is_iterable_of_mappings(_flatten):
                 ret = _flatten
 
             ret = pluck(ret, segments[idx_ + 1])
             skip_.append(idx_ + 1)
-        elif segment == '*' and Validate.is_mapping(ret):
+        elif segment == '*' and Kit.Validate().is_mapping(ret):
             ret = list(dict(ret).values())
-        elif segment != '*' and Validate.is_iterable_of_mappings(ret):
+        elif segment != '*' and Kit.Validate().is_iterable_of_mappings(ret):
             ret = pluck(ret, segment)
-        elif segment != '*' and Validate.is_mapping(ret):
-            ret = Convert.as_copied(pydash().get(ret, segment))       
+        elif segment != '*' and Kit.Validate().is_mapping(ret):
+            ret = Kit.Convert().as_copied(Kit.Pydash.get(ret, segment))       
         elif segment == '*':
             ret = flatten(ret, levels=1)
         
-        if idx_ <= len(segments) - 1 and not Validate.is_iterable(ret):
+        if idx_ <= len(segments) - 1 and not Kit.Validate().is_iterable(ret):
             ret = default
             break
 
     return ret
 
-def set_(data: t.Iterable[t.Any], key: str, value: t.Any)-> t.Any:
-    return pydash().set_(data, key, value) #type: ignore
+@functools.wraps(Kit.Pydash.set_)
+def set_(data, key, value: t.Any) -> t.Any:
+    return Kit.Pydash.set_(data, key, value)
 
-def has(data: t.Any, key)-> bool:
-    return pydash().has(data, key)
+@functools.wraps(Kit.Pydash.has)
+def has(data, key) -> bool:
+    return Kit.Pydash.has(data, key)
 
-def forget(data: t.Iterable[t.Any], *args: str)-> t.Any:
+@functools.wraps(Kit.Pydash.unset)
+def unset(data, *args) -> t.Any:
     for key_ in args:
-        pydash().unset(data, key_) #type: ignore
+        Kit.Pydash.unset(data, key_)
     
-    return data #type: ignore
+    return data
 
-def pluck(data, key: int|str, **kwargs) -> list[t.Any]:
-    ph = Factory.placeholder()
+@functools.wraps(Kit.Pydash.pluck)
+def pluck(data, key, **kwargs) -> t.List[t.Any]:
+    ph = Kit.Factory().placeholder()
     is_filled = kwargs.pop('filled', ph) != ph
     is_unique = kwargs.pop('unique', ph)
 
-    ret = pydash().pluck(data, key)
+    ret = Kit.Pydash.pluck(data, key)
     if is_filled:
-        ret = [item for item in ret if Validate.filled(item)]
+        ret = [item for item in ret if Kit.Validate().filled(item)]
     
     if is_unique != ph:
-        ret = unique(ret, is_unique)
+        ret = uniq(ret, is_unique)
     
     return ret  
-
-def unique(
-    data: ENUMERATABLE[t.Any],
+    
+@functools.wraps(Kit.Pydash.uniq)
+def uniq(
+    data: ENUMERATABLE[T],
     by: t.Optional[t.Union[t.Literal[True], str, ENUMERATABLE[str], t.Callable]] = None,
-) -> list[t.Any]:
+) -> list[T]:
     ret = []
     seen = set()
 
     for key, value in enumerate(data):
-        hash_ = Convert.as_hash(key, value, by)
+        hash_ = Kit.Convert().as_hash(key, value, by)
         if hash_ not in seen:
             ret.append(value)
             seen.add(hash_)
     
     return ret
 
-def unique_by(
-    data: ENUMERATABLE[t.Any],
-    by: t.Optional[t.Union[t.Literal[True], str, ENUMERATABLE[str], t.Callable]] = None,
-) -> list[t.Any]:
-    return unique(data, by)
+@functools.wraps(Kit.Pydash.invert)
+def invert(data) -> t.Any:
+    return Kit.Pydash.invert(data)
 
-def invert(data):
-    return pydash().invert(data)
+@functools.wraps(Kit.Pydash.map_)
+def walk(data, iteratee):
+    return Kit.Pydash.collections.map_(data, iteratee)
 
-def flip(data):
-    return invert(data)
+@functools.wraps(Kit.Pydash.map_values_deep)
+def walk_values_deep(data, iteratee):
+    return Kit.Pydash.map_values_deep(data, iteratee)
 
-def walk(data: t.Iterable[t.Any], callback = t.Callable):
-    return collections().map_(data, callback)
+@functools.wraps(Kit.Pydash.difference)
+def difference(data, *others, **kwargs)-> t.List[t.Any]:
+    if Kit.Validate().blank(kwargs):
+        return Kit.Pydash.difference_with(data, *others)
+    else:
+        return Kit.Pydash.difference_by(data, *others, **kwargs)
 
-def walk_values_deep(data: t.Iterable[t.Any], callback = t.Callable):
-    return pydash().map_values_deep(data, callback)
-
-def _sequence_a_b(a: t.Sequence[t.Any], b: t.Sequence[t.Any], callback: t.Callable, *args: t.Sequence[t.Any])-> list:
-    if not Validate.is_sequence(a) or not Validate.is_sequence(b):
-        raise ValueError('Invalid sequence type')
-    
-    ret = Utils.call(callback, a, b)
-    for seq in args:
-        if not Validate.is_sequence(seq):
-            raise ValueError('Invalid sequence type')
-        
-        ret = Utils.call(callback, ret, seq)
-    
-    return list(ret)
-
-def difference(a: t.Sequence[t.Any], b: t.Sequence[t.Any], *args: t.Sequence[t.Any])-> list:
-    return _sequence_a_b(a, b, lambda seq_a, seq_b: set(seq_a) - set(seq_b), *args) #type: ignore
-
-def intersect(a: t.Sequence, b: t.Sequence, *args: t.Sequence)-> list:
-    return _sequence_a_b(a, b, lambda seq_a, seq_b: set(seq_a) & set(seq_b), *args) #type: ignore
+@functools.wraps(Kit.Pydash.intersection)
+def intersection(data, *others, **kwargs)-> t.List[t.Any]:
+    if Kit.Validate().blank(kwargs):
+        return Kit.Pydash.intersection_with(data, *others)
+    else:
+        return Kit.Pydash.intersection_by(data, *others, **kwargs)
 
 def _append_or_prepend(data: t.Iterable[t.Any], key: str, value: t.Any, is_prepend: bool, **kwargs) -> t.Iterable[t.Any]:
     is_extend = kwargs.pop('extend', False)
     is_unique = kwargs.pop('unique', False)
     is_sorted = kwargs.pop('sort', False)
     
-    if Validate.is_mapping(data) or Validate.filled(key):
-        current = Convert.as_copied(list(get(data, key, [])))
+    if Kit.Validate().is_mapping(data) or Kit.Validate().filled(key):
+        current = Kit.Convert().as_copied(list(get(data, key, [])))
     else:
-        current = Convert.as_copied(list(data))
+        current = Kit.Convert().as_copied(list(data))
     
-    for item in Convert.to_iterable(value):
+    for item in Kit.Convert().to_iterable(value):
         if is_prepend:
             current.insert(0, item)
         else:
@@ -169,7 +176,7 @@ def _append_or_prepend(data: t.Iterable[t.Any], key: str, value: t.Any, is_prepe
     if is_sorted:
         current = list(sorted(current))
         
-    if Validate.is_mapping(data) or Validate.filled(key):
+    if Kit.Validate().is_mapping(data) or Kit.Validate().filled(key):
         set_(data, key, current)
     else:
         data = current
@@ -183,23 +190,23 @@ def prepend(data: t.Iterable[t.Any], key: str, value: t.Any, **kwargs) -> t.Iter
     return _append_or_prepend(data, key, value, True, **kwargs)
 
 def dot(data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], prepend='', **kwargs)-> dict:
-    is_main = Validate.blank(prepend)
-    is_main_mapping = is_main and Validate.is_mapping(data)
+    is_main = Kit.Validate().blank(prepend)
+    is_main_mapping = is_main and Kit.Validate().is_mapping(data)
     if is_main_mapping:
         data = undot(data) #type: ignore
 
     ret = {}
-    if Validate.is_sequence(data):
+    if Kit.Validate().is_sequence(data):
         for key, value in enumerate(data):
             new_key = f"{prepend}{str(key)}"
-            if value and (Validate.is_mapping(value) or Validate.is_sequence(value)):
+            if value and (Kit.Validate().is_mapping(value) or Kit.Validate().is_sequence(value)):
                 ret.update(dot(value, new_key + '.'))
             else:
                 ret[new_key] = value
-    elif Validate.is_mapping(data):
+    elif Kit.Validate().is_mapping(data):
         for key, value in data.items(): #type: ignore
             new_key = f"{prepend}{key}"
-            if value and (Validate.is_mapping(value) or Validate.is_sequence(value)):
+            if value and (Kit.Validate().is_mapping(value) or Kit.Validate().is_sequence(value)):
                 ret.update(dot(value, new_key + '.'))
             else:
                 ret[new_key] = value
@@ -215,7 +222,7 @@ def dot(data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], prepend='', *
 def undot(data: t.Mapping)-> dict:
     import re
     data = dict(data)
-    if Validate.blank(data):
+    if Kit.Validate().blank(data):
         return data
     
     done = []
@@ -225,12 +232,12 @@ def undot(data: t.Mapping)-> dict:
             continue
         
         done_iter = [key]
-        if Validate.is_mapping(value):
+        if Kit.Validate().is_mapping(value):
             set_(ret, key, undot(value))
         elif '.' not in str(key):
             ret[key] = value
-        elif Validate.str_is_int(Str.after_last(key, '.')):
-            primary = Str.before_last(key, '.')
+        elif Kit.Validate().str_is_int(Kit.Str().after_last(key, '.')):
+            primary = Kit.Str().before_last(key, '.')
             pattern = '^' + re.escape(primary) + '\\.(\\d+)$'
             pattern = re.compile(pattern)
             seq_keys = [seq_key for seq_key in data.keys() if seq_key not in done and pattern.match(seq_key)]
@@ -255,7 +262,7 @@ def sort_keys_char_count(
     
     asc = kwargs.pop('asc', True)
     raw = kwargs.pop('raw', False)
-    if Validate.is_mapping(data):
+    if Kit.Validate().is_mapping(data):
         ret = sorted(dict(data).items(), key=lambda item: item[0].count(char)) #type: ignore
     else:
         ret = sorted([item for item in list(data)], key=lambda s: s.count(char))
@@ -266,7 +273,7 @@ def sort_keys_char_count(
     if raw:
         return ret #type: ignore
     
-    if Validate.is_mapping(data):
+    if Kit.Validate().is_mapping(data):
         return dict(ret) #type: ignore
     else:
         return list(ret)
@@ -277,11 +284,11 @@ def dot_sort_keys(
 )-> dict|list:
     return sort_keys_char_count(data, '.', **kwargs)
 
-def filled(data: t.Iterable[t.Any], key: str, **kwargs)-> bool:
-    return Validate.filled(get(data, key, **kwargs))
+def filled(data: t.Iterable[t.Any], key: str, **kwargs) -> bool:
+    return Kit.Validate().filled(get(data, key, **kwargs))
 
-def blank(data: t.Iterable[t.Any], key: str, **kwargs)-> bool:
-    return Validate.blank(get(data, key, **kwargs))
+def blank(data: t.Iterable[t.Any], key: str, **kwargs) -> bool:
+    return Kit.Validate().blank(get(data, key, **kwargs))
 
 def where(
     data: t.Iterable[t.Any], 
@@ -303,14 +310,14 @@ def where(
     if is_filled and is_blank:
         raise ValueError('Filled and blank cannot be searched at the same time.')
 
-    if Validate.blank(data):
+    if Kit.Validate().blank(data):
         return default
     
-    is_mapping = Validate.is_mapping(data)
-    data = Convert.to_iterable(data)    
+    is_mapping = Kit.Validate().is_mapping(data)
+    data = Kit.Convert().to_iterable(data)    
     
-    if Validate.is_mapping(callback):
-        callback = Convert.from_mapping_to_callable(dict(callback), **kwargs) #type: ignore
+    if Kit.Validate().is_mapping(callback):
+        callback = Kit.Convert().from_mapping_to_callable(dict(callback), **kwargs) #type: ignore
     
     if is_first and not callback:
         if not is_mapping:
@@ -321,7 +328,7 @@ def where(
     ret = []
 
     for key_, val_ in data[0].items() if is_mapping else enumerate(data):
-        res = Utils.call(callback, val_, key_) #type: ignore
+        res = Kit.Utils().call(callback, val_, key_) #type: ignore
         if is_negate:
             res = not res
         
@@ -333,7 +340,7 @@ def where(
         elif not is_mapping:
             ret.append(val_)
         else:
-            if Validate.blank(ret):
+            if Kit.Validate().blank(ret):
                 ret.append({})
             
             ret[0][key_] = val_
@@ -341,7 +348,7 @@ def where(
         if is_first:
             break
 
-    if Validate.blank(ret):
+    if Kit.Validate().blank(ret):
         return default
     
     if is_first or is_last:
@@ -386,7 +393,7 @@ def last(
 
 def first_filled(*args: t.Any, default: t.Any = None)-> t.Any:
     for data in args:
-        if Validate.filled(data):
+        if Kit.Validate().filled(data):
             return data
     
     return default
@@ -401,19 +408,19 @@ def only_with(
     is_no_dot = kwargs.pop('no_dot', False)
     is_filled = kwargs.pop('filled', False)
 
-    ph = Factory.placeholder(mod='hashed')
+    ph = Kit.Factory().placeholder(mod='hashed')
     default_missing = kwargs.pop('default_missing', ph)
     default_blank = kwargs.pop('default_blank', ph)
 
-    is_mapping = Validate.is_mapping(data)
-    data = Convert.to_pydash(data)
+    is_mapping = Kit.Validate().is_mapping(data)
+    data = Kit.Convert().to_pydash(data)
     
     ret = []
-    for item in Convert.to_iterable(data):
-        keys = Convert.as_copied(list(args))
+    for item in Kit.Convert().to_iterable(data):
+        keys = Kit.Convert().as_copied(list(args))
         
         meta_keys = [meta_key for meta_key in item.keys() if str(meta_key).startswith('_')] if is_meta else []
-        if Validate.filled(meta_keys):
+        if Kit.Validate().filled(meta_keys):
             keys.extend(meta_keys)
 
         new_item = {}
@@ -427,7 +434,7 @@ def only_with(
                 else:
                     continue
             
-            is_value_filled = not is_filled or ((is_no_dot and Validate.filled(item[key])) or (not is_no_dot and Validate.filled(get(item, key))))
+            is_value_filled = not is_filled or ((is_no_dot and Kit.Validate().filled(item[key])) or (not is_no_dot and Kit.Validate().filled(get(item, key))))
             if not is_value_filled:
                 if default_blank != ph:
                     new_value = default_blank
@@ -438,9 +445,9 @@ def only_with(
             new_key = str(key).lstrip('_') if is_key_meta and is_meta_fix else key
             
             if is_no_dot:
-                new_item[new_key] = Convert.as_copied(new_value)
+                new_item[new_key] = Kit.Convert().as_copied(new_value)
             else:
-                set_(new_item, new_key, Convert.as_copied(new_value))
+                set_(new_item, new_key, Kit.Convert().as_copied(new_value))
         
         ret.append(new_item)
     
@@ -456,26 +463,26 @@ def all_except(
     is_no_dot = kwargs.pop('no_dot', False)
     is_blank = kwargs.pop('blank', False)
 
-    is_mapping = Validate.is_mapping(data)
-    data = Convert.to_pydash(data)
+    is_mapping = Kit.Validate().is_mapping(data)
+    data = Kit.Convert().to_pydash(data)
     ret = []
 
-    for item in Convert.to_iterable(data):
+    for item in Kit.Convert().to_iterable(data):
         keys = list(args)
         
         exclude_keys = [exc_key for exc_key in item.keys() if str(exc_key).startswith('_')] if is_meta else []
-        if Validate.filled(exclude_keys):
+        if Kit.Validate().filled(exclude_keys):
             keys.extend(exclude_keys)
         
         if is_omitted or is_blank:
-            exclude_value_keys = [exc_key for exc_key, exc_value in item.items() if (is_omitted and Validate.is_ansible_omitted(exc_value)) or (is_blank and Validate.blank(exc_value))]
+            exclude_value_keys = [exc_key for exc_key, exc_value in item.items() if (is_omitted and Kit.Validate().is_ansible_omitted(exc_value)) or (is_blank and Kit.Validate().blank(exc_value))]
         else:
             exclude_value_keys = []
         
-        if Validate.filled(exclude_value_keys):
+        if Kit.Validate().filled(exclude_value_keys):
             keys.extend(exclude_value_keys)
 
-        new_item = Convert.as_copied(item)
+        new_item = Kit.Convert().as_copied(item)
         
         for key in keys:
             key_exists = (is_no_dot and key in item) or (not is_no_dot and has(item, key))
@@ -485,7 +492,7 @@ def all_except(
             if is_no_dot:
                 del new_item[key]
             else:
-                forget(new_item, key)
+                unset(new_item, key)
         
         ret.append(new_item)
     
@@ -496,7 +503,7 @@ def flatten(data, levels=None, skip_nulls=True):
     for element in data:
         if skip_nulls and element in (None, 'None', 'null'):
             continue
-        elif Validate.is_sequence(element):
+        elif Kit.Validate().is_sequence(element):
             if levels is None:
                 ret.extend(flatten(element, skip_nulls=skip_nulls))
             elif levels >= 1:
@@ -509,7 +516,7 @@ def flatten(data, levels=None, skip_nulls=True):
     return ret
 
 def merge_hash(x, y, recursive=True, list_merge='replace'):
-    Validate.require_mutable_mappings(x, y)
+    Kit.Validate().require_mutable_mappings(x, y)
     
     if x == {} or x == y:
         return y.copy()
@@ -564,7 +571,7 @@ def combine(*args, **kwargs):
 
     dicts = flatten(args, levels=1)
 
-    if Validate.blank(dicts):
+    if Kit.Validate().blank(dicts):
         return {}
 
     if len(dicts) == 1:
@@ -588,21 +595,21 @@ def combine_match(
     is_prepare = kwargs.pop('prepare', False)
     ret = []
 
-    for item in Convert.to_iterable(items):
+    for item in Kit.Convert().to_iterable(items):
         pattern = get(item, attribute)
-        if not Validate.is_string(pattern) or Validate.blank(pattern):
+        if not Kit.Validate().is_string(pattern) or Kit.Validate().blank(pattern):
             continue
             
         if is_prepare:
-            pattern = Str.wrap(pattern, '^', '$')
+            pattern = Kit.Str().wrap(pattern, '^', '$')
             
         if re.match(rf"{pattern}", data):
             ret.append(item)
     
-    if Validate.filled(args):
+    if Kit.Validate().filled(args):
         ret.extend(list(args))
     
-    ret = [Convert.to_safe_json(item) if Validate.is_ansible_mapping(item) else item for item in ret]
+    ret = [Kit.Convert().to_safe_json(item) if Kit.Validate().is_ansible_mapping(item) else item for item in ret]
 
     return combine(*ret, **kwargs)
 
@@ -610,24 +617,24 @@ def map(
     data: ENUMERATABLE[t.Any], 
     callback: t.Callable, 
 )-> list:
-    return [Utils.call(callback, val_, key_) for key_, val_ in enumerate(data)]
+    return [Kit.Utils().call(callback, val_, key_) for key_, val_ in enumerate(data)]
 
 def keys(
     data: t.Iterable[t.Any],
     **kwargs
 )-> t.Any:
     ret = []
-    is_mapping = Validate.is_mapping(data)
+    is_mapping = Kit.Validate().is_mapping(data)
     replace = kwargs.pop('replace', {})
     
     no_dot = kwargs.pop('no_dot', False)
-    ph = Factory.placeholder(mod='hashed')
+    ph = Kit.Factory().placeholder(mod='hashed')
 
-    for item in Convert.to_iterable(data):
-        item_new = Convert.as_copied(item)
+    for item in Kit.Convert().to_iterable(data):
+        item_new = Kit.Convert().as_copied(item)
     
         for replacement in replace.get('keys', []):
-            if not Validate.is_sequence(replacement) or len(replacement) < 2:
+            if not Kit.Validate().is_sequence(replacement) or len(replacement) < 2:
                 raise ValueError('Key replacement requires at least 2 elements')
         
             key_from = replacement[0]
@@ -655,92 +662,26 @@ def keys(
             else:
                 set_(item_new, key_to, value_new)
 
-            if key_exists and not Validate.is_falsy(replace.get('remove_replaced', True)):
+            if key_exists and not Kit.Validate().is_falsy(replace.get('remove_replaced', True)):
                 if no_dot:
                     del item_new[key_from]
                 else:
-                    forget(item_new, key_from)
+                    unset(item_new, key_from)
             
         ret.append(item_new)
 
     return ret[0] if is_mapping else ret
 
-# def walk_recursive(
-#     data: t.Mapping[t.Any, t.Any]|t.Sequence[t.Any],
-#     callback = t.Callable
-# )-> dict|list:
-#     if Validate.is_mapping(data):
-#         ret = {}
-#         for key_, value_ in dict(data).items():
-#             if Validate.is_mapping(data) or Validate.is_sequence(value_):
-#                 ret[key_] = walk_recursive(value_, callback)
-#             else:
-#                 ret[key_] = Utils.call(callback, value_, key_)
-#     elif Validate.is_sequence(data):
-#         ret = []
-#         for idx_, value_ in enumerate(list(data)):
-#             if Validate.is_mapping(data) or Validate.is_sequence(value_):
-#                 ret.append(walk_recursive(value_, callback))
-#             else:
-#                 ret.append(Utils.call(callback, value_, idx_))
+# BEGIN: Aliases
+forget: t.Callable = unset
+flip: t.Callable = invert
+unique: t.Callable = uniq
+unique_by: t.Callable = uniq
+difference_with: t.Callable = intersection
+difference_by: t.Callable = intersection
+intersect: t.Callable = intersection
+intersect_with: t.Callable = intersection
+intersect_by: t.Callable = intersection
 
-#     return ret
-
-# def dot_sort_keys(
-#         data: t.Union[t.Sequence[str], t.Mapping[str, t.Any]],
-#         **kwargs
-#     )-> dict|list:
-    
-#     asc = kwargs.pop('asc', True)
-#     asc_keys = kwargs.pop('asc_keys', True)
-#     raw = kwargs.pop('raw', False)
-
-#     if Validate.is_mapping(data):
-#         data = dot(undot(data)) #type: ignore
-#         keys = data.keys()
-#     else:
-#         keys = data
-    
-#     counted = {}
-#     for key_ in keys:
-#         key_ = str(key_)
-#         count_key = str(key_.count('.'))
-#         if count_key not in counted:
-#             counted[count_key] = [key_]
-#         else:
-#             counted[count_key].append(key_)
-    
-#     return sorted(counted.items()) if asc else reversed(sorted(counted.items()))
-    # for count_, key_ in sorted(counted.items()) if asc else reversed(sorted(counted.items())):
-
-
-
-    # ret = {}
-    # for key_, value_ in iterate:
-    #     count_key = str(str(key_ if is_mapping else value_).count('.'))
-        
-    #     if count_key not in ret:
-    #         ret[count_key] = {} if is_mapping else []
-        
-
-        
-        
-    # if Validate.is_mapping(data):
-        
-    # else:
-
-    # if Validate.is_mapping(data):
-    #     ret = sorted(dict(data).items(), key=lambda item: item[0].count('.'))
-    # else:
-    #     ret = sorted([item for item in list(data)], key=lambda s: s.count('.'))
-
-    # if not asc:
-    #     ret = reversed(ret)
-    
-    # if raw:
-    #     return ret # type: ignore
-    
-    # if Validate.is_mapping(data):
-    #     return dict(ret)
-    # else:
-    #     return list(ret)
+select = t.Callable = where
+# END: Aliases

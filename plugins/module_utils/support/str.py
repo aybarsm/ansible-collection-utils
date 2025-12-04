@@ -1,16 +1,10 @@
 import typing as t
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    _convert, _data, _factory, _validate
-)
-
-Convert = _convert()
-Data = _data()
-Factory = _factory()
-Validate = _validate()
+import re
+from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Kit
 
 ### BEGIN: Locate
 def find(data: str, needle: str, reverse: bool = False, before: bool = True, **kwargs) -> str:
-    ph = Factory.placeholder(mod='hashed')
+    ph = Kit.Factory().placeholder(mod='hashed')
     default = str(kwargs.pop('default', ph))
 
     index = data.rfind(needle) if reverse else data.find(needle)
@@ -29,8 +23,7 @@ def after(data: str, needle: str, **kwargs)-> str:
 def after_last(data: str, needle: str, **kwargs)-> str:
     return find(data, needle, reverse = True, before = False, **kwargs)
 
-def matches(data: str|t.Sequence[str], patterns: str|t.Sequence[str], **kwargs)-> list[str]|str:
-    import re
+def matches(data: str|t.Sequence[str], patterns: str|t.Sequence[str], **kwargs)-> list[str]|str:    
     is_cli = kwargs.get('cli', False) == True
     is_all = kwargs.get('all', False) == True
     is_prepare = kwargs.get('prepare', False) == True
@@ -38,16 +31,16 @@ def matches(data: str|t.Sequence[str], patterns: str|t.Sequence[str], **kwargs)-
     is_escape_pattern = kwargs.get('escape_pattern', False) == True
     is_first = kwargs.get('first', False) == True
     
-    data = Convert.to_iterable(data)
-    patterns = Convert.to_iterable(patterns)
+    data = Kit.Convert().to_iterable(data)
+    patterns = Kit.Convert().to_iterable(patterns)
     
-    if Validate.blank(patterns):
+    if Kit.Validate().blank(patterns):
         return []
     
     if is_cli:
-        patterns = Data.flatten(Data.map(
+        patterns = Kit.Data().flatten(Kit.Data().map(
             patterns,
-            lambda entry: Convert.from_cli(entry, iterable=True, stripped=True)
+            lambda entry: Kit.Convert().from_cli(entry, iterable=True, stripped=True)
         ))
     
     ret = []
@@ -71,10 +64,10 @@ def matches(data: str|t.Sequence[str], patterns: str|t.Sequence[str], **kwargs)-
             elif is_all and not res:
                 break
         
-        if is_first and Validate.filled(ret):
+        if is_first and Kit.Validate().filled(ret):
             break
     
-    if is_first and Validate.filled(ret):
+    if is_first and Kit.Validate().filled(ret):
         return ret[0]
 
     return ret
@@ -118,14 +111,12 @@ def chop_end(data: str, *args: str)-> str:
     return data
 
 def escape_quotes(haystack: str, double: bool = True)-> str:
-    import re
     if double:
         return re.sub(r'(?<!\\)"', r'\"', haystack)
     else:
         return re.sub(r"(?<!\\)'", r"\'", haystack)
 
 def remove_empty_lines(data: str) -> str:
-    import re
     return re.sub(r'(\n\s*){2,}', '\n', re.sub(r'^\s*[\r\n]+|[\r\n]+\s*\Z', '', data))
 
 def pad(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
@@ -134,14 +125,14 @@ def pad(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
         raise ValueError(f'Invalid padding type [{padding}]. Available: left, right, both')
 
     count = max([count, 0])
-    data = str(Convert.to_text(data))
+    data = str(Kit.Convert().to_text(data))
     is_strip = kwargs.pop('strip', True)
     is_dent = kwargs.pop('dent', False)
 
-    if not Validate.is_falsy(is_strip):
+    if not Kit.Validate().is_falsy(is_strip):
         data = data.strip()
             
-    if Validate.is_truthy(is_dent):
+    if Kit.Validate().is_truthy(is_dent):
         padding = 'left' if padding == 'right' else ('right' if padding == 'left' else padding)
         count += len(data)
     
@@ -182,7 +173,6 @@ def repeat(data: str, times: int = 1, as_list: bool = False) -> list[str]|str:
 
 ### BEGIN: Cases
 def case_snake(data: str) -> str:
-    import re
     ret = data.replace('-', ' ')
     ret = re.sub(r'([A-Z]+)', r' \1', ret)
     ret = re.sub(r'([A-Z][a-z]+)', r' \1', ret)

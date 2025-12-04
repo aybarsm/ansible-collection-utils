@@ -1,10 +1,7 @@
 import typing as t
 import typing_extensions as te
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.definitions import (
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
     dataclass, model_field, GenericStatus, BaseModel, IdMixin, StatusMixin, CallableMixin
-)
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    _convert
 )
 
 AbortWhenCallback = t.Callable[..., bool]
@@ -34,7 +31,7 @@ class Pipe(BaseModel, IdMixin, StatusMixin, CallableMixin):
             return self
         
         if not is_final and type(self.last) == type(self.context):
-            self.context = _convert().as_copied(self.last)
+            self.context = self.last
 
         return self
     

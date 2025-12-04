@@ -50,8 +50,8 @@ class ActionModule(ActionBase):
                 ret[module_] = []
 
             for args_ in exec_:
-                args_meta = Data.only_with(args_, meta=True)
-                args_ = Data.all_except(args_, meta=True)
+                args_meta = Kit.Data().only_with(args_, meta=True)
+                args_ = Kit.Data().all_except(args_, meta=True)
 
                 result = self._execute_module(
                     module_name=module_,
@@ -59,14 +59,14 @@ class ActionModule(ActionBase):
                     task_vars=task_vars
                 )
 
-                if Validate.filled(args_meta):
-                    invocation_args = Data.get(result, 'invocation.module_args', {})
-                    Data.set(result, 'invocation.module_args', Data.combine(args_meta, invocation_args, recursive=True))
+                if Kit.Validate().filled(args_meta):
+                    invocation_args = Kit.Data().get(result, 'invocation.module_args', {})
+                    Kit.Data().set(result, 'invocation.module_args', Kit.Data().combine(args_meta, invocation_args, recursive=True))
 
                 ret[module_].append(result)
-                is_changed = Validate.truthy(Data.get(result, 'changed'))
+                is_changed = Kit.Validate().truthy(Kit.Data().get(result, 'changed'))
 
-                if Validate.truthy(Data.get(result, 'failed')):
-                    raise AnsibleActionFail(f'[{module_}]: {Data.get(result, 'msg', '')}')
+                if Kit.Validate().truthy(Kit.Data().get(result, 'failed')):
+                    raise AnsibleActionFail(f'[{module_}]: {Kit.Data().get(result, 'msg', '')}')
         
         return {'changed': is_changed, 'result': ret}

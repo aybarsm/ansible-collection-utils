@@ -1,17 +1,10 @@
 import typing as t
 import inspect, asyncio
 from pathlib import Path as PathlibPath
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.aggregator import (
-    _CONF, _convert, _data, _str, _utils
+from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import CONF_, Kit
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.types import (
+    CallableParameterKindMap, CallableParameterKind, CallableParameterHas
 )
-from ansible_collections.aybarsm.utils.plugins.module_utils.helpers.types import (
-    ENUMERATABLE, CallableParameterKindMap, CallableParameterKind, CallableParameterHas, PositiveInt
-)
-
-Convert = _convert()
-Data = _data()
-Str = _str()
-Utils = _utils()
 
 ### BEGIN: Data
 def is_blank(data: t.Any)-> bool:
@@ -42,10 +35,10 @@ def filled(data: t.Any, **kwargs)-> bool:
     return is_filled(data) and (not is_filled(type_) or is_type_name(data, type_))
 
 def is_truthy(data: t.Any)-> bool:
-    return Convert.to_string(data).lower() in ('y', 'yes', 'on', 'true', '1', '1.0', 1, 1.0)
+    return Kit.Convert().to_string(data).lower() in ('y', 'yes', 'on', 'true', '1', '1.0', 1, 1.0)
 
 def is_falsy(data: t.Any)-> bool:
-    return Convert.to_string(data).lower() in ('n', 'no', 'off', 'false', '0', '0.0', 0, 0.0)
+    return Kit.Convert().to_string(data).lower() in ('n', 'no', 'off', 'false', '0', '0.0', 0, 0.0)
 
 def truthy(data: t.Any)-> bool:
     return is_truthy(data)
@@ -74,7 +67,7 @@ def contains(data: t.Iterable[t.Any], *args: str|int, **kwargs)-> bool:
     no_dot = kwargs.pop('no_dot', True) == False
 
     for key_ in args:
-        res = Data.has(data, key_) if not no_dot else key_ in data
+        res = Kit.Data().has(data, key_) if not no_dot else key_ in data
         
         if res and not is_all:
             return True
@@ -84,7 +77,7 @@ def contains(data: t.Iterable[t.Any], *args: str|int, **kwargs)-> bool:
     return True if is_all else False
 
 def is_item_exec(data: t.Mapping)-> bool:
-    return not truthy(Data.get(data, '_skip', False)) and not falsy(Data.get(data, '_keep', True))
+    return not truthy(Kit.Data().get(data, '_skip', False)) and not falsy(Kit.Data().get(data, '_keep', True))
 
 def is_hashable(data: t.Any)-> bool:
     try:
@@ -189,7 +182,7 @@ def is_http_response(data: t.Any)-> bool:
     return is_object(data) and isinstance(data, http.client.HTTPResponse)
 
 def is_type_name(data: t.Any, *of: str)-> bool:
-    for type_ in Convert.to_iterable(of):
+    for type_ in Kit.Convert().to_iterable(of):
         if type(data).__name__ == type_:
             return True
     
@@ -303,9 +296,9 @@ def require_mutable_mappings(a, b):
         myvars = []
         for x in [a, b]:
             try:
-                myvars.append(Convert.to_json(x))
+                myvars.append(Kit.Convert().to_json(x))
             except Exception:
-                myvars.append(Convert.to_text(x))
+                myvars.append(Kit.Convert().to_text(x))
         raise ValueError("failed to combine variables, expected dicts but got a '{0}' and a '{1}': \n{2}\n{3}".format(
             a.__class__.__name__, b.__class__.__name__, myvars[0], myvars[1])
         )
@@ -351,7 +344,7 @@ def str_is_json(
     type_: t.Literal['any', 'mapping', 'sequence'] = 'any'
 )-> bool:
     try:
-        parsed = Convert.from_json(data)
+        parsed = Kit.Convert().from_json(data)
         ret = is_type(parsed, type_)
     except (Exception):
         ret = False
@@ -363,7 +356,7 @@ def str_is_yaml(
     type_: t.Literal['any', 'mapping', 'sequence'] = 'any'
 )-> bool:
     try:
-        parsed = Convert.from_yaml(data)
+        parsed = Kit.Convert().from_yaml(data)
         ret = is_type(parsed, type_)
     except (Exception):
         ret = False
@@ -375,7 +368,7 @@ def str_is_lua(
     type_: t.Literal['any', 'mapping', 'sequence'] = 'any'
 )-> bool:
     try:
-        parsed = Convert.from_lua(data)
+        parsed = Kit.Convert().from_lua(data)
         ret = is_type(parsed, type_)
     except (Exception):
         ret = False
@@ -387,7 +380,7 @@ def str_is_toml(
     type_: t.Literal['any', 'mapping', 'sequence'] = 'any'
 )-> bool:
     try:
-        parsed = Convert.from_toml(data)
+        parsed = Kit.Convert().from_toml(data)
         ret = is_type(parsed, type_)
     except (Exception):
         ret = False
@@ -428,7 +421,7 @@ def str_contains_non_alphanum(data: str)-> bool:
     return re.search(r'[^A-Za-z0-9]', data) != None
 
 def str_matches(data: str|t.Sequence[str], patterns, **kwargs)-> bool:
-    return filled(Str.matches(data, patterns, **kwargs))
+    return filled(Kit.Str().matches(data, patterns, **kwargs))
 ### END: String
 
 ### BEGIN: Callable
@@ -467,7 +460,7 @@ def callable_called_within_hierarchy(container: object, origin: str) -> bool:
     except Exception:
         return False
     
-    mros = Convert.as_non_native_types(type(container).__mro__)
+    mros = Kit.Convert().as_non_native_types(type(container).__mro__)
     caller_self = frame.f_locals.get('self')
     if caller_self and caller_self.__class__ in mros:
         return True
@@ -498,10 +491,10 @@ def object_has_method(obj, method: str)-> bool:
 
 ### BEGIN: IP
 def __to_ip_address(data: t.Any):
-    return Convert.to_ip_address(Convert.to_string(data), default=False)
+    return Kit.Convert().to_ip_address(Kit.Convert().to_string(data), default=False)
 
 def __to_ip_network(data: t.Any):
-    return Convert.to_ip_network(Convert.to_string(data), default=False)
+    return Kit.Convert().to_ip_network(Kit.Convert().to_string(data), default=False)
 
 def is_ip(data: t.Any)-> bool:
     return __to_ip_address(data) != False
@@ -656,5 +649,5 @@ def is_ansible_tagged_dict(data: t.Any)-> bool:
 
 def is_ansible_env()-> bool:
     import sys
-    return any(mod in sys.modules for mod in _CONF['validate']['ansible']['entrypoints'])
+    return any(mod in sys.modules for mod in CONF_['validate']['ansible']['entrypoints'])
 ### END: Ansible
