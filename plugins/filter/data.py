@@ -1,25 +1,26 @@
+# BEGIN: Imports
 from __future__ import annotations
 from jinja2 import pass_context
+# END: Imports
+# BEGIN: ImportManager
+# END: ImportManager
 
 @pass_context
 def data_query(context, data, query, *bindings, **kwargs):
-    from ansible_collections.aybarsm.utils.plugins.module_utils.support._data_query.executor import DataQueryExecutor
     return DataQueryExecutor(context, data, query, *bindings, **kwargs).execute()
 
 class FilterModule(object):
     def filters(self):
-        from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Kit
-        
         return {
             'data_query': data_query,
-            'data_only_with': Kit.Data().only_with,
-            'data_all_except': Kit.Data().all_except,
-            'data_combine_match': Kit.Data().combine_match,
-            'data_combine': Kit.Data().combine,
-            'data_get': Kit.Data().get,
-            'data_pluck': Kit.Data().pluck,
-            'data_unique_by': Kit.Data().unique_by,
-            'data_keys': Kit.Data().keys,
-            'data_where': Kit.Data().where,
-            'data_to_dot': Kit.Data().dot,
+            'data_only_with': Data_only_with,
+            'data_all_except': Data_all_except,
+            'data_combine_match': Data_combine_match,
+            'data_combine': Data_combine,
+            'data_get': Data_get,
+            'data_pluck': Data_pluck,
+            'data_unique_by': Data_unique_by,
+            'data_keys': Data_keys,
+            'data_where': Data_where,
+            'data_to_dot': Data_dot,
         }

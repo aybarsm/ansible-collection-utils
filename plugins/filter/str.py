@@ -1,20 +1,24 @@
+# BEGIN: Imports
 from __future__ import annotations
+# END: Imports
+# BEGIN: ImportManager
+# END: ImportManager
 
 class FilterModule(object):
     def filters(self):
         from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Kit
         return {
-            'str_before': Kit.Str().before,
-            'str_before_last': Kit.Str().before_last,
-            'str_after': Kit.Str().after,
-            'str_after_last': Kit.Str().after_last,
-            'str_matches': Kit.Str().matches,
-            'str_finish': Kit.Str().finish,
-            'str_start': Kit.Str().start,
-            'str_wrap': Kit.Str().wrap,
-            'str_quote': Kit.Str().quote,
+            'str_before': Str_before,
+            'str_before_last': Str_before_last,
+            'str_after': Str_after,
+            'str_after_last': Str_after_last,
+            'str_matches': Str_matches,
+            'str_finish': Str_finish,
+            'str_start': Str_start,
+            'str_wrap': Str_wrap,
+            'str_quote': Str_quote,
             'str_strip': lambda data, chars = None: str(data).strip(chars),
             'str_lstrip': lambda data, chars = None: str(data).lstrip(chars),
             'str_rstrip': lambda data, chars = None: str(data).rstrip(chars),
-            'str_remove_empty_lines': Kit.Str().remove_empty_lines,
+            'str_remove_empty_lines': Str_remove_empty_lines,
         }

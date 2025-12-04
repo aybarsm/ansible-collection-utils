@@ -6,16 +6,16 @@ import datetime, asyncio
 
 def dump(*args, **kwargs):
     separator = kwargs.pop('separator', None)
-    separator = separator if isinstance(separator, Kit.Definitions().Separator) else None
+    separator = separator if isinstance(separator, Definitions_Separator) else None
     
     if separator:
         new_args = []
         for idx, arg in enumerate(args):
             if idx == len(args) - 1:
-                new_args.append(arg.make() if isinstance(arg, Kit.Definitions().Separator) else arg)
+                new_args.append(arg.make() if isinstance(arg, Definitions_Separator) else arg)
                 break
             
-            if isinstance(arg, Kit.Definitions().Separator):
+            if isinstance(arg, Definitions_Separator):
                 new_args.append(arg.make())
                 continue
 

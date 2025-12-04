@@ -160,7 +160,7 @@ class PowerdnsApi():
 
         # The Ansible modules validator is highly unreliable:
         # Especially entries with default values and nested schemas.
-        # So we provide primary entries only and then validate all parameters with Kit.Cerberus().
+        # So we provide primary entries only and then validate all parameters with Cerberus_
         schema = self._swagger.get_cerberus_validation_schema(self.operation_path(), self.operation_method())
         
         v = Validator(schema, allow_unknown = True) # type: ignore

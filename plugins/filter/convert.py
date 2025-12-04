@@ -1,24 +1,26 @@
+# BEGIN: Imports
 from __future__ import annotations
+# END: Imports
+# BEGIN: ImportManager
+# END: ImportManager
 
 class FilterModule(object):
     def filters(self):
-        from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Kit
-        
         return {
-            'to_querystring': Kit.Convert().to_querystring,
-            'to_iterable': Kit.Convert().to_iterable,
-            'to_safe_json': Kit.Convert().to_safe_json,
-            'to_lofs': Kit.Convert().to_list_of_dicts,
-            'to_type_name': Kit.Convert().to_type_name,
-            'to_native': Kit.Convert().to_text,
-            'to_string': Kit.Convert().to_string,
-            'to_hash_scrypt': Kit.Convert().to_hash_scrypt,
-            'to_ts_mod': Kit.Convert().as_ts_mod,
-            'from_cli': Kit.Convert().from_cli,
-            'from_lua':Kit.Convert().from_lua,
-            'to_lua':Kit.Convert().to_lua,
-            'from_toml':Kit.Convert().from_toml,
-            'to_toml':Kit.Convert().to_toml,
-            'as_ip_address': Kit.Convert().as_ip_address,
-            'as_ip_segments': Kit.Convert().as_ip_segments,
+            'to_querystring': Convert_to_querystring,
+            'to_iterable': Convert_to_iterable,
+            'to_safe_json': Convert_to_safe_json,
+            'to_lofs': Convert_to_list_of_dicts,
+            'to_type_name': Convert_to_type_name,
+            'to_native': Convert_to_text,
+            'to_string': Convert_to_string,
+            'to_hash_scrypt': Convert_to_hash_scrypt,
+            'to_ts_mod': Convert_as_ts_mod,
+            'from_cli': Convert_from_cli,
+            'from_lua':Convert_from_lua,
+            'to_lua':Convert_to_lua,
+            'from_toml':Convert_from_toml,
+            'to_toml':Convert_to_toml,
+            'as_ip_address': Convert_as_ip_address,
+            'as_ip_segments': Convert_as_ip_segments,
         }
