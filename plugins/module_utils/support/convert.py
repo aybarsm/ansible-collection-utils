@@ -494,22 +494,22 @@ def as_type_module_mapping(data: t.Union[t.Any, ENUMERATABLE[t.Any]]) -> list[t.
 ### END: Type
 
 ### BEGIN: Net
-def to_ip_address(data, **kwargs):
+def to_ip_address(data: t.Any, **kwargs):
     default = kwargs.get('default', Sentinel.hash)
 
     try:
-        return ipaddress.ip_address(data)
+        return ipaddress.ip_address(to_text(data))
     except Exception as e:
         if default == Sentinel.hash:
             raise e
         
         return default
     
-def to_ip_network(data, **kwargs):
+def to_ip_network(data: t.Any, **kwargs):
     default = kwargs.get('default', Sentinel.hash)
 
     try:
-        return ipaddress.ip_network(data)
+        return ipaddress.ip_network(to_text(data))
     except Exception as e:
         if default == Sentinel.hash:
             raise e

@@ -490,33 +490,27 @@ def object_has_method(obj, method: str)-> bool:
 ### END: Object
 
 ### BEGIN: IP
-def __to_ip_address(data: t.Any):
-    return Convert_to_ip_address(Convert_to_string(data), default=False)
-
-def __to_ip_network(data: t.Any):
-    return Convert_to_ip_network(Convert_to_string(data), default=False)
-
 def is_ip(data: t.Any)-> bool:
-    return __to_ip_address(data) != False
+    return Convert_to_ip_address(data, default=False) != False
 
 def is_network(data: t.Any)-> bool:
-    return __to_ip_network(data) != False
+    return Convert_to_ip_network(data, default=False) != False
 
 def is_ip_v4(data: t.Any)-> bool:
-    return __to_ip_address(data).version == 4
+    return Convert_to_ip_address(data, default=False).version == 4
 
 def is_ip_v6(data: t.Any)-> bool:
-    return __to_ip_address(data).version == 6
+    return Convert_to_ip_address(data, default=False).version == 6
 
 def is_ip_public(data: t.Any)-> bool:        
-    return __to_ip_address(data).is_global
+    return Convert_to_ip_address(data, default=False).is_global
 
 def is_ip_private(data: t.Any)-> bool:
-    return __to_ip_address(data).is_private
+    return Convert_to_ip_address(data, default=False).is_private
 
 def is_subnet_of(network_a, network_b)-> bool:
-    network_a = __to_ip_network(network_a)
-    network_b = __to_ip_network(network_a)
+    network_a = Convert_to_ip_network(network_a, default=False)
+    network_b = Convert_to_ip_network(network_b, default=False)
     
     if network_a == False or network_b == False:
         return False
