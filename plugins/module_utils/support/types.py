@@ -4,7 +4,7 @@ import typing_extensions as te
 import annotated_types
 import inspect, uuid
 
-# BEGIN: Generic - Types
+### BEGIN: Generic - Types
 T = t.TypeVar("T")
 ENUMERATABLE = t.Union[list[T], tuple[T, ...], set[T]]
 
@@ -25,9 +25,9 @@ UniqueIdInt = PositiveInt
 UniqueIdStr = str
 UniqueIdUuid = uuid.UUID
 UniqueAlias = str
-# END: Generic - Types
+### END: Generic - Types
 
-# BEGIN: Callable
+### BEGIN: Callable
 CallableParameterKindMap = tt.MappingProxyType({
     'any': inspect.Parameter.POSITIONAL_OR_KEYWORD,
     'pos': inspect.Parameter.POSITIONAL_ONLY,

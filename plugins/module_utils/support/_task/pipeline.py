@@ -1,7 +1,7 @@
 import typing as t
 import typing_extensions as te
-# BEGIN: ImportManager
-# END: ImportManager
+### BEGIN: ImportManager
+### END: ImportManager
 
 @dataclass(init=False, kw_only=True)
 class TaskPipeline(TaskCollectionDispatchable):

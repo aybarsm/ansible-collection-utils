@@ -1,7 +1,7 @@
 import typing as t
 import time
-# BEGIN: ImportManager
-# END: ImportManager
+### BEGIN: ImportManager
+### END: ImportManager
 
 class DataQueryExecutor(DataQuery):
     def execute(self) -> t.Any:

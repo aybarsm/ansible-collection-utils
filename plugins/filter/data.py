@@ -1,9 +1,9 @@
-# BEGIN: Imports
+### BEGIN: Imports
 from __future__ import annotations
 from jinja2 import pass_context
-# END: Imports
-# BEGIN: ImportManager
-# END: ImportManager
+### END: Imports
+### BEGIN: ImportManager
+### END: ImportManager
 
 @pass_context
 def data_query(context, data, query, *bindings, **kwargs):

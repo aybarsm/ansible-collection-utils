@@ -1,6 +1,6 @@
 import typing as t
-# BEGIN: ImportManager
-# END: ImportManager
+### BEGIN: ImportManager
+### END: ImportManager
 
 class Fluent(t.Generic[T]):
     on_save: t.Optional[t.Callable] = None

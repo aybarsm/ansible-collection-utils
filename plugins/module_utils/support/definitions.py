@@ -2,10 +2,10 @@ import typing as t
 import typing_extensions as te
 import dataclasses as dt
 import enum, functools, uuid, datetime, hashlib
-# BEGIN: ImportManager
-# END: ImportManager
+### BEGIN: ImportManager
+### END: ImportManager
 
-# BEGIN: Data Classes
+### BEGIN: Data Classes
 dataclass = dt.dataclass
 
 @functools.wraps(dt.dataclass)
@@ -26,9 +26,9 @@ def model_method(**kwargs):
         setattr(func, '__metadata__', kwargs)
         return func
     return decorator
-# END: Data Classes
+### END: Data Classes
 
-# BEGIN: Generic - Definitions
+### BEGIN: Generic - Definitions
 @dataclass(frozen=True, kw_only=True)
 class _Sentinel:
     raw: object = model_field(init=True)
@@ -168,9 +168,9 @@ class BaseModel:
             raise RuntimeError(f'Hidden attribute [{name}] cannot be accessed externally.')
 
         return attr
-# END: Generic - Definitions
+### END: Generic - Definitions
 
-# BEGIN: Models
+### BEGIN: Models
 @dataclass(init=True, frozen=True, kw_only=True)
 class CommandModel:
     rc: t.Optional[int] = model_field(default=None, init=True)
@@ -226,17 +226,17 @@ class CommandModel:
     #         return False
     
 
-# END: Models
+### END: Models
 
-# BEGIN: Events
+### BEGIN: Events
 @dataclass(kw_only=True, frozen=True)
 class StatusChangedEvent:
     related: t.Any
     previous: GenericStatus
     current: GenericStatus
-# END: Events
+### END: Events
 
-# BEGIN: Mixins
+### BEGIN: Mixins
 @dataclass(kw_only=True)
 class IdMixin:
     id: UniqueIdUuid = model_field(default_factory=uuid.uuid4, init=False, repr=True, frozen=True)
@@ -308,8 +308,8 @@ class StatusMixin:
         Utils_call(self.on_status_change, **kwargs)
 
         return self
-# END: Mixins
+### END: Mixins
 
-# BEGIN: Singletons
+### BEGIN: Singletons
 Sentinel = _Sentinel.make()
-# END: Singletons
+### END: Singletons

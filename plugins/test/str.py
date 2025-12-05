@@ -1,8 +1,8 @@
-# BEGIN: Imports
+### BEGIN: Imports
 from __future__ import annotations
-# END: Imports
-# BEGIN: ImportManager
-# END: ImportManager
+### END: Imports
+### BEGIN: ImportManager
+### END: ImportManager
 
 class TestModule(object):
     def tests(self):

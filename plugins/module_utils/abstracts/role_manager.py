@@ -1,11 +1,11 @@
-# BEGIN: Imports
+### BEGIN: Imports
 import typing as t
 from abc import ABC, abstractmethod
 from ansible.plugins.action import ActionBase
 from ansible.plugins.lookup import LookupBase
-# END: Imports
-# BEGIN: ImportManager
-# END: ImportManager
+### END: Imports
+### BEGIN: ImportManager
+### END: ImportManager
 
 class RoleManager(ABC):
     def __init__(

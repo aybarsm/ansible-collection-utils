@@ -1,10 +1,10 @@
-# BEGIN: Imports
+### BEGIN: Imports
 from __future__ import annotations
 import re
 from ansible.module_utils.basic import AnsibleModule
-# END: Imports
-# BEGIN: ImportManager
-# END: ImportManager
+### END: Imports
+### BEGIN: ImportManager
+### END: ImportManager
 
 _MODULE_ARGUMENTS = {
     'supports_check_mode': False,

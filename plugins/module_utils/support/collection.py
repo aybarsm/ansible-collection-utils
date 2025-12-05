@@ -1,7 +1,7 @@
 import typing as t
 import typing_extensions as te
-# BEGIN: ImportManager
-# END: ImportManager
+### BEGIN: ImportManager
+### END: ImportManager
 
 class Collection(t.Generic[T]):
     on_save: t.Optional[t.Callable] = None
