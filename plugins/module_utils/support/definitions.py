@@ -1,25 +1,50 @@
 ### BEGIN: Imports
 import typing as t
+import types as tt
 import typing_extensions as te
+import annotated_types as at
 import dataclasses as dt
-import enum, functools, uuid, datetime, hashlib
+import enum, functools, uuid, datetime, hashlib, inspect, re, uuid
 ### END: Imports
 ### BEGIN: ImportManager
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.convert import (
-	Convert_as_callable_caller_segments, Convert_as_cleaned_lines, Convert_as_lines,
+	Convert_as_cleaned_lines, Convert_as_lines,
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import (
 	Data_all_except, Data_append, Data_combine,
 	Data_get, Data_only_with,
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.utils import (
-	Utils_call, Utils_dump,
+	Utils_call, 
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.validate import (
-	Validate_blank, Validate_callable_called_within_hierarchy, Validate_filled,
+	Validate_callable_called_within_hierarchy, Validate_filled,
 	Validate_is_callable,
 )
 ### END: ImportManager
+
+## BEGIN: Generic - Types
+T = t.TypeVar("T")
+ENUMERATABLE = t.Union[list[T], tuple[T, ...], set[T]]
+
+MappingImmutable = tt.MappingProxyType
+EventCallback = t.Callable[..., None]
+
+PositiveInt = t.Annotated[int, at.Gt(0)]
+NegativeInt = t.Annotated[int, at.Lt(0)]
+NonPositiveInt = t.Annotated[int, at.Le(0)]
+NonNegativeInt = t.Annotated[int, at.Ge(0)]
+
+PositiveFloat = t.Annotated[float, at.Gt(0)]
+NegativeFloat = t.Annotated[float, at.Lt(0)]
+NonPositiveFloat = t.Annotated[float, at.Le(0)]
+NonNegativeFloat = t.Annotated[float, at.Ge(0)]
+
+UniqueIdInt = PositiveInt
+UniqueIdStr = str
+UniqueIdUuid = uuid.UUID
+UniqueAlias = str
+### END: Generic - Types
 
 ### BEGIN: Data Classes
 dataclass = dt.dataclass
@@ -32,8 +57,8 @@ def model_class(cls=None, /, **kwargs):
 
 @functools.wraps(dt.field)
 def model_field(**kwargs):
-    options = Data_all_except(kwargs, *CONF_['data_classes']['kwargs'].keys())
-    kwargs = Data_only_with(kwargs, *CONF_['data_classes']['kwargs'].keys())
+    options = Data_all_except(kwargs, *CONF['data_classes']['kwargs'].keys())
+    kwargs = Data_only_with(kwargs, *CONF['data_classes']['kwargs'].keys())
     kwargs = Data_combine(kwargs, {'metadata': {'_options': options}}, recursive=True)
     return dt.field(**kwargs)
 
@@ -328,4 +353,100 @@ class StatusMixin:
 
 ### BEGIN: Singletons
 Sentinel = _Sentinel.make()
+
+CallableParameterKindMap = tt.MappingProxyType({
+    'any': inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    'pos': inspect.Parameter.POSITIONAL_ONLY,
+    'key': inspect.Parameter.KEYWORD_ONLY,
+    'empty': inspect.Parameter.empty,
+    'args': inspect.Parameter.VAR_POSITIONAL,
+    'kwargs': inspect._ParameterKind.VAR_KEYWORD,
+})
+
+CallableParameterTypeMap = tt.MappingProxyType({v: k for k, v in CallableParameterKindMap.items()})
+
+CallableParameterKind = t.Literal['any', 'pos', 'key', 'empty', 'args', 'kwargs']
+CallableParameterHas = t.Literal['default', 'annotation']
+
+CONF = tt.MappingProxyType(
+    {
+        'data_classes': {
+            'kwargs': {
+                'default': dt.MISSING,
+                'default_factory': dt.MISSING,
+                'init': True,
+                'repr': True,
+                'hash': None,
+                'compare': True,
+                'metadata': None, 
+                'kw_only': dt.MISSING,
+            },
+        },
+        'pydantic': {
+            'extras': {
+                'protected': False,
+            },
+        },
+        'data_query': {
+            'defaults': {
+                'bindings': {
+                    'named': {
+                        '_true': True,
+                        '_false': False,
+                    },
+                },
+            },
+            'test': {
+                'prefixes': {
+                    'a.b.': "ansible.builtin.",
+                    'a.u.': "ansible.utils.",
+                    'c.g.': "community.general.",
+                    'ayb.a.': 'aybarsm.all.',
+                    'ayb.u.': 'aybarsm.utils.',
+                },
+            },
+        },
+        'jinja': {
+            "prefixes": {
+                "a.b.": "ansible.builtin.",
+                "a.u.": "ansible.utils.",
+                "c.g.": "community.general.",
+                "ayb.a.": "aybarsm.all.",
+                "ayb.u.": "aybarsm.utils.",
+            },
+        },
+        'validate': {
+            "ansible": {
+                "entrypoints":
+                    [
+                        "ansible.cli.adhoc",
+                        "ansible_builder.cli",
+                        "ansible_collections.ansible_community",
+                        "ansible.cli.config",
+                        "ansible.cli.console",
+                        "ansible.cli.doc",
+                        "ansible.cli.galaxy",
+                        "ansible.cli.inventory",
+                        "ansiblelint.__main__",
+                        "ansible.cli.playbook",
+                        "ansible.cli.pull",
+                        "ansible_test._util.target.cli.ansible_test_cli_stub",
+                        "ansible.cli.vault",
+                    ]
+            },
+        },
+        'validator': {
+            'regex': {
+                'ipv4': re.compile(r'^([01]?\d\d?|2[0-4]\d|25[0-5])(?:\.(?:[01]?\d\d?|2[0-4]\d|25[0-5])){3}(?:\/[1-9]|\/[0-2]\d|\/3[0-2])?$'),
+                'ipv4_address': re.compile(r'^([01]?\d\d?|2[0-4]\d|25[0-5])(?:\.(?:[01]?\d\d?|2[0-4]\d|25[0-5])){3}$'),
+                'ipv4_subnet': re.compile(r'^([01]?\d\d?|2[0-4]\d|25[0-5])(?:\.(?:[01]?\d\d?|2[0-4]\d|25[0-5])){3}\/(?:[1-9]|[0-2]\d|3[0-2])$'),
+                'ipv6': re.compile(r'^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))(?:\/[1-9]|\/[1-9][1-9]|\/1[0-2][0-8])?$'),
+                'ipv6_address': re.compile(r'^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$'),
+                'ipv6_subnet': re.compile(r'^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))\/(?:[1-9]|[1-9][1-9]|1[0-2][0-8])$'),
+                'mac_address': re.compile(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$'),
+                'md5': re.compile(r'^[0-9a-f]{32}$'),
+            }
+        },
+    }
+)
 ### END: Singletons

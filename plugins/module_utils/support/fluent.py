@@ -1,5 +1,7 @@
 ### BEGIN: Imports
-import typing as t
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
+    t, T, 
+)
 ### END: Imports
 ### BEGIN: ImportManager
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.convert import (
@@ -10,7 +12,7 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import 
 	Data_first, Data_get, Data_has,
 	Data_last, Data_only_with, Data_prepend,
 	Data_pydash, Data_reject, Data_set,
-	Data_where,
+	Data_where, Data_unset, 
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.utils import (
 	Utils_call,
@@ -27,57 +29,57 @@ class Fluent(t.Generic[T]):
     def __init__(self, data: T = {}):
         self.data: T = Convert_as_copied(data)
     
-    def get(self, key: str, default: t.Any = None)-> t.Any:
+    def get(self, key: str, default: t.Any = None) -> t.Any:
         return Data_get(self.data, key, default)
     
-    def get_filled(self, key: str, default, **kwargs)-> t.Any:
+    def get_filled(self, key: str, default, **kwargs) -> t.Any:
         if not self.has(key):
             return default
         
         ret = self.get(key)
         return default if not Validate_filled(ret, **kwargs) else ret
     
-    def set(self, key: str, value: t.Any)-> dict:
+    def set(self, key: str, value: t.Any) -> T:
         Data_set(self.data, key, value)
         return self.data
     
-    def increase(self, key: str, start: int|float = 0, step: int|float = 1)-> int | float:
+    def increase(self, key: str, start: int|float = 0, step: int|float = 1) -> int | float:
         current = self.get(key, start)
         current += step
         self.set(key, current)
         return current
     
-    def decrease(self, key: str, start: int|float = 0, step: int|float = 1)-> int | float:
+    def decrease(self, key: str, start: int|float = 0, step: int|float = 1) -> int | float:
         current = self.get(key, start)
         current -= step
         self.set(key, current)
         return current
     
-    def forget(self, key: str)-> dict:
-        Data_forget(self.data, key)
+    def unset(self, key: str) -> T:
+        Data_unset(self.data, key)
         return self.data
     
-    def unset(self, key: str)-> dict:
-        return self.forget(key)
+    def forget(self, key: str) -> T:
+        return self.unset(key)
 
-    def has(self, key: str)-> bool:
+    def has(self, key: str) -> bool:
         return Data_has(self.data, key)
 
-    def filled(self, key: str)-> bool:
+    def filled(self, key: str) -> bool:
         return Validate_filled(self.get(key))
     
-    def contains(self, key: str, *args, **kwargs)-> bool:
+    def contains(self, key: str, *args, **kwargs) -> bool:
         return Validate_contains(self.get(key, []), *args, **kwargs)
 
-    def blank(self, key: str)-> bool:
+    def blank(self, key: str) -> bool:
         return Validate_blank(self.get(key))
     
-    def append(self, key: str, value, **kwargs)-> dict:
-        self.data = dict(Data_append(self.data, key, value, **kwargs))
+    def append(self, key: str, value, **kwargs) -> T:
+        self.data = Data_append(self.data, key, value, **kwargs)
         return self.data
 
-    def prepend(self, key: str, value, **kwargs)-> dict:
-        self.data = dict(Data_prepend(self.data, key, value, **kwargs))
+    def prepend(self, key: str, value, **kwargs) -> T:
+        self.data = Data_prepend(self.data, key, value, **kwargs)
         return self.data
     
     def pop(self, key: str, default: t.Any = None) -> t.Any:

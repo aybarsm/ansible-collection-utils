@@ -1,7 +1,11 @@
 ### BEGIN: Imports
-import typing as t
-import types as tt
-import datetime, inspect, uuid, hashlib, ipaddress, inspect, copy, re, netaddr
+import ipaddress, copy, netaddr
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
+    t, tt, re, inspect, uuid, datetime, hashlib, 
+    ENUMERATABLE, PositiveInt, 
+    Sentinel, CommandModel, CallableParameterKind, 
+    CallableParameterTypeMap, 
+)
 ### END: Imports
 ### BEGIN: ImportManager
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.ansible import (
@@ -9,7 +13,8 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.support.ansible impo
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import (
 	Data_combine, Data_get, Data_map,
-	Data_walk_values_deep, Data_where,
+	Data_walk_values_deep, Data_where, Data_has, 
+    Data_set, 
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.factory import (
 	Factory_random_string, Factory_ts,
@@ -126,19 +131,19 @@ def Convert_to_data_key(*args: str, **kwargs)-> str:
 
 def Convert_to_safe_json(data):
     if Validate_is_bytes(data):
-        return Convert_to_safe_json(to_text(data))
+        return Convert_to_safe_json(Convert_to_text(data))
     elif Validate_is_string(data) and Validate_str_is_json(data):
-        return Convert_to_safe_json(from_json(data))
+        return Convert_to_safe_json(Convert_from_json(data))
     elif Validate_is_string(data) and Validate_str_is_yaml(data):
-        return Convert_to_safe_json(from_yaml(data))
+        return Convert_to_safe_json(Convert_from_yaml(data))
     elif isinstance(data, (str, int, float, bool)) or data is None:
         return data
     elif Validate_is_ansible_mapping(data):
-        return Convert_to_safe_json(to_text(data))
+        return Convert_to_safe_json(Convert_to_text(data))
     elif isinstance(data, dict):
         return {str(k): Convert_to_safe_json(v) for k, v in data.items()}
     elif isinstance(data, (list, tuple)):
-        return [to_safe_json(item) for item in data]
+        return [Convert_to_safe_json(item) for item in data]
     elif hasattr(data, '__str__'):
         try:
             return str(data)
@@ -387,7 +392,7 @@ def Convert_from_ansible_template(templar, variable, **kwargs)-> t.Any:
 
 def Convert_from_ansible(data: t.Any)-> t.Any:
     if Validate_is_mapping(data) or Validate_is_sequence(data):
-        return Convert_from_yaml(to_native(data))
+        return Convert_from_yaml(Convert_to_native(data))
     
     return data
 

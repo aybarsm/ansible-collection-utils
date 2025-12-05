@@ -1,5 +1,7 @@
 ### BEGIN: Imports
-import typing as t
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
+    t, 
+)
 ### END: Imports
 ### BEGIN: ImportManager
 ### END: ImportManager

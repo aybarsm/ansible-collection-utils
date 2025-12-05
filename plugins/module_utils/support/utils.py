@@ -144,7 +144,7 @@ def Utils_call_raw(callback: t.Callable, *args, **kwargs) -> t.Any:
 def Utils_call(callback: t.Callable, *args, **kwargs) -> t.Any:
     return Utils_call_raw(callback, *args, **kwargs)
 
-async def call_async(callback: t.Callable, *args, **kwargs) -> t.Any:
+async def Utils_call_async(callback: t.Callable, *args, **kwargs) -> t.Any:
     return await Utils_call_raw(callback, *args, **kwargs)
 
 # def Utils_call(callback: t.Callable, *args, **kwargs) -> t.Any:
@@ -164,7 +164,7 @@ async def call_async(callback: t.Callable, *args, **kwargs) -> t.Any:
 #         return await result
 #     return result
 
-async def call_semaphore(semaphore: asyncio.Semaphore, callback: t.Callable, *args, **kwargs) -> t.Any:
+async def Utils_call_semaphore(semaphore: asyncio.Semaphore, callback: t.Callable, *args, **kwargs) -> t.Any:
     async with semaphore:
         if Validate_callable_is_coroutine(callback):
             result = await Utils_call_raw(callback, *args, **kwargs)

@@ -1,9 +1,11 @@
 ### BEGIN: Imports
-import typing as t
-from abc import ABC, abstractmethod
 from ansible.plugins.action import ActionBase
 from ansible.plugins.lookup import LookupBase
-from ansible_collections.aybarsm.utils.plugins.module_utils import Fluent, Validator
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
+    t, abc, CommandModel
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.fluent import Fluent
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.validator import Validator
 ### END: Imports
 ### BEGIN: ImportManager
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.convert import (
@@ -11,7 +13,7 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.support.convert impo
 	Convert_to_primitive,
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import (
-	Data_difference, Data_where,
+	Data_difference, Data_where, Data_intersection,
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.str import (
 	Str_case_snake, Str_chop_start,
@@ -25,7 +27,7 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.support.validate imp
 )
 ### END: ImportManager
 
-class RoleManager(ABC):
+class RoleManager(abc.ABC):
     def __init__(
         self, 
         args: t.Mapping[str, t.Any] = {}, 
@@ -231,6 +233,6 @@ class RoleManager(ABC):
     
     # def _task_pipeline(self, )
     
-    @abstractmethod
+    @abc.abstractmethod
     def _get_operation_validation_schema(self, args: t.Mapping[str, t.Any], vars: t.Mapping[str, t.Any]) -> dict:
         pass

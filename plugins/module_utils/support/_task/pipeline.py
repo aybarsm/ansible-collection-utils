@@ -1,6 +1,12 @@
 ### BEGIN: Imports
-import typing as t
-import typing_extensions as te
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
+    t, te, 
+    ENUMERATABLE, PositiveFloat, UniqueAlias, 
+    EventCallback, dataclass, GenericStatus,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support._task.channel import (
+    Task, TaskCollectionDispatchable, TaskChannel
+)
 ### END: Imports
 ### BEGIN: ImportManager
 ### END: ImportManager

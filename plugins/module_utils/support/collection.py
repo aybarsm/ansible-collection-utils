@@ -1,6 +1,8 @@
 ### BEGIN: Imports
-import typing as t
-import typing_extensions as te
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
+    t, te, T, 
+    ENUMERATABLE, Sentinel, 
+)
 ### END: Imports
 ### BEGIN: ImportManager
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import (

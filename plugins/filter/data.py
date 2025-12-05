@@ -1,7 +1,7 @@
 ### BEGIN: Imports
 from __future__ import annotations
 from jinja2 import pass_context
-from ansible_collections.aybarsm.utils.plugins.module_utils import DataQueryExecutor
+from ansible_collections.aybarsm.utils.plugins.module_utils.support._data_query.executor import DataQueryExecutor
 ### END: Imports
 ### BEGIN: ImportManager
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import (

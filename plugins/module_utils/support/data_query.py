@@ -2,14 +2,20 @@
 import typing as t
 import re
 from jinja2.runtime import Context
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
+    t, re, 
+    CONF, 
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.fluent import Fluent
 ### END: Imports
 ### BEGIN: ImportManager
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.convert import (
 	Convert_from_querystring, Convert_to_data_key, Convert_to_iterable,
+    Convert_to_text, 
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import (
 	Data_combine, Data_difference, Data_first,
-	Data_flatten, Data_intersectionion,
+	Data_flatten, Data_intersection,
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.str import (
 	Str_chop_both, Str_chop_start,
@@ -33,7 +39,7 @@ class DataQuery:
         *bindings: t.Any,
         **kwargs: t.Any,
     ):
-        self.cfg: Fluent = Fluent(CONF_['data_query'])
+        self.cfg: Fluent = Fluent(CONF['data_query'])
         self.context: t.Optional[Context] = None
         self.data: list[t.Any] = []
         self.query: str = ''
@@ -265,7 +271,7 @@ class DataQuery:
                 continue
 
             opposite_ = opposites_[type_]
-            intersect = Data_intersectionion(operators, getattr(self, f'operators_{opposite_}'))
+            intersect = Data_intersection(operators, getattr(self, f'operators_{opposite_}'))
             if Validate_filled(intersect):
                 raise ValueError(f'{type_.upper()} operators [{', '.join(intersect)}] already exist as `{opposite_.upper()}` operators.')
             

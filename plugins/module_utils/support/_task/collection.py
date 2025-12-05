@@ -1,7 +1,16 @@
 ### BEGIN: Imports
-import typing as t
-import typing_extensions as te
 import asyncio
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
+    t, te, 
+    ENUMERATABLE, PositiveFloat, EventCallback,
+    UniqueIdUuid, UniqueAlias, MappingImmutable, 
+    BaseModel, GenericStatus, IdMixin, 
+    StatusMixin, dataclass, model_field, 
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.collection import Collection
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.task import (
+    TaskResult, Task, TaskGroup, 
+)
 ### END: Imports
 ### BEGIN: ImportManager
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.convert import (
@@ -11,10 +20,6 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import 
 	Data_get,
 )
 ### END: ImportManager
-
-TaskResult = t.Any
-TaskCallback = t.Callable[..., TaskResult]
-TaskGroupConcurrent = PositiveInt
 
 TaskCollectionFindIdentifier = t.Union[t.Callable, UniqueIdUuid, UniqueAlias, Task, asyncio.Task]
 TaskCollectionGetIdentifier = t.Union[t.Callable, TaskGroup, ENUMERATABLE[t.Union[UniqueIdUuid, UniqueAlias, Task, asyncio.Task, TaskGroup]]]

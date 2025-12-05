@@ -1,5 +1,8 @@
 ### BEGIN: Imports
-import typing as t
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
+    t, dt, 
+    PositiveInt, Sentinel, 
+)
 ### END: Imports
 ### BEGIN: ImportManager
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.convert import (
@@ -85,7 +88,7 @@ def Factory_play_meta(vars: t.Mapping, **kwargs)-> dict:
             'long_safe': Convert_as_ts_mod(ts_, 'long_safe'), #type: ignore
             'timestamp': Convert_as_ts_mod(ts_, 'timestamp'), #type: ignore
         },
-        'placeholder': placeholder(mod='hash'),
+        'sentinel': dt.asdict(Sentinel),
         'cache_file': Factory_fs_path_tmp(f'play_{Convert_to_md5(play_id)}.json'),
     }
 

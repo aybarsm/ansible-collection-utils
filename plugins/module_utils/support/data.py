@@ -1,11 +1,13 @@
 ### BEGIN: Imports
-import typing as t
-import functools
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
+    t, functools, 
+    T, ENUMERATABLE, Sentinel, 
+)
 ### END: Imports
 ### BEGIN: ImportManager
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.convert import (
 	Convert_as_copied, Convert_as_hash, Convert_from_mapping_to_callable,
-	Convert_to_iterable, Convert_to_pydash,
+	Convert_to_iterable, Convert_to_pydash, Convert_to_safe_json, 
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.str import (
 	Str_after_last, Str_before_last, Str_wrap,
@@ -172,13 +174,19 @@ def Data_difference(data, *others, **kwargs)-> t.List[t.Any]:
         return Data_pydash().difference_by(data, *others, **kwargs)
 
 @functools.wraps(Data_pydash().intersection)
-def Data_intersectionion(data, *others, **kwargs)-> t.List[t.Any]:
+def Data_intersection(data, *others, **kwargs)-> t.List[t.Any]:
     if Validate_blank(kwargs):
         return Data_pydash().intersection_with(data, *others)
     else:
         return Data_pydash().intersection_by(data, *others, **kwargs)
 
-def _append_or_prepend(data: t.Iterable[t.Any], key: str, value: t.Any, is_prepend: bool, **kwargs) -> t.Iterable[t.Any]:
+def _append_or_prepend(
+    data, 
+    key: int | str, 
+    value: t.Any,    
+    **kwargs, 
+) -> t.Any:
+    is_prepend = kwargs.pop('_prepend') == True
     is_extend = kwargs.pop('extend', False)
     is_unique = kwargs.pop('unique', False)
     is_sorted = kwargs.pop('sort', False)
@@ -210,11 +218,13 @@ def _append_or_prepend(data: t.Iterable[t.Any], key: str, value: t.Any, is_prepe
     
     return data
 
-def Data_append(data: t.Iterable[t.Any], key: str, value: t.Any, **kwargs) -> t.Iterable[t.Any]:
-    return _append_or_prepend(data, key, value, False, **kwargs)
+def Data_append(data, key: int | str, value: t.Any, **kwargs) -> t.Any:
+    kwargs['_prepend'] = False
+    return _append_or_prepend(data, key, value, **kwargs)
 
-def Data_prepend(data: t.Iterable[t.Any], key: str, value: t.Any, **kwargs) -> t.Iterable[t.Any]:
-    return _append_or_prepend(data, key, value, True, **kwargs)
+def Data_prepend(data, key: int | str, value: t.Any, **kwargs) -> t.Any:
+    kwargs['_prepend'] = True
+    return _append_or_prepend(data, key, value, **kwargs)
 
 def Data_dot(data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], prepend='', **kwargs)-> dict:
     is_main = Validate_blank(prepend)
@@ -435,9 +445,8 @@ def Data_only_with(
     is_no_dot = kwargs.pop('no_dot', False)
     is_filled = kwargs.pop('filled', False)
 
-    ph = Factory_placeholder(mod='hashed')
-    default_missing = kwargs.pop('default_missing', ph)
-    default_blank = kwargs.pop('default_blank', ph)
+    default_missing = kwargs.pop('default_missing', Sentinel.hash)
+    default_blank = kwargs.pop('default_blank', Sentinel.hash)
 
     is_mapping = Validate_is_mapping(data)
     data = Convert_to_pydash(data)
@@ -456,14 +465,14 @@ def Data_only_with(
             
             new_value = item.get(key) if is_no_dot else Data_get(item, key)
             if not key_exists:
-                if default_missing != ph:
+                if default_missing != Sentinel.hash:
                     new_value = default_missing
                 else:
                     continue
             
             is_value_filled = not is_filled or ((is_no_dot and Validate_filled(item[key])) or (not is_no_dot and Validate_filled(Data_get(item, key))))
             if not is_value_filled:
-                if default_blank != ph:
+                if default_blank != Sentinel.hash:
                     new_value = default_blank
                 else:
                     continue
@@ -653,9 +662,7 @@ def Data_keys(
     ret = []
     is_mapping = Validate_is_mapping(data)
     replace = kwargs.pop('replace', {})
-    
     no_dot = kwargs.pop('no_dot', False)
-    ph = Factory_placeholder(mod='hashed')
 
     for item in Convert_to_iterable(data):
         item_new = Convert_as_copied(item)
@@ -669,7 +676,7 @@ def Data_keys(
             if key_from == key_to:
                 continue
 
-            key_default = ph
+            key_default = Sentinel.hash
             key_exists = (no_dot and key_from in item_new) or (not no_dot and Data_has(item_new, key_from))
 
             if len(replacement) > 2:
@@ -681,7 +688,7 @@ def Data_keys(
             elif key_exists and not no_dot:
                 value_new = Data_get(item_new, key_from)
             
-            if value_new == ph:
+            if value_new == Sentinel.hash:
                 continue
 
             if no_dot:
