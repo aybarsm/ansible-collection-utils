@@ -106,7 +106,7 @@ def unset(data, *args) -> t.Any:
 
 @functools.wraps(pydash().pluck)
 def pluck(data, key, **kwargs) -> t.List[t.Any]:
-    ph = Factory_placeholder()
+    ph = Sentinel.hash
     is_filled = kwargs.pop('filled', ph) != ph
     is_unique = kwargs.pop('unique', ph)
 
@@ -681,17 +681,3 @@ def keys(
         ret.append(item_new)
 
     return ret[0] if is_mapping else ret
-
-### BEGIN: Aliases
-forget: t.Callable = unset
-flip: t.Callable = invert
-unique: t.Callable = uniq
-unique_by: t.Callable = uniq
-difference_with: t.Callable = intersection
-difference_by: t.Callable = intersection
-intersect: t.Callable = intersection
-intersect_with: t.Callable = intersection
-intersect_by: t.Callable = intersection
-
-select = t.Callable = where
-### END: Aliases

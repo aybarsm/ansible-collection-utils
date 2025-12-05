@@ -254,7 +254,7 @@ class CallableMixin:
         kwargs = Data_append(kwargs, '__caller.bind.annotations', self)
 
         if 'context' not in kwargs:
-            ph = Factory_placeholder()
+            ph = Sentinel.hash
             context = ph
             try:
                 context = getattr(self, 'context')

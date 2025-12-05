@@ -19,7 +19,7 @@ class FilterModule(object):
             'data_combine': Data_combine,
             'data_get': Data_get,
             'data_pluck': Data_pluck,
-            'data_unique_by': Data_unique_by,
+            'data_unique': Data_uniq,
             'data_keys': Data_keys,
             'data_where': Data_where,
             'data_to_dot': Data_dot,
