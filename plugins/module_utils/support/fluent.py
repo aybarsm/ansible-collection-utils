@@ -9,7 +9,7 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import 
 	Data_all_except, Data_append, Data_combine,
 	Data_first, Data_get, Data_has,
 	Data_last, Data_only_with, Data_prepend,
-	Data_pydash, Data_reject, Data_set_,
+	Data_pydash, Data_reject, Data_set,
 	Data_where,
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.utils import (
@@ -38,7 +38,7 @@ class Fluent(t.Generic[T]):
         return default if not Validate_filled(ret, **kwargs) else ret
     
     def set(self, key: str, value: t.Any)-> dict:
-        Data_set_(self.data, key, value)
+        Data_set(self.data, key, value)
         return self.data
     
     def increase(self, key: str, start: int|float = 0, step: int|float = 1)-> int | float:

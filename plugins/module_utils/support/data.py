@@ -107,7 +107,7 @@ def Data_get(data, key, default = None) -> t.Any:
     return ret
 
 @functools.wraps(Data_pydash().set_)
-def Data_set_(data, key, value: t.Any) -> t.Any:
+def Data_set(data, key, value: t.Any) -> t.Any:
     return Data_pydash().set_(data, key, value)
 
 @functools.wraps(Data_pydash().has)
@@ -204,7 +204,7 @@ def _append_or_prepend(data: t.Iterable[t.Any], key: str, value: t.Any, is_prepe
         current = list(sorted(current))
         
     if Validate_is_mapping(data) or Validate_filled(key):
-        Data_set_(data, key, current)
+        Data_set(data, key, current)
     else:
         data = current
     
@@ -260,7 +260,7 @@ def Data_undot(data: t.Mapping)-> dict:
         
         done_iter = [key]
         if Validate_is_mapping(value):
-            Data_set_(ret, key, Data_undot(value))
+            Data_set(ret, key, Data_undot(value))
         elif '.' not in str(key):
             ret[key] = value
         elif Validate_str_is_int(Str_after_last(key, '.')):
@@ -273,9 +273,9 @@ def Data_undot(data: t.Mapping)-> dict:
             for seq_key in seq_keys:
                 seq.append(data[seq_key])
             done_iter = seq_keys.copy()
-            Data_set_(ret, primary, seq.copy())
+            Data_set(ret, primary, seq.copy())
         else:
-            Data_set_(ret, key, value)
+            Data_set(ret, key, value)
         
         done.extend(done_iter)
     
@@ -474,7 +474,7 @@ def Data_only_with(
             if is_no_dot:
                 new_item[new_key] = Convert_as_copied(new_value)
             else:
-                Data_set_(new_item, new_key, Convert_as_copied(new_value))
+                Data_set(new_item, new_key, Convert_as_copied(new_value))
         
         ret.append(new_item)
     
@@ -687,7 +687,7 @@ def Data_keys(
             if no_dot:
                 item_new[key_to] = value_new
             else:
-                Data_set_(item_new, key_to, value_new)
+                Data_set(item_new, key_to, value_new)
 
             if key_exists and not Validate_is_falsy(replace.get('remove_replaced', True)):
                 if no_dot:
