@@ -4,6 +4,24 @@ import re
 from jinja2.runtime import Context
 ### END: Imports
 ### BEGIN: ImportManager
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.convert import (
+	Convert_from_querystring, Convert_to_data_key, Convert_to_iterable,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import (
+	Data_combine, Data_difference, Data_first,
+	Data_flatten, Data_intersectionion,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.str import (
+	Str_chop_both, Str_chop_start,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.utils import (
+	Utils_product,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.validate import (
+	Validate_blank, Validate_contains, Validate_filled,
+	Validate_is_enumeratable_of_mappings, Validate_is_int_even, Validate_is_string,
+	Validate_str_wrapped,
+)
 ### END: ImportManager
 
 class DataQuery:
@@ -247,7 +265,7 @@ class DataQuery:
                 continue
 
             opposite_ = opposites_[type_]
-            intersect = Data_intersection(operators, getattr(self, f'operators_{opposite_}'))
+            intersect = Data_intersectionion(operators, getattr(self, f'operators_{opposite_}'))
             if Validate_filled(intersect):
                 raise ValueError(f'{type_.upper()} operators [{', '.join(intersect)}] already exist as `{opposite_.upper()}` operators.')
             

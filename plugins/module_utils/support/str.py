@@ -3,10 +3,20 @@ import typing as t
 import re
 ### END: Imports
 ### BEGIN: ImportManager
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.convert import (
+	Convert_from_cli, Convert_to_iterable, Convert_to_text,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import (
+	Data_flatten,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.validate import (
+	Validate_blank, Validate_filled, Validate_is_falsy,
+	Validate_is_truthy,
+)
 ### END: ImportManager
 
 ### BEGIN: Locate
-def find(data: str, needle: str, reverse: bool = False, before: bool = True, **kwargs) -> str:
+def Str_find(data: str, needle: str, reverse: bool = False, before: bool = True, **kwargs) -> str:
     ph = Factory_placeholder(mod='hashed')
     default = str(kwargs.pop('default', ph))
 
@@ -14,19 +24,19 @@ def find(data: str, needle: str, reverse: bool = False, before: bool = True, **k
     ret = str(data if index == -1 else (data[:index] if before else data[index + len(needle):]))
     return default if default != ph and ret == data else ret
 
-def before(data: str, needle: str, **kwargs)-> str:
-    return find(data, needle, **kwargs)
+def Str_before(data: str, needle: str, **kwargs)-> str:
+    return Str_find(data, needle, **kwargs)
 
-def before_last(data: str, needle: str, **kwargs)-> str:
-    return find(data, needle, reverse = True, **kwargs)
+def Str_before_last(data: str, needle: str, **kwargs)-> str:
+    return Str_find(data, needle, reverse = True, **kwargs)
 
-def after(data: str, needle: str, **kwargs)-> str:
-    return find(data, needle, reverse = False, before = False, **kwargs)
+def Str_after(data: str, needle: str, **kwargs)-> str:
+    return Str_find(data, needle, reverse = False, before = False, **kwargs)
 
-def after_last(data: str, needle: str, **kwargs)-> str:
-    return find(data, needle, reverse = True, before = False, **kwargs)
+def Str_after_last(data: str, needle: str, **kwargs)-> str:
+    return Str_find(data, needle, reverse = True, before = False, **kwargs)
 
-def matches(data: str|t.Sequence[str], patterns: str|t.Sequence[str], **kwargs)-> list[str]|str:    
+def Str_matches(data: str|t.Sequence[str], patterns: str|t.Sequence[str], **kwargs)-> list[str]|str:
     is_cli = kwargs.get('cli', False) == True
     is_all = kwargs.get('all', False) == True
     is_prepare = kwargs.get('prepare', False) == True
@@ -57,7 +67,7 @@ def matches(data: str|t.Sequence[str], patterns: str|t.Sequence[str], **kwargs)-
                 pattern = re.escape(pattern)
             
             if is_prepare:
-                pattern = wrap(pattern, '^', '$')
+                pattern = Str_wrap(pattern, '^', '$')
             
             res = re.match(rf"{pattern}", entry) != None
 
@@ -83,46 +93,46 @@ def _start_or_finish(haystack: str, needle: str, start: bool)-> str:
     
     return f'{needle}{haystack}' if start else f'{haystack}{needle}'
 
-def start(haystack: str, needle: str)-> str:
+def Str_start(haystack: str, needle: str)-> str:
     return _start_or_finish(haystack, needle, True)
 
-def finish(haystack: str, needle: str)-> str:
+def Str_finish(haystack: str, needle: str)-> str:
     return _start_or_finish(haystack, needle, False)
 
-def wrap(haystack: str, prefix: str, suffix: str)-> str:
-    haystack = start(haystack, prefix)
-    return finish(haystack, suffix)
+def Str_wrap(haystack: str, prefix: str, suffix: str)-> str:
+    haystack = Str_start(haystack, prefix)
+    return Str_finish(haystack, suffix)
 
-def quote(haystack: str, single: bool = True)-> str:
-    return wrap(haystack, ("'" if single else '"'), ("'" if single else '"'))
+def Str_quote(haystack: str, single: bool = True)-> str:
+    return Str_wrap(haystack, ("'" if single else '"'), ("'" if single else '"'))
 
-def chop_both(data: str, *args: str)-> str:
+def Str_chop_both(data: str, *args: str)-> str:
     for n in args:
-        data = chop_end(chop_start(data, n), n)
+        data = Str_chop_end(chop_start(data, n), n)
     return data
 
-def chop_start(data: str, *args: str)-> str:
+def Str_chop_start(data: str, *args: str)-> str:
     for n in args:
         if data.startswith(n):
             return data[len(n):]
     return data
 
-def chop_end(data: str, *args: str)-> str:
+def Str_chop_end(data: str, *args: str)-> str:
     for n in args:
         if data.endswith(n):
             return data[:-len(n)]
     return data
 
-def escape_quotes(haystack: str, double: bool = True)-> str:
+def Str_escape_quotes(haystack: str, double: bool = True)-> str:
     if double:
         return re.sub(r'(?<!\\)"', r'\"', haystack)
     else:
         return re.sub(r"(?<!\\)'", r"\'", haystack)
 
-def remove_empty_lines(data: str) -> str:
+def Str_remove_empty_lines(data: str) -> str:
     return re.sub(r'(\n\s*){2,}', '\n', re.sub(r'^\s*[\r\n]+|[\r\n]+\s*\Z', '', data))
 
-def pad(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+def Str_pad(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
     padding = kwargs.pop('pad')
     if padding not in ['left', 'right', 'both']:
         raise ValueError(f'Invalid padding type [{padding}]. Available: left, right, both')
@@ -146,36 +156,36 @@ def pad(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
     else:
         return str(data).center(count, char)
 
-def ljust(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+def Str_ljust(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
     kwargs['pad'] = 'left'
-    return pad(data, count, char, **kwargs)
+    return Str_pad(data, count, char, **kwargs)
 
-def rjust(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+def Str_rjust(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
     kwargs['pad'] = 'right'
-    return pad(data, count, char, **kwargs)
+    return Str_pad(data, count, char, **kwargs)
 
-def center(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+def Str_center(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
     kwargs['pad'] = 'both'
-    return pad(data, count, char, **kwargs)
+    return Str_pad(data, count, char, **kwargs)
 
-def pad_left(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
-    return ljust(data, count, char, **kwargs)
+def Str_pad_left(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+    return Str_ljust(data, count, char, **kwargs)
 
-def pad_right(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
-    return rjust(data, count, char, **kwargs)
+def Str_pad_right(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+    return Str_rjust(data, count, char, **kwargs)
 
-def pad_both(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
-    return rjust(data, count, char, **kwargs)
+def Str_pad_both(data: t.Any, count: int = 4, char: str = ' ', **kwargs)-> str:
+    return Str_rjust(data, count, char, **kwargs)
 ### END: Manipulate
 
 ### BEGIN: Factory
-def repeat(data: str, times: int = 1, as_list: bool = False) -> list[str]|str:
+def Str_repeat(data: str, times: int = 1, as_list: bool = False) -> list[str]|str:
     ret = [data for _ in range(max(times, 1))]
     return ret if as_list else ''.join(ret)
 ### END: Factory
 
 ### BEGIN: Cases
-def case_snake(data: str) -> str:
+def Str_case_snake(data: str) -> str:
     ret = data.replace('-', ' ')
     ret = re.sub(r'([A-Z]+)', r' \1', ret)
     ret = re.sub(r'([A-Z][a-z]+)', r' \1', ret)

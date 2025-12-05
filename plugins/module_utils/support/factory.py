@@ -2,9 +2,23 @@
 import typing as t
 ### END: Imports
 ### BEGIN: ImportManager
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.convert import (
+	Convert_as_copied, Convert_as_ts_mod, Convert_to_md5,
+	Convert_to_url_encode,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import (
+	Data_combine,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.utils import (
+	Utils_fs_dirname, Utils_fs_ensure_directory_exists, Utils_fs_join_paths,
+	Utils_json_save,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.validate import (
+	Validate_blank, Validate_filled, Validate_fs_file_exists,
+)
 ### END: ImportManager
 
-def ts(**kwargs):
+def Factory_ts(**kwargs):
     import datetime
     ts = datetime.datetime.now(datetime.timezone.utc)
     mod = kwargs.pop('mod', '')
@@ -14,15 +28,15 @@ def ts(**kwargs):
 
     return ts
 
-def timestamp(**kwargs):
-    return ts(**kwargs)
+def Factory_timestamp(**kwargs):
+    return Factory_ts(**kwargs)
 
-def random_string(length: PositiveInt = 32)-> str:
+def Factory_random_string(length: PositiveInt = 32)-> str:
     import random, string
     return ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for _ in range(length))
 
 ### BEGIN: FS
-def fs_path_tmp(file: str, *args, **kwargs)-> str:
+def Factory_fs_path_tmp(file: str, *args, **kwargs)-> str:
     import tempfile
     is_dir = kwargs.pop('dir', False)
     args = list(args)
@@ -38,10 +52,10 @@ def fs_path_tmp(file: str, *args, **kwargs)-> str:
 ### END: FS
 
 ### BEGIN: Play
-def play_meta(vars: t.Mapping, **kwargs)-> dict:
+def Factory_play_meta(vars: t.Mapping, **kwargs)-> dict:
     import urllib, urllib.parse
     make_cache = kwargs.pop('make_cache', False)
-    ts_ = ts()
+    ts_ = Factory_ts()
 
     play_hosts = ','.join(vars.get('ansible_play_hosts_all', []))
     play_batch = ','.join(vars.get('ansible_play_batch', []))
@@ -72,7 +86,7 @@ def play_meta(vars: t.Mapping, **kwargs)-> dict:
             'timestamp': Convert_as_ts_mod(ts_, 'timestamp'), #type: ignore
         },
         'placeholder': placeholder(mod='hash'),
-        'cache_file': fs_path_tmp(f'play_{Convert_to_md5(play_id)}.json'),
+        'cache_file': Factory_fs_path_tmp(f'play_{Convert_to_md5(play_id)}.json'),
     }
 
     if make_cache and not Validate_fs_file_exists(ret['cache_file']):
@@ -84,7 +98,7 @@ def play_meta(vars: t.Mapping, **kwargs)-> dict:
 ### END: Play
 
 ### BEGIN: Net
-def net_random_mac(value: str, seed=None):
+def Factory_net_random_mac(value: str, seed=None):
     import re
     value = value.lower()
     mac_items = value.split(':')

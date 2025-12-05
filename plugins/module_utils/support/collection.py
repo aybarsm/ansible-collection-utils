@@ -3,6 +3,13 @@ import typing as t
 import typing_extensions as te
 ### END: Imports
 ### BEGIN: ImportManager
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import (
+	Data_append, Data_collections, Data_pluck,
+	Data_prepend, Data_where,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.utils import (
+	Utils_call,
+)
 ### END: ImportManager
 
 class Collection(t.Generic[T]):

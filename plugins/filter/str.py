@@ -2,11 +2,16 @@
 from __future__ import annotations
 ### END: Imports
 ### BEGIN: ImportManager
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.str import (
+	Str_after, Str_after_last, Str_before,
+	Str_before_last, Str_finish, Str_matches,
+	Str_quote, Str_remove_empty_lines, Str_start,
+	Str_wrap,
+)
 ### END: ImportManager
 
 class FilterModule(object):
     def filters(self):
-        from ansible_collections.aybarsm.utils.plugins.module_utils.aggregator import Kit
         return {
             'str_before': Str_before,
             'str_before_last': Str_before_last,

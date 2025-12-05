@@ -4,9 +4,29 @@ from pathlib import Path as PathlibPath
 import datetime, asyncio
 ### END: Imports
 ### BEGIN: ImportManager
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.ansible import (
+	Ansible_display,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.convert import (
+	Convert_as_callable_segments, Convert_as_ip_address, Convert_from_json,
+	Convert_from_yaml, Convert_to_json, Convert_to_text,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import (
+	Data_all_except, Data_filled, Data_get,
+	Data_only_with,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.factory import (
+	Factory_ts,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.validate import (
+	Validate_blank, Validate_callable_is_coroutine, Validate_filled,
+	Validate_is_ansible_env, Validate_is_ip_private, Validate_is_ip_public,
+	Validate_is_ip_v4, Validate_is_ip_v6, Validate_is_mapping,
+	Validate_is_object, Validate_is_sequence, Validate_is_string,
+)
 ### END: ImportManager
 
-def dump(*args, **kwargs):
+def Utils_dump(*args, **kwargs):
     separator = kwargs.pop('separator', None)
     separator = separator if isinstance(separator, Definitions_Separator) else None
     
@@ -37,19 +57,19 @@ def dump(*args, **kwargs):
         for arg in args:
             RichPretty_pprint(arg, **kwargs)
 
-def dd(*args, **kwargs):
-    dump(*args, **kwargs)
+def Utils_dd(*args, **kwargs):
+    Utils_dump(*args, **kwargs)
     exit(0)
 
-def product(*args, **kwargs):
+def Utils_product(*args, **kwargs):
     from itertools import product
-    return product(*args, **kwargs)
+    return Utils_product(*args, **kwargs)
 
 ### BEGIN: Json
-def json_load(path: PathlibPath|str, **kwargs)-> dict|list:
-    return Convert_from_json(fs_read(path), **kwargs)
+def Utils_json_load(path: PathlibPath|str, **kwargs)-> dict|list:
+    return Convert_from_json(Utils_fs_read(path), **kwargs)
 
-def json_save(data, path: PathlibPath|str, **kwargs) -> None:
+def Utils_json_save(data, path: PathlibPath|str, **kwargs) -> None:
         path = PathlibPath(path)
         overwrite = kwargs.pop('overwrite', False)
 
@@ -66,11 +86,11 @@ def json_save(data, path: PathlibPath|str, **kwargs) -> None:
         elif Validate_is_sequence(data):
             data = Convert_to_json(list(data), **kwargs_json) #type: ignore
         
-        fs_write(path, str(data), **kwargs_path) #type: ignore
+        Utils_fs_write(path, str(data), **kwargs_path) #type: ignore
 ### END: Json
 
 ### BEGIN: Callable
-def call_raw(callback: t.Callable, *args, **kwargs) -> t.Any:
+def Utils_call_raw(callback: t.Callable, *args, **kwargs) -> t.Any:
     if Validate_blank(args) and Validate_blank(kwargs):
         return callback()
     
@@ -121,14 +141,14 @@ def call_raw(callback: t.Callable, *args, **kwargs) -> t.Any:
 
     return callback(*send_args, **send_kwargs)
 
-def call(callback: t.Callable, *args, **kwargs) -> t.Any:
-    return call_raw(callback, *args, **kwargs)
+def Utils_call(callback: t.Callable, *args, **kwargs) -> t.Any:
+    return Utils_call_raw(callback, *args, **kwargs)
 
 async def call_async(callback: t.Callable, *args, **kwargs) -> t.Any:
-    return await call_raw(callback, *args, **kwargs)
+    return await Utils_call_raw(callback, *args, **kwargs)
 
-# def call(callback: t.Callable, *args, **kwargs) -> t.Any:
-#     result = call_raw(callback, *args, **kwargs)
+# def Utils_call(callback: t.Callable, *args, **kwargs) -> t.Any:
+#     result = Utils_call_raw(callback, *args, **kwargs)
 #     if asyncio.iscoroutine(result):
 #         try:
 #             asyncio.get_running_loop()
@@ -139,7 +159,7 @@ async def call_async(callback: t.Callable, *args, **kwargs) -> t.Any:
 #     return result
 
 # async def call_async(callback: t.Callable, *args, **kwargs) -> t.Any:
-#     result = call_raw(callback, *args, **kwargs)
+#     result = Utils_call_raw(callback, *args, **kwargs)
 #     if asyncio.iscoroutine(result):
 #         return await result
 #     return result
@@ -147,25 +167,25 @@ async def call_async(callback: t.Callable, *args, **kwargs) -> t.Any:
 async def call_semaphore(semaphore: asyncio.Semaphore, callback: t.Callable, *args, **kwargs) -> t.Any:
     async with semaphore:
         if Validate_callable_is_coroutine(callback):
-            result = await call_raw(callback, *args, **kwargs)
+            result = await Utils_call_raw(callback, *args, **kwargs)
         else:
-            result = await asyncio.get_running_loop().run_in_executor(None, lambda: call_raw(callback, *args, **kwargs))
+            result = await asyncio.get_running_loop().run_in_executor(None, lambda: Utils_call_raw(callback, *args, **kwargs))
     
         return result
 
-def tap_(value: t.Any, callback: t.Callable) -> t.Any:
+def Utils_tap_(value: t.Any, callback: t.Callable) -> t.Any:
     callback(value)
     return value
 
-def with_(value: t.Any, callback: t.Callable) -> t.Any:
+def Utils_with_(value: t.Any, callback: t.Callable) -> t.Any:
     return callback(value)
 ### END: Callable
 
 ### BEGIN: FS
-def fs_dirname(path: PathlibPath|str)-> str:
+def Utils_fs_dirname(path: PathlibPath|str)-> str:
     return str(PathlibPath(path).parent)
 
-def fs_join_paths(*args, **kwargs):
+def Utils_fs_join_paths(*args, **kwargs):
     import os
     normalize = kwargs.pop('normalize', True)
     
@@ -179,23 +199,23 @@ def fs_join_paths(*args, **kwargs):
 
     return str(ret)
 
-def fs_ensure_directory_exists(path: PathlibPath|str)-> None:
+def Utils_fs_ensure_directory_exists(path: PathlibPath|str)-> None:
     PathlibPath(path).mkdir(parents=True, exist_ok=True)
 
-def fs_read(path: PathlibPath|str, **kwargs)-> str:
+def Utils_fs_read(path: PathlibPath|str, **kwargs)-> str:
     return PathlibPath(path).read_text(**kwargs)
 
-def fs_read_bytes(path: PathlibPath|str, **kwargs)-> bytes:
+def Utils_fs_read_bytes(path: PathlibPath|str, **kwargs)-> bytes:
     return PathlibPath(path).read_bytes(**kwargs)
 
-def fs_write(path: PathlibPath|str, data: str|bytes, **kwargs)-> None:
+def Utils_fs_write(path: PathlibPath|str, data: str|bytes, **kwargs)-> None:
     path = PathlibPath(path)
     if Validate_is_string(data):
         path.write_text(str(data), **kwargs)
     else:
         path.write_bytes(data, **kwargs) #type: ignore
 
-def fs_top_level_dirs(paths: str|t.Sequence[str], *args: str)-> list[str]:
+def Utils_fs_top_level_dirs(paths: str|t.Sequence[str], *args: str)-> list[str]:
     import os
 
     paths = list(paths)
@@ -218,7 +238,7 @@ def fs_top_level_dirs(paths: str|t.Sequence[str], *args: str)-> list[str]:
 ### END: FS
 
 ### BEGIN: Net
-def net_subnets_collapse(data: t.Sequence[str], **kwargs) -> list:
+def Utils_net_subnets_collapse(data: t.Sequence[str], **kwargs) -> list:
     only = kwargs.pop('only', '')
     proto = kwargs.pop('proto', '')
 
@@ -246,14 +266,14 @@ def net_subnets_collapse(data: t.Sequence[str], **kwargs) -> list:
 ### END: Net
 
 ### BEGIN: Date Time
-def ensure_utc_timezone(timestamp: datetime.datetime) -> datetime.datetime:
+def Utils_ensure_utc_timezone(timestamp: datetime.datetime) -> datetime.datetime:
         if timestamp.tzinfo is datetime.timezone.utc:
             return timestamp
         if timestamp.tzinfo is None:
             return timestamp.replace(tzinfo=datetime.timezone.utc)
         return timestamp.astimezone(datetime.timezone.utc)
 
-def remove_timezone(timestamp: datetime.datetime) -> datetime.datetime:
+def Utils_remove_timezone(timestamp: datetime.datetime) -> datetime.datetime:
         # Convert to native datetime object
         if timestamp.tzinfo is None:
             return timestamp
@@ -261,16 +281,16 @@ def remove_timezone(timestamp: datetime.datetime) -> datetime.datetime:
             timestamp = timestamp.astimezone(datetime.timezone.utc)
         return timestamp.replace(tzinfo=None)
 
-def datetime_add_or_remove_timezone(
+def Utils_datetime_add_or_remove_timezone(
     timestamp: datetime.datetime, *, with_timezone: bool
 ) -> datetime.datetime:
     return (
-        ensure_utc_timezone(timestamp) if with_timezone else remove_timezone(timestamp)
+        Utils_ensure_utc_timezone(timestamp) if with_timezone else Utils_remove_timezone(timestamp)
     )
 ### END: Date Time
 
 ### BEGIN: Crypto
-def crypto_convert_relative_to_datetime(
+def Utils_crypto_convert_relative_to_datetime(
     relative_time_string: str,
     *,
     with_timezone: bool = False,
@@ -301,13 +321,13 @@ def crypto_convert_relative_to_datetime(
     if now is None:
         now = Factory_ts() #type: ignore
     else:
-        now = datetime_add_or_remove_timezone(now, with_timezone=with_timezone)
+        now = Utils_datetime_add_or_remove_timezone(now, with_timezone=with_timezone)
 
     if parsed_result.group("prefix") == "+":
         return now + offset #type: ignore
     return now - offset #type: ignore
 
-def crypto_get_relative_time_option(
+def Utils_crypto_get_relative_time_option(
     input_string: str,
     *,
     input_name: str,
@@ -327,7 +347,7 @@ def crypto_get_relative_time_option(
         )
     # Relative time
     if result.startswith("+") or result.startswith("-"):
-        res = crypto_convert_relative_to_datetime(result, with_timezone=with_timezone, now=now)
+        res = Utils_crypto_convert_relative_to_datetime(result, with_timezone=with_timezone, now=now)
         if res is None:
             raise ValueError(
                 f'The timespec "{input_string}" for {input_name} is invalid'
@@ -353,7 +373,7 @@ def crypto_get_relative_time_option(
         except ValueError:
             pass
         else:
-            return datetime_add_or_remove_timezone(res, with_timezone=with_timezone)
+            return Utils_datetime_add_or_remove_timezone(res, with_timezone=with_timezone)
 
     raise ValueError(
         f'The time spec "{input_string}" for {input_name} is invalid'
@@ -361,10 +381,10 @@ def crypto_get_relative_time_option(
 ### END: Crypto
 
 ### BEGIN: Generic
-def class_get_mro(self_: object):
+def Utils_class_get_mro(self_: object):
     return 
 
-def class_get_primary_child(self_: object, parent: type) -> bool | object:
+def Utils_class_get_primary_child(self_: object, parent: type) -> bool | object:
     if self_.__class__ is parent:
         return True
 
@@ -378,15 +398,15 @@ def class_get_primary_child(self_: object, parent: type) -> bool | object:
     
     return False
 
-def value(context: t.Any, *args, **kwargs):
-    return call_raw(context, *args, **kwargs) if callable(context) else context
+def Utils_value(context: t.Any, *args, **kwargs):
+    return Utils_call_raw(context, *args, **kwargs) if callable(context) else context
     
-def when(condition: t.Any, context: t.Any, default: t.Any = None):
+def Utils_when(condition: t.Any, context: t.Any, default: t.Any = None):
     if callable(condition):
         condition = condition()
 
     if condition:
-        return value(context, condition)
+        return Utils_value(context, condition)
     else:
-        return value(default, condition)
+        return Utils_value(default, condition)
 ### END: Generic

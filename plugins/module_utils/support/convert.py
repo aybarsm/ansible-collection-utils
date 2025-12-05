@@ -4,9 +4,36 @@ import types as tt
 import datetime, inspect, uuid, hashlib, ipaddress, inspect, copy, re, netaddr
 ### END: Imports
 ### BEGIN: ImportManager
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.ansible import (
+	Ansible_is_trusted_as_template, Ansible_trust_as_template, Ansible_utils_ipaddr,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import (
+	Data_combine, Data_get, Data_map,
+	Data_walk_values_deep, Data_where,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.factory import (
+	Factory_random_string, Factory_ts,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.str import (
+	Str_after_last, Str_before, Str_before_last,
+	Str_chop_start, Str_finish,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.utils import (
+	Utils_call,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.validate import (
+	Validate_blank, Validate_callable_parameter_has, Validate_callable_parameter_is_kind,
+	Validate_contains, Validate_falsy, Validate_filled,
+	Validate_is_ansible_mapping, Validate_is_bool, Validate_is_bytes,
+	Validate_is_enumeratable, Validate_is_exception, Validate_is_hashable,
+	Validate_is_ip_v4, Validate_is_ip_v6, Validate_is_iterable,
+	Validate_is_mapping, Validate_is_sequence, Validate_is_string,
+	Validate_is_type_python_native, Validate_str_is_json, Validate_str_is_yaml,
+	Validate_truthy,
+)
 ### END: ImportManager
 
-def as_id(
+def Convert_as_id(
     data: t.Any, 
     prefix: str = '', 
     suffix: str = '', 
@@ -25,20 +52,20 @@ def as_id(
     ret = f'{prefix}{'_'.join(ret)}{suffix}'
 
     if as_hash:
-        return to_md5(ret)
+        return Convert_to_md5(ret)
     else:
         return ret
 
-def to_pydash(data: t.Iterable[t.Any])-> dict | list:
+def Convert_to_pydash(data: t.Iterable[t.Any])-> dict | list:
     if Validate_is_mapping(data):
         return dict(data)
     else:
         return list(data)
 
-def to_md5(data: t.Any)-> str:
-    return hashlib.md5(str(to_text(data)).encode()).hexdigest()
+def Convert_to_md5(data: t.Any)-> str:
+    return hashlib.md5(str(Convert_to_text(data)).encode()).hexdigest()
 
-def as_ts_mod(ts: datetime.datetime, mod: str)-> str|int:
+def Convert_as_ts_mod(ts: datetime.datetime, mod: str)-> str|int:
     mod = mod.lower()
 
     if mod in ['string', 'str']:
@@ -56,16 +83,16 @@ def as_ts_mod(ts: datetime.datetime, mod: str)-> str|int:
     else:
         raise ValueError(f'Unknown TS mod [{mod}]')
 
-def to_iterable(data)-> list:
+def Convert_to_iterable(data)-> list:
     return list(data) if isinstance(data, (list, set, tuple)) else [data]
 
-def to_enumeratable(data: t.Any) -> list:
+def Convert_to_enumeratable(data: t.Any) -> list:
     if Validate_is_mapping(data):
         return list(dict(data).values())
     
     return list(data) if isinstance(data, (list, set, tuple)) else [data]
 
-def as_copied(data):
+def Convert_as_copied(data):
     try:
         return copy.deepcopy(data)
     except Exception:
@@ -78,7 +105,7 @@ def as_copied(data):
     
     return data
 
-def from_mapping_to_callable(data: t.Mapping[str, t.Any], **kwargs)-> t.Callable:
+def Convert_from_mapping_to_callable(data: t.Mapping[str, t.Any], **kwargs)-> t.Callable:
     no_dot = kwargs.pop('no_dot', False)
     
     if no_dot:
@@ -86,7 +113,7 @@ def from_mapping_to_callable(data: t.Mapping[str, t.Any], **kwargs)-> t.Callable
     else:
         return lambda entry: all([Data_has(entry, key) and Data_get(entry, key) == val for key, val in data.items()])
 
-def to_data_key(*args: str, **kwargs)-> str:
+def Convert_to_data_key(*args: str, **kwargs)-> str:
     include_blanks = Validate_truthy(kwargs.pop('blanks', False))
     ret = []
     
@@ -97,19 +124,19 @@ def to_data_key(*args: str, **kwargs)-> str:
     
     return '.'.join(ret)
 
-def to_safe_json(data):
+def Convert_to_safe_json(data):
     if Validate_is_bytes(data):
-        return to_safe_json(to_text(data))
+        return Convert_to_safe_json(to_text(data))
     elif Validate_is_string(data) and Validate_str_is_json(data):
-        return to_safe_json(from_json(data))
+        return Convert_to_safe_json(from_json(data))
     elif Validate_is_string(data) and Validate_str_is_yaml(data):
-        return to_safe_json(from_yaml(data))
+        return Convert_to_safe_json(from_yaml(data))
     elif isinstance(data, (str, int, float, bool)) or data is None:
         return data
     elif Validate_is_ansible_mapping(data):
-        return to_safe_json(to_text(data))
+        return Convert_to_safe_json(to_text(data))
     elif isinstance(data, dict):
-        return {str(k): to_safe_json(v) for k, v in data.items()}
+        return {str(k): Convert_to_safe_json(v) for k, v in data.items()}
     elif isinstance(data, (list, tuple)):
         return [to_safe_json(item) for item in data]
     elif hasattr(data, '__str__'):
@@ -121,7 +148,7 @@ def to_safe_json(data):
     # Fallback
     return f"<unsupported type: {type(data)}>"
 
-def to_url_encode(data: t.Mapping[str, t.Any], **kwargs)-> str:
+def Convert_to_url_encode(data: t.Mapping[str, t.Any], **kwargs)-> str:
     import urllib.parse
     
     data = dict(data)
@@ -131,12 +158,12 @@ def to_url_encode(data: t.Mapping[str, t.Any], **kwargs)-> str:
     
     return urllib.parse.urlencode(data, **kwargs)
 
-def from_querystring(data: str, **kwargs) -> dict:
+def Convert_from_querystring(data: str, **kwargs) -> dict:
     from urllib.parse import parse_qs
     return parse_qs(data, **kwargs)
 
-def to_querystring(data, keyAttr, valAttr=None, assignChar='=', joinChar='&', recurse=None, recurseIndentSteps=0, recurseIndentChar=' ', repeatJoinCharOnMainLevels=False):
-    data = to_iterable(data)
+def Convert_to_querystring(data, keyAttr, valAttr=None, assignChar='=', joinChar='&', recurse=None, recurseIndentSteps=0, recurseIndentChar=' ', repeatJoinCharOnMainLevels=False):
+    data = Convert_to_iterable(data)
 
     result = []
 
@@ -158,7 +185,7 @@ def to_querystring(data, keyAttr, valAttr=None, assignChar='=', joinChar='&', re
 
     return joinChar.join(result).strip(joinChar)
 
-def to_list_of_dicts(data, defaults={}, *args, **kwargs):
+def Convert_to_list_of_dicts(data, defaults={}, *args, **kwargs):
     no_dot = kwargs.get('no_dot', False)
     combines = kwargs.pop('combine', [])
     combine_args = kwargs.pop('combine_args', {})
@@ -181,7 +208,7 @@ def to_list_of_dicts(data, defaults={}, *args, **kwargs):
 
     return ret
 
-def as_hash(
+def Convert_as_hash(
     key: int,
     value: t.Any, 
     by: t.Optional[t.Union[t.Literal[True], str, ENUMERATABLE[str], t.Callable]] = None,
@@ -199,11 +226,11 @@ def as_hash(
         by = [by]
 
     if isinstance(value, t.Mapping) or isinstance(value, object):
-        return to_md5('|'.join([to_text(Data_get(value, key_, Sentinel.hash)) for key_ in by])) #type: ignore
+        return Convert_to_md5('|'.join([to_text(Data_get(value, key_, Sentinel.hash)) for key_ in by])) #type: ignore
     
     raise RuntimeError(f'Unhashable condition for item type [{type(value).__name__}]')
 
-def as_concurrent_command(commands: ENUMERATABLE[str]) -> str:
+def Convert_as_concurrent_command(commands: ENUMERATABLE[str]) -> str:
     tmp_prefix = f'ansible.cmd_{Sentinel.hash}'
     ret = {
         'cmd': [],
@@ -256,43 +283,43 @@ def as_concurrent_command(commands: ENUMERATABLE[str]) -> str:
         ')',
     ])
 
-def as_lines(data: t.Optional[str]) -> list[str]:
+def Convert_as_lines(data: t.Optional[str]) -> list[str]:
     if not data or Validate_blank(data):
         return []
 
     return str(data).splitlines()
 
-def as_cleaned_lines(data: t.Optional[str]) -> list[str]:
+def Convert_as_cleaned_lines(data: t.Optional[str]) -> list[str]:
     if not data or Validate_blank(data):
         return []
     
     return [line for line in Data_map(
-            as_lines(data),
+            Convert_as_lines(data),
             lambda entry: re.sub(r'\s+', ' ', str(entry).strip())
         ) if Validate_filled(line)]
 
 ### BEGIN: Ansible
-def to_text(*args, **kwargs)-> str:
+def Convert_to_text(*args, **kwargs)-> str:
     from ansible.module_utils.common.text.converters import to_text
     strip_quotes = kwargs.pop('strip_quotes', False)
 
-    ret = to_text(*args, **kwargs)
+    ret = Convert_to_text(*args, **kwargs)
     
     if strip_quotes:
         ret = str(ret).strip().strip("'").strip().strip('"').strip()
 
     return ret
 
-def to_native(*args, **kwargs)-> str:
-    return to_text(*args, **kwargs)
+def Convert_to_native(*args, **kwargs)-> str:
+    return Convert_to_text(*args, **kwargs)
 
-def to_string(*args, **kwargs)-> str:
-    return to_text(*args, **kwargs)
+def Convert_to_string(*args, **kwargs)-> str:
+    return Convert_to_text(*args, **kwargs)
 
-def to_primitive(*args, **kwargs) -> t.Any:
-    ret = to_text(*args, **kwargs)
+def Convert_to_primitive(*args, **kwargs) -> t.Any:
+    ret = Convert_to_text(*args, **kwargs)
     if Validate_str_is_yaml(ret):
-        ret = from_yaml(ret)
+        ret = Convert_from_yaml(ret)
         if Validate_is_mapping(ret):
             return dict(ret)
         else:
@@ -300,27 +327,27 @@ def to_primitive(*args, **kwargs) -> t.Any:
     else:
         return ret
 
-def to_bytes(*args, **kwargs):
+def Convert_to_bytes(*args, **kwargs):
     from ansible.module_utils.common.text.converters import to_bytes
-    return to_bytes(*args, **kwargs)
+    return Convert_to_bytes(*args, **kwargs)
 
-def from_cli(data, *args, **kwargs):
-    data = to_string(data)
+def Convert_from_cli(data, *args, **kwargs):
+    data = Convert_to_string(data)
     as_iterable = kwargs.get('iterable', False)
     as_stripped = kwargs.get('stripped', False)
     
     ret = data.strip().strip('\'"')
 
     if Validate_str_is_json(data):
-        return from_json(data)
+        return Convert_from_json(data)
     elif Validate_str_is_yaml(data):
-        return from_yaml(data)
+        return Convert_from_yaml(data)
     elif as_iterable and Validate_contains(ret, ','):
         return [x for x in ','.split((ret if as_stripped else data)) if x]
     elif as_iterable:
-        return to_iterable((ret if as_stripped else data))
+        return Convert_to_iterable((ret if as_stripped else data))
     else:
-        return to_iterable(ret if as_stripped else data) if as_iterable else (ret if as_stripped else data)
+        return Convert_to_iterable(ret if as_stripped else data) if as_iterable else (ret if as_stripped else data)
 
 def __from_ansible_template(templar, variable, **kwargs) -> t.Any:
     if Validate_is_string(variable) and not Ansible_is_trusted_as_template(variable):
@@ -331,11 +358,11 @@ def __from_ansible_template(templar, variable, **kwargs) -> t.Any:
     if Validate_is_mapping(variable):
         return dict(variable)
     elif Validate_is_enumeratable(variable):
-        return to_iterable(variable)
+        return Convert_to_iterable(variable)
     else:
         return variable
 
-def from_ansible_template(templar, variable, **kwargs)-> t.Any:
+def Convert_from_ansible_template(templar, variable, **kwargs)-> t.Any:
     extra_vars = kwargs.pop('extra_vars', {})
     remove_extra_vars = kwargs.pop('remove_extra_vars', True)
     
@@ -354,25 +381,25 @@ def from_ansible_template(templar, variable, **kwargs)-> t.Any:
     if Validate_is_mapping(variable):
         return dict(variable)
     elif Validate_is_enumeratable(variable):
-        return to_iterable(variable)
+        return Convert_to_iterable(variable)
     else:
         return variable
 
-def from_ansible(data: t.Any)-> t.Any:
+def Convert_from_ansible(data: t.Any)-> t.Any:
     if Validate_is_mapping(data) or Validate_is_sequence(data):
-        return from_yaml(to_native(data))
+        return Convert_from_yaml(to_native(data))
     
     return data
 
-def to_items(
+def Convert_to_items(
     data: t.Iterable[t.Any],
     key_name: str = 'key',
     value_name: str = 'value',
 )-> list[dict[str, t.Any]]:
-    iteratee = dict(data).items() if Validate_is_mapping(data) else enumerate(to_iterable(data))
+    iteratee = dict(data).items() if Validate_is_mapping(data) else enumerate(Convert_to_iterable(data))
     return [{key_name: key_, value_name: val_} for key_, val_ in iteratee]
 
-def from_items(
+def Convert_from_items(
     data: t.Sequence[t.Mapping[str, t.Any]],
     key_name: str = 'key',
     value_name: str = 'value',
@@ -388,13 +415,13 @@ def from_items(
 
     return ret
 
-def as_command_model(data: t.Mapping[str, t.Any], command: t.Optional[str] = None) -> CommandModel:
+def Convert_as_command_model(data: t.Mapping[str, t.Any], command: t.Optional[str] = None) -> CommandModel:
     data = dict(data)
-    data['stdout'] = to_text(data['stdout']).strip()
-    data['stderr'] = to_text(data['stderr']).strip()
+    data['stdout'] = Convert_to_text(data['stdout']).strip()
+    data['stderr'] = Convert_to_text(data['stderr']).strip()
 
     ret = {
-        'rc': int(to_text(data['rc'])),
+        'rc': int(Convert_to_text(data['rc'])),
         'out': data['stdout'] if Validate_filled(data['stdout']) else None,
         'err': data['stderr'] if Validate_filled(data['stderr']) else None,
         'command': command,
@@ -404,19 +431,19 @@ def as_command_model(data: t.Mapping[str, t.Any], command: t.Optional[str] = Non
 ### END: Ansible
 
 ### BEGIN: Type
-def to_type_name(data: t.Any) -> str:
+def Convert_to_type_name(data: t.Any) -> str:
     return type(data).__name__
 
-def to_type_module(data: t.Any) -> str:
+def Convert_to_type_module(data: t.Any) -> str:
     return type(data).__module__
 
-def as_non_native_types(data: t.Union[t.Any, ENUMERATABLE[t.Any]])-> tuple[t.Any, ...]:
-    return tuple([item for item in to_iterable(data) if not Validate_is_type_python_native(item)])
+def Convert_as_non_native_types(data: t.Union[t.Any, ENUMERATABLE[t.Any]])-> tuple[t.Any, ...]:
+    return tuple([item for item in Convert_to_iterable(data) if not Validate_is_type_python_native(item)])
 
-def as_type_module_mapping(data: t.Union[t.Any, ENUMERATABLE[t.Any]]) -> list[t.Any]:
+def Convert_as_type_module_mapping(data: t.Union[t.Any, ENUMERATABLE[t.Any]]) -> list[t.Any]:
     ret = []
 
-    for item in to_iterable(data):
+    for item in Convert_to_iterable(data):
         ret_item = {
             'item': item,
             'module': None,
@@ -440,29 +467,29 @@ def as_type_module_mapping(data: t.Union[t.Any, ENUMERATABLE[t.Any]]) -> list[t.
 ### END: Type
 
 ### BEGIN: Net
-def to_ip_address(data: t.Any, **kwargs):
+def Convert_to_ip_address(data: t.Any, **kwargs):
     default = kwargs.get('default', Sentinel.hash)
 
     try:
-        return ipaddress.ip_address(to_text(data))
+        return ipaddress.ip_address(Convert_to_text(data))
     except Exception as e:
         if default == Sentinel.hash:
             raise e
         
         return default
     
-def to_ip_network(data: t.Any, **kwargs):
+def Convert_to_ip_network(data: t.Any, **kwargs):
     default = kwargs.get('default', Sentinel.hash)
 
     try:
-        return ipaddress.ip_network(to_text(data))
+        return ipaddress.ip_network(Convert_to_text(data))
     except Exception as e:
         if default == Sentinel.hash:
             raise e
         
         return default
 
-def as_ip_address(data: str, **kwargs)-> str:
+def Convert_as_ip_address(data: str, **kwargs)-> str:
     default = kwargs.pop('default', Sentinel.hash)
     
     addr = Str_before(data, '/')
@@ -488,7 +515,7 @@ def as_ip_address(data: str, **kwargs)-> str:
     
     return addr
 
-def as_ip_segments(data: str)-> dict:
+def Convert_as_ip_segments(data: str)-> dict:
     type_ = Ansible_utils_ipaddr(data, 'type')
     type_ = 'addr' if type_ == 'address' else ('net' if type_ == 'network' else None)
     
@@ -556,8 +583,8 @@ def as_ip_segments(data: str)-> dict:
         }
     }
 
-def as_ip_segments_validated(data, on_invalid: t.Optional[t.Callable] = None, **kwargs)-> list:
-    ret = Data_map(to_iterable(data), lambda ip_: as_ip_segments(ip_))
+def Convert_as_ip_segments_validated(data, on_invalid: t.Optional[t.Callable] = None, **kwargs)-> list:
+    ret = Data_map(Convert_to_iterable(data), lambda ip_: Convert_as_ip_segments(ip_))
 
     if Validate_filled(ret) and Validate_filled(on_invalid):
         for idx, item in enumerate(ret):
@@ -571,7 +598,7 @@ def as_ip_segments_validated(data, on_invalid: t.Optional[t.Callable] = None, **
         
     return list(ret)
 
-def as_ip_merged_cidrs(value, action="merge"):
+def Convert_as_ip_merged_cidrs(value, action="merge"):
     if not hasattr(value, "__iter__"):
         raise ValueError("cidr_merge: expected iterable, got " + repr(value))
 
@@ -612,17 +639,17 @@ def as_ip_merged_cidrs(value, action="merge"):
 ### END: Net
 
 ### BEGIN: Hash
-def to_hash_scrypt(data: str, **kwargs)-> str:
+def Convert_to_hash_scrypt(data: str, **kwargs)-> str:
     from passlib.hash import scrypt
     return scrypt.hash(data, **kwargs)
 ### END: Hash
 
 ### BEGIN: Json
-def from_json(data: str, **kwargs)-> dict|list:
+def Convert_from_json(data: str, **kwargs)-> dict|list:
     import json
     return json.loads(data, **kwargs)
 
-def to_json(
+def Convert_to_json(
     data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], 
     **kwargs,
 )-> str:
@@ -631,11 +658,11 @@ def to_json(
 ### END: Json
 
 ### BEGIN: Yaml
-def from_yaml(data: str)-> dict|list:
+def Convert_from_yaml(data: str)-> dict|list:
     import yaml
     return yaml.unsafe_load(data)
 
-def to_yaml(
+def Convert_to_yaml(
     data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], 
     **kwargs,
 )-> str:
@@ -644,43 +671,43 @@ def to_yaml(
 ### END: Yaml
 
 ### BEGIN: Lua
-def from_lua(data: str, **kwargs)-> dict|list:
+def Convert_from_lua(data: str, **kwargs)-> dict|list:
     import luadata
     return luadata.unserialize(data, **kwargs)
 
-def to_lua(data: t.Mapping|t.Sequence, **kwargs)-> str:
+def Convert_to_lua(data: t.Mapping|t.Sequence, **kwargs)-> str:
     import luadata
     return luadata.serialize(data, **kwargs)
 ### END: Lua
 
 ### BEGIN: Toml
-def from_toml(data: str)-> dict|list:
+def Convert_from_toml(data: str)-> dict|list:
     from tomlkit import parse
     return parse(data)
 
-def to_toml(data: t.Mapping, **kwargs)-> str:
+def Convert_to_toml(data: t.Mapping, **kwargs)-> str:
     from tomlkit import dumps
     return dumps(data, **kwargs)
 ### END: Toml
 
 ### BEGIN: Toml
-def from_base64(data: t.Any, **kwargs)-> str|bytes:
+def Convert_from_base64(data: t.Any, **kwargs)-> str|bytes:
     import base64
     decode_as = kwargs.pop('decode', 'utf-8')
 
-    ret = base64.b64decode(to_text(data), **kwargs)
+    ret = base64.b64decode(Convert_to_text(data), **kwargs)
 
     if Validate_filled(decode_as):
         return ret.decode(decode_as)
     
     return ret
 
-def to_base64(data: t.Any, **kwargs)-> str|bytes:
+def Convert_to_base64(data: t.Any, **kwargs)-> str|bytes:
     import base64
     decode_as = kwargs.pop('decode', 'utf-8')
     encode_as = kwargs.pop('encode', 'utf-8')
     
-    data = str(to_text(data))
+    data = str(Convert_to_text(data))
     if Validate_filled(encode_as):
         data = data.encode(encode_as)
     
@@ -693,13 +720,13 @@ def to_base64(data: t.Any, **kwargs)-> str|bytes:
 ### END: Toml
 
 ### BEGIN: Uuid
-def to_uuid(data: str | bytes) -> uuid.UUID:
-    data = to_text(data)
+def Convert_to_uuid(data: str | bytes) -> uuid.UUID:
+    data = Convert_to_text(data)
     return uuid.UUID(hex=data)
 ### END: Uuid
 
 ### BEGIN: Roles
-def from_file_known_hosts(file_content: str)-> list[dict[str,str]]:
+def Convert_from_file_known_hosts(file_content: str)-> list[dict[str,str]]:
     import re
     ret = []
 
@@ -738,14 +765,14 @@ def from_file_known_hosts(file_content: str)-> list[dict[str,str]]:
 ### END: Roles
 
 ### BEGIN: Callable
-def to_callable_signature(callback: t.Callable) -> inspect.Signature:
+def Convert_to_callable_signature(callback: t.Callable) -> inspect.Signature:
     return inspect.signature(callback)
 
-def to_callable_parameters(
+def Convert_to_callable_parameters(
     callback: t.Callable,
     kinds: ENUMERATABLE[CallableParameterKind] = []
 ) -> tt.MappingProxyType[str, t.Any]:
-    ret = to_callable_signature(callback).parameters
+    ret = Convert_to_callable_signature(callback).parameters
 
     if kinds:
         ret = Data_where(
@@ -756,8 +783,8 @@ def to_callable_parameters(
 
     return tt.MappingProxyType(ret)
 
-def as_callable_segments(callback: t.Callable) -> tt.MappingProxyType[str, t.Any]:
-    sig = to_callable_signature(callback)
+def Convert_as_callable_segments(callback: t.Callable) -> tt.MappingProxyType[str, t.Any]:
+    sig = Convert_to_callable_signature(callback)
     is_named = callback.__name__ != '<lambda>'
     ret = {
         'name': callback.__name__ if is_named else None,
@@ -802,10 +829,10 @@ def as_callable_segments(callback: t.Callable) -> tt.MappingProxyType[str, t.Any
 
     return tt.MappingProxyType(ret)
 
-def as_callable_caller_segments(container: object, origin: str) -> tt.MappingProxyType[str, t.Any]:
+def Convert_as_callable_caller_segments(container: object, origin: str) -> tt.MappingProxyType[str, t.Any]:
     import sys
     ret = {
-        'mros': as_non_native_types(type(container).__mro__),
+        'mros': Convert_as_non_native_types(type(container).__mro__),
         'items': [],
     }
 

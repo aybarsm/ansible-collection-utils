@@ -3,8 +3,26 @@ import typing as t
 from abc import ABC, abstractmethod
 from ansible.plugins.action import ActionBase
 from ansible.plugins.lookup import LookupBase
+from ansible_collections.aybarsm.utils.plugins.module_utils import Fluent, Validator
 ### END: Imports
 ### BEGIN: ImportManager
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.convert import (
+	Convert_as_command_model, Convert_from_ansible_template, Convert_to_data_key,
+	Convert_to_primitive,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import (
+	Data_difference, Data_where,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.str import (
+	Str_case_snake, Str_chop_start,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.utils import (
+	Utils_class_get_primary_child,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.validate import (
+	Validate_blank, Validate_filled, Validate_is_object,
+	Validate_object_has_method,
+)
 ### END: ImportManager
 
 class RoleManager(ABC):
@@ -186,7 +204,7 @@ class RoleManager(ABC):
             
             return False
 
-        return Validate_filled(Data_intersect(tags_run, list(set(list(args) + ['all'])))) and Validate_blank(Data_intersect(tags_skip, args))
+        return Validate_filled(Data_intersection(tags_run, list(set(list(args) + ['all'])))) and Validate_blank(Data_intersection(tags_skip, args))
     
     def is_op(self, op: str) -> bool:
         return self.op('op') == op

@@ -3,62 +3,79 @@ import typing as t
 import functools
 ### END: Imports
 ### BEGIN: ImportManager
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.convert import (
+	Convert_as_copied, Convert_as_hash, Convert_from_mapping_to_callable,
+	Convert_to_iterable, Convert_to_pydash,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.str import (
+	Str_after_last, Str_before_last, Str_wrap,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.utils import (
+	Utils_call,
+)
+from ansible_collections.aybarsm.utils.plugins.module_utils.support.validate import (
+	Validate_blank, Validate_filled, Validate_is_ansible_mapping,
+	Validate_is_ansible_omitted, Validate_is_falsy, Validate_is_iterable,
+	Validate_is_iterable_of_mappings, Validate_is_iterable_of_not_mappings, Validate_is_mapping,
+	Validate_is_sequence, Validate_is_string, Validate_require_mutable_mappings,
+	Validate_str_contains, Validate_str_is_int,
+)
 ### END: ImportManager
 
-def pydash():
+def Data_pydash():
     import pydash
     return pydash
 
-def arrays():
-    return pydash().arrays
+def Data_arrays():
+    return Data_pydash().arrays
 
-def collections():
-    return pydash().collections
+def Data_collections():
+    return Data_pydash().collections
 
 ### BEGIN: Arrays
-@functools.wraps(pydash().chunk)
-def chunk(data, size: int = 1) -> t.List[t.Sequence[t.Any]]:
-    return pydash().chunk(data, size)
+@functools.wraps(Data_pydash().chunk)
+def Data_chunk(data, size: int = 1) -> t.List[t.Sequence[t.Any]]:
+    return Data_pydash().chunk(data, size)
 
-@functools.wraps(pydash().compact)
-def compact(data) -> t.List[t.Any]:
-    return pydash().compact(data)
+@functools.wraps(Data_pydash().compact)
+def Data_compact(data) -> t.List[t.Any]:
+    return Data_pydash().compact(data)
 
-@functools.wraps(pydash().concat)
-def concat(*data) -> t.List[t.Any]:
-    return pydash().concat(*data)
+@functools.wraps(Data_pydash().concat)
+def Data_concat(*data) -> t.List[t.Any]:
+    return Data_pydash().concat(*data)
 ### END: Arrays
 
 ### BEGIN: Locate
-@functools.wraps(pydash().find)
-def find(data, predicate) -> t.Any:
-    return pydash().find(data, predicate)
+@functools.wraps(Data_pydash().find)
+def Data_find(data, predicate) -> t.Any:
+    return Data_pydash().find(data, predicate)
 
-@functools.wraps(pydash().find_last)
-def find_last(data, predicate) -> t.Any:
-    return pydash().find_last(data, predicate)
+@functools.wraps(Data_pydash().find_last)
+def Data_find_last(data, predicate) -> t.Any:
+    return Data_pydash().find_last(data, predicate)
 
-@functools.wraps(pydash().find_key)
-def find_key(data, predicate) -> t.Any:
-    return pydash().find_key(data, predicate)
+@functools.wraps(Data_pydash().find_key)
+def Data_find_key(data, predicate) -> t.Any:
+    return Data_pydash().find_key(data, predicate)
 
-@functools.wraps(pydash().find_last_key)
-def find_last_key(data, predicate) -> t.Any:
-    return pydash().find_last_key(data, predicate)
+@functools.wraps(Data_pydash().find_last_key)
+def Data_find_last_key(data, predicate) -> t.Any:
+    return Data_pydash().find_last_key(data, predicate)
 
-@functools.wraps(pydash().find_index)
-def find_index(data, predicate) -> t.Any:
-    return pydash().find_index(data, predicate)
+@functools.wraps(Data_pydash().find_index)
+def Data_find_index(data, predicate) -> t.Any:
+    return Data_pydash().find_index(data, predicate)
 
-@functools.wraps(pydash().find_last_index)
-def find_last_index(data, predicate) -> t.Any:
-    return pydash().find_last_index(data, predicate)
+@functools.wraps(Data_pydash().find_last_index)
+def Data_find_last_index(data, predicate) -> t.Any:
+    return Data_pydash().find_last_index(data, predicate)
 ### END: Locate
 
-@functools.wraps(pydash().get)
-def get(data, key, default = None) -> t.Any:
+@functools.wraps(Data_pydash().get)
+def Data_get(data, key, default = None) -> t.Any:
     if not str(key) == '*' and not Validate_str_contains(str(key), '.*', '*.'):
-        return pydash().get(data, key, default)
+        return Data_pydash().get(data, key, default)
     
     skip_ = []
     ret = Convert_as_copied(data)
@@ -68,20 +85,20 @@ def get(data, key, default = None) -> t.Any:
             continue
         
         if segment == '*' and len(segments) > 1 and idx_ < len(segments) - 1 and segments[idx_ + 1] != '*' and Validate_is_iterable_of_not_mappings(ret):
-            _flatten = flatten(ret, levels=1)
+            _flatten = Data_flatten(ret, levels=1)
             if Validate_is_iterable_of_mappings(_flatten):
                 ret = _flatten
 
-            ret = pluck(ret, segments[idx_ + 1])
+            ret = Data_pluck(ret, segments[idx_ + 1])
             skip_.append(idx_ + 1)
         elif segment == '*' and Validate_is_mapping(ret):
             ret = list(dict(ret).values())
         elif segment != '*' and Validate_is_iterable_of_mappings(ret):
-            ret = pluck(ret, segment)
+            ret = Data_pluck(ret, segment)
         elif segment != '*' and Validate_is_mapping(ret):
-            ret = Convert_as_copied(pydash().get(ret, segment))       
+            ret = Convert_as_copied(Data_pydash().get(ret, segment))       
         elif segment == '*':
-            ret = flatten(ret, levels=1)
+            ret = Data_flatten(ret, levels=1)
         
         if idx_ <= len(segments) - 1 and not Validate_is_iterable(ret):
             ret = default
@@ -89,38 +106,38 @@ def get(data, key, default = None) -> t.Any:
 
     return ret
 
-@functools.wraps(pydash().set_)
-def set_(data, key, value: t.Any) -> t.Any:
-    return pydash().set_(data, key, value)
+@functools.wraps(Data_pydash().set_)
+def Data_set_(data, key, value: t.Any) -> t.Any:
+    return Data_pydash().set_(data, key, value)
 
-@functools.wraps(pydash().has)
-def has(data, key) -> bool:
-    return pydash().has(data, key)
+@functools.wraps(Data_pydash().has)
+def Data_has(data, key) -> bool:
+    return Data_pydash().has(data, key)
 
-@functools.wraps(pydash().unset)
-def unset(data, *args) -> t.Any:
+@functools.wraps(Data_pydash().unset)
+def Data_unset(data, *args) -> t.Any:
     for key_ in args:
-        pydash().unset(data, key_)
+        Data_pydash().unset(data, key_)
     
     return data
 
-@functools.wraps(pydash().pluck)
-def pluck(data, key, **kwargs) -> t.List[t.Any]:
+@functools.wraps(Data_pydash().pluck)
+def Data_pluck(data, key, **kwargs) -> t.List[t.Any]:
     ph = Sentinel.hash
     is_filled = kwargs.pop('filled', ph) != ph
     is_unique = kwargs.pop('unique', ph)
 
-    ret = pydash().pluck(data, key)
+    ret = Data_pydash().pluck(data, key)
     if is_filled:
         ret = [item for item in ret if Validate_filled(item)]
     
     if is_unique != ph:
-        ret = uniq(ret, is_unique)
+        ret = Data_uniq(ret, is_unique)
     
     return ret  
     
-@functools.wraps(pydash().uniq)
-def uniq(
+@functools.wraps(Data_pydash().uniq)
+def Data_uniq(
     data: ENUMERATABLE[T],
     by: t.Optional[t.Union[t.Literal[True], str, ENUMERATABLE[str], t.Callable]] = None,
 ) -> list[T]:
@@ -135,31 +152,31 @@ def uniq(
     
     return ret
 
-@functools.wraps(pydash().invert)
-def invert(data) -> t.Any:
-    return pydash().invert(data)
+@functools.wraps(Data_pydash().invert)
+def Data_invert(data) -> t.Any:
+    return Data_pydash().invert(data)
 
-@functools.wraps(pydash().map_)
-def walk(data, iteratee):
-    return pydash().collections.map_(data, iteratee)
+@functools.wraps(Data_pydash().map_)
+def Data_walk(data, iteratee):
+    return Data_pydash().collections.map_(data, iteratee)
 
-@functools.wraps(pydash().map_values_deep)
-def walk_values_deep(data, iteratee):
-    return pydash().map_values_deep(data, iteratee)
+@functools.wraps(Data_pydash().map_values_deep)
+def Data_walk_values_deep(data, iteratee):
+    return Data_pydash().map_values_deep(data, iteratee)
 
-@functools.wraps(pydash().difference)
-def difference(data, *others, **kwargs)-> t.List[t.Any]:
+@functools.wraps(Data_pydash().difference)
+def Data_difference(data, *others, **kwargs)-> t.List[t.Any]:
     if Validate_blank(kwargs):
-        return pydash().difference_with(data, *others)
+        return Data_pydash().difference_with(data, *others)
     else:
-        return pydash().difference_by(data, *others, **kwargs)
+        return Data_pydash().difference_by(data, *others, **kwargs)
 
-@functools.wraps(pydash().intersection)
-def intersection(data, *others, **kwargs)-> t.List[t.Any]:
+@functools.wraps(Data_pydash().intersection)
+def Data_intersectionion(data, *others, **kwargs)-> t.List[t.Any]:
     if Validate_blank(kwargs):
-        return pydash().intersection_with(data, *others)
+        return Data_pydash().intersection_with(data, *others)
     else:
-        return pydash().intersection_by(data, *others, **kwargs)
+        return Data_pydash().intersection_by(data, *others, **kwargs)
 
 def _append_or_prepend(data: t.Iterable[t.Any], key: str, value: t.Any, is_prepend: bool, **kwargs) -> t.Iterable[t.Any]:
     is_extend = kwargs.pop('extend', False)
@@ -167,7 +184,7 @@ def _append_or_prepend(data: t.Iterable[t.Any], key: str, value: t.Any, is_prepe
     is_sorted = kwargs.pop('sort', False)
     
     if Validate_is_mapping(data) or Validate_filled(key):
-        current = Convert_as_copied(list(get(data, key, [])))
+        current = Convert_as_copied(list(Data_get(data, key, [])))
     else:
         current = Convert_as_copied(list(data))
     
@@ -187,37 +204,37 @@ def _append_or_prepend(data: t.Iterable[t.Any], key: str, value: t.Any, is_prepe
         current = list(sorted(current))
         
     if Validate_is_mapping(data) or Validate_filled(key):
-        set_(data, key, current)
+        Data_set_(data, key, current)
     else:
         data = current
     
     return data
 
-def append(data: t.Iterable[t.Any], key: str, value: t.Any, **kwargs) -> t.Iterable[t.Any]:
+def Data_append(data: t.Iterable[t.Any], key: str, value: t.Any, **kwargs) -> t.Iterable[t.Any]:
     return _append_or_prepend(data, key, value, False, **kwargs)
 
-def prepend(data: t.Iterable[t.Any], key: str, value: t.Any, **kwargs) -> t.Iterable[t.Any]:
+def Data_prepend(data: t.Iterable[t.Any], key: str, value: t.Any, **kwargs) -> t.Iterable[t.Any]:
     return _append_or_prepend(data, key, value, True, **kwargs)
 
-def dot(data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], prepend='', **kwargs)-> dict:
+def Data_dot(data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], prepend='', **kwargs)-> dict:
     is_main = Validate_blank(prepend)
     is_main_mapping = is_main and Validate_is_mapping(data)
     if is_main_mapping:
-        data = undot(data) #type: ignore
+        data = Data_undot(data) #type: ignore
 
     ret = {}
     if Validate_is_sequence(data):
         for key, value in enumerate(data):
             new_key = f"{prepend}{str(key)}"
             if value and (Validate_is_mapping(value) or Validate_is_sequence(value)):
-                ret.update(dot(value, new_key + '.'))
+                ret.update(Data_dot(value, new_key + '.'))
             else:
                 ret[new_key] = value
     elif Validate_is_mapping(data):
         for key, value in data.items(): #type: ignore
             new_key = f"{prepend}{key}"
             if value and (Validate_is_mapping(value) or Validate_is_sequence(value)):
-                ret.update(dot(value, new_key + '.'))
+                ret.update(Data_dot(value, new_key + '.'))
             else:
                 ret[new_key] = value
     
@@ -229,7 +246,7 @@ def dot(data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], prepend='', *
     
     return ret
 
-def undot(data: t.Mapping)-> dict:
+def Data_undot(data: t.Mapping)-> dict:
     import re
     data = dict(data)
     if Validate_blank(data):
@@ -243,7 +260,7 @@ def undot(data: t.Mapping)-> dict:
         
         done_iter = [key]
         if Validate_is_mapping(value):
-            set_(ret, key, undot(value))
+            Data_set_(ret, key, Data_undot(value))
         elif '.' not in str(key):
             ret[key] = value
         elif Validate_str_is_int(Str_after_last(key, '.')):
@@ -256,15 +273,15 @@ def undot(data: t.Mapping)-> dict:
             for seq_key in seq_keys:
                 seq.append(data[seq_key])
             done_iter = seq_keys.copy()
-            set_(ret, primary, seq.copy())
+            Data_set_(ret, primary, seq.copy())
         else:
-            set_(ret, key, value)
+            Data_set_(ret, key, value)
         
         done.extend(done_iter)
     
     return ret
 
-def sort_keys_char_count(
+def Data_sort_keys_char_count(
     data: t.Iterable[t.Any],
     char: str,
     **kwargs
@@ -288,19 +305,19 @@ def sort_keys_char_count(
     else:
         return list(ret)
 
-def dot_sort_keys(
+def Data_dot_sort_keys(
     data: t.Iterable[t.Any],
     **kwargs
 )-> dict|list:
-    return sort_keys_char_count(data, '.', **kwargs)
+    return Data_sort_keys_char_count(data, '.', **kwargs)
 
-def filled(data: t.Iterable[t.Any], key: str, **kwargs) -> bool:
-    return Validate_filled(get(data, key, **kwargs))
+def Data_filled(data: t.Iterable[t.Any], key: str, **kwargs) -> bool:
+    return Validate_filled(Data_get(data, key, **kwargs))
 
-def blank(data: t.Iterable[t.Any], key: str, **kwargs) -> bool:
-    return Validate_blank(get(data, key, **kwargs))
+def Data_blank(data: t.Iterable[t.Any], key: str, **kwargs) -> bool:
+    return Validate_blank(Data_get(data, key, **kwargs))
 
-def where(
+def Data_where(
     data: t.Iterable[t.Any], 
     callback: t.Optional[t.Union[t.Callable, t.Mapping[str, t.Any]]] = None, 
     default: t.Any = None, 
@@ -372,16 +389,16 @@ def where(
 
     return ret
 
-def reject(
+def Data_reject(
     data: t.Iterable[t.Any], 
     callback: t.Optional[t.Union[t.Callable, t.Mapping[str, t.Any]]] = None, 
     default: t.Any = None, 
     **kwargs,
 )-> t.Any:
     kwargs['negate'] = True
-    return where(data, callback, default, **kwargs)
+    return Data_where(data, callback, default, **kwargs)
 
-def first(
+def Data_first(
     data: t.Iterable[t.Any], 
     callback: t.Optional[t.Union[t.Callable, t.Mapping[str, t.Any]]] = None, 
     default: t.Any = None, 
@@ -389,9 +406,9 @@ def first(
 )-> t.Any:
     kwargs['first'] = True
     kwargs['last'] = False
-    return where(data, callback, default, **kwargs)
+    return Data_where(data, callback, default, **kwargs)
 
-def last(
+def Data_last(
     data: t.Iterable[t.Any], 
     callback: t.Optional[t.Union[t.Callable, t.Mapping[str, t.Any]]] = None, 
     default: t.Any = None, 
@@ -399,16 +416,16 @@ def last(
 )-> t.Any:
     kwargs['first'] = False
     kwargs['last'] = True
-    return where(data, callback, default, **kwargs)
+    return Data_where(data, callback, default, **kwargs)
 
-def first_filled(*args: t.Any, default: t.Any = None)-> t.Any:
+def Data_first_filled(*args: t.Any, default: t.Any = None)-> t.Any:
     for data in args:
         if Validate_filled(data):
             return data
     
     return default
 
-def only_with(
+def Data_only_with(
     data: t.Iterable[t.Any],
     *args: str,
     **kwargs,
@@ -435,16 +452,16 @@ def only_with(
 
         new_item = {}
         for key in keys:
-            key_exists = (is_no_dot and key in item) or (not is_no_dot and has(item, key))
+            key_exists = (is_no_dot and key in item) or (not is_no_dot and Data_has(item, key))
             
-            new_value = item.get(key) if is_no_dot else get(item, key)
+            new_value = item.get(key) if is_no_dot else Data_get(item, key)
             if not key_exists:
                 if default_missing != ph:
                     new_value = default_missing
                 else:
                     continue
             
-            is_value_filled = not is_filled or ((is_no_dot and Validate_filled(item[key])) or (not is_no_dot and Validate_filled(get(item, key))))
+            is_value_filled = not is_filled or ((is_no_dot and Validate_filled(item[key])) or (not is_no_dot and Validate_filled(Data_get(item, key))))
             if not is_value_filled:
                 if default_blank != ph:
                     new_value = default_blank
@@ -457,13 +474,13 @@ def only_with(
             if is_no_dot:
                 new_item[new_key] = Convert_as_copied(new_value)
             else:
-                set_(new_item, new_key, Convert_as_copied(new_value))
+                Data_set_(new_item, new_key, Convert_as_copied(new_value))
         
         ret.append(new_item)
     
     return ret[0] if is_mapping else ret
 
-def all_except(
+def Data_all_except(
     data: t.Iterable[t.Any],
     *args: str,
     **kwargs,
@@ -495,29 +512,29 @@ def all_except(
         new_item = Convert_as_copied(item)
         
         for key in keys:
-            key_exists = (is_no_dot and key in item) or (not is_no_dot and has(item, key))
+            key_exists = (is_no_dot and key in item) or (not is_no_dot and Data_has(item, key))
             if not key_exists:
                 continue
             
             if is_no_dot:
                 del new_item[key]
             else:
-                unset(new_item, key)
+                Data_unset(new_item, key)
         
         ret.append(new_item)
     
     return ret[0] if is_mapping else ret
 
-def flatten(data, levels=None, skip_nulls=True):
+def Data_flatten(data, levels=None, skip_nulls=True):
     ret = []
     for element in data:
         if skip_nulls and element in (None, 'None', 'null'):
             continue
         elif Validate_is_sequence(element):
             if levels is None:
-                ret.extend(flatten(element, skip_nulls=skip_nulls))
+                ret.extend(Data_flatten(element, skip_nulls=skip_nulls))
             elif levels >= 1:
-                ret.extend(flatten(element, levels=(int(levels) - 1), skip_nulls=skip_nulls))
+                ret.extend(Data_flatten(element, levels=(int(levels) - 1), skip_nulls=skip_nulls))
             else:
                 ret.append(element)
         else:
@@ -525,7 +542,7 @@ def flatten(data, levels=None, skip_nulls=True):
 
     return ret
 
-def merge_hash(x, y, recursive=True, list_merge='replace'):
+def Data_merge_hash(x, y, recursive=True, list_merge='replace'):
     Validate_require_mutable_mappings(x, y)
     
     if x == {} or x == y:
@@ -548,7 +565,7 @@ def merge_hash(x, y, recursive=True, list_merge='replace'):
 
         if isinstance(x_value, t.MutableMapping) and isinstance(y_value, t.MutableMapping):
             if recursive:
-                x[key] = merge_hash(x_value, y_value, recursive, list_merge)
+                x[key] = Data_merge_hash(x_value, y_value, recursive, list_merge)
             else:
                 x[key] = y_value
             continue
@@ -570,7 +587,7 @@ def merge_hash(x, y, recursive=True, list_merge='replace'):
 
     return x
 
-def combine(*args, **kwargs):
+def Data_combine(*args, **kwargs):
     recursive = kwargs.pop('recursive', False)
     list_merge = kwargs.pop('list_merge', 'replace')
     reverse = kwargs.pop('reverse', False)
@@ -579,7 +596,7 @@ def combine(*args, **kwargs):
     if reverse:
         args.reverse()
 
-    dicts = flatten(args, levels=1)
+    dicts = Data_flatten(args, levels=1)
 
     if Validate_blank(dicts):
         return {}
@@ -590,11 +607,11 @@ def combine(*args, **kwargs):
     dicts = reversed(dicts)
     result = next(dicts)
     for dictionary in dicts:
-        result = merge_hash(dictionary, result, recursive, list_merge)
+        result = Data_merge_hash(dictionary, result, recursive, list_merge)
 
     return result
 
-def combine_match(
+def Data_combine_match(
     data: str,
     items: t.Mapping[str, t.Any] | ENUMERATABLE[t.Mapping[str, t.Any]], 
     attribute: str,
@@ -606,7 +623,7 @@ def combine_match(
     ret = []
 
     for item in Convert_to_iterable(items):
-        pattern = get(item, attribute)
+        pattern = Data_get(item, attribute)
         if not Validate_is_string(pattern) or Validate_blank(pattern):
             continue
             
@@ -621,15 +638,15 @@ def combine_match(
     
     ret = [Convert_to_safe_json(item) if Validate_is_ansible_mapping(item) else item for item in ret]
 
-    return combine(*ret, **kwargs)
+    return Data_combine(*ret, **kwargs)
 
-def map(
+def Data_map(
     data: ENUMERATABLE[t.Any], 
     callback: t.Callable, 
 )-> list:
     return [Utils_call(callback, val_, key_) for key_, val_ in enumerate(data)]
 
-def keys(
+def Data_keys(
     data: t.Iterable[t.Any],
     **kwargs
 )-> t.Any:
@@ -653,7 +670,7 @@ def keys(
                 continue
 
             key_default = ph
-            key_exists = (no_dot and key_from in item_new) or (not no_dot and has(item_new, key_from))
+            key_exists = (no_dot and key_from in item_new) or (not no_dot and Data_has(item_new, key_from))
 
             if len(replacement) > 2:
                 key_default = replacement[2]
@@ -662,7 +679,7 @@ def keys(
             if key_exists and no_dot:
                 value_new = item_new[key_from]
             elif key_exists and not no_dot:
-                value_new = get(item_new, key_from)
+                value_new = Data_get(item_new, key_from)
             
             if value_new == ph:
                 continue
@@ -670,13 +687,13 @@ def keys(
             if no_dot:
                 item_new[key_to] = value_new
             else:
-                set_(item_new, key_to, value_new)
+                Data_set_(item_new, key_to, value_new)
 
             if key_exists and not Validate_is_falsy(replace.get('remove_replaced', True)):
                 if no_dot:
                     del item_new[key_from]
                 else:
-                    unset(item_new, key_from)
+                    Data_unset(item_new, key_from)
             
         ret.append(item_new)
 
