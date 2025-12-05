@@ -1,10 +1,14 @@
+### BEGIN: Imports
 import typing as t
 import types as tt
 import typing_extensions as te
 import annotated_types
 import inspect, uuid
+### END: Imports
+### BEGIN: ImportManager
+### END: ImportManager
 
-### BEGIN: Generic - Types
+## BEGIN: Generic - Types
 T = t.TypeVar("T")
 ENUMERATABLE = t.Union[list[T], tuple[T, ...], set[T]]
 

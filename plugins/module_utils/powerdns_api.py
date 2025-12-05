@@ -1,9 +1,11 @@
-from typing import Any, Callable, Mapping
+### BEGIN: Imports
+import typing as t
 from enum import Enum, auto
 from ansible.module_utils.urls import open_url, fetch_url
 from ansible.module_utils.basic import env_fallback
-from ansible_collections.aybarsm.utils.plugins.module_utils.tools import Data, Validate, Validator, Helper
-from ansible_collections.aybarsm.utils.plugins.module_utils.swagger import Swagger
+### END: Imports
+### BEGIN: ImportManager
+### END: ImportManager
 
 _DEFAULTS = {
     'swagger': {
