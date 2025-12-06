@@ -99,11 +99,11 @@ class Collection(t.Generic[T]):
     def sort(self, callback: str | t.Callable, reverse: bool = False) -> t.Any:
         return self.sort_by(callback, reverse)
     
-    def append(self, value: T, **kwargs) -> None:
-        self.items = list(Data_append(self.items, '', value, **kwargs))
+    def append(self, *args: T, **kwargs) -> None:
+        self.items = list(Data_append(self.items, '', *args, **kwargs))
     
-    def prepend(self, value: T, **kwargs) -> None:
-        self.items = list(Data_prepend(self.items, '', value, **kwargs))
+    def prepend(self, *args: T, **kwargs) -> None:
+        self.items = list(Data_prepend(self.items, '', *args, **kwargs))
     
     def push(self, value: T, **kwargs) -> None:
         self.append(value, **kwargs)

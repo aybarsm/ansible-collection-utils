@@ -24,7 +24,7 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.support.str import (
 	Str_chop_start, Str_finish,
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.utils import (
-	Utils_call,
+	Utils_call, Utils_call_raw, 
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.validate import (
 	Validate_blank, Validate_callable_parameter_has, Validate_callable_parameter_is_kind,
@@ -37,6 +37,12 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.support.validate imp
 	Validate_truthy,
 )
 ### END: ImportManager
+
+def Convert_to_value(context: t.Any, *args, **kwargs):
+    return Utils_call_raw(context, *args, **kwargs) if callable(context) else context
+
+def Convert_to_default(ret: t.Any, not_expected: t.Any, default: t.Any = None) -> t.Any:
+    return default if ret == not_expected else default
 
 def Convert_as_id(
     data: t.Any, 
@@ -304,43 +310,50 @@ def Convert_as_cleaned_lines(data: t.Optional[str]) -> list[str]:
         ) if Validate_filled(line)]
 
 ### BEGIN: Ansible
-def Convert_to_text(*args, **kwargs)-> str:
+def Convert_to_text(data: t.Any, **kwargs) -> str:
     from ansible.module_utils.common.text.converters import to_text
     strip_quotes = kwargs.pop('strip_quotes', False)
 
-    ret = Convert_to_text(*args, **kwargs)
+    ret = to_text(data, **kwargs)
     
     if strip_quotes:
         ret = str(ret).strip().strip("'").strip().strip('"').strip()
 
     return ret
 
-def Convert_to_native(*args, **kwargs)-> str:
-    return Convert_to_text(*args, **kwargs)
+def Convert_to_native(data: t.Any, **kwargs) -> str:
+    return Convert_to_text(data, **kwargs)
 
-def Convert_to_string(*args, **kwargs)-> str:
-    return Convert_to_text(*args, **kwargs)
+def Convert_to_string(data: t.Any, **kwargs) -> str:
+    return Convert_to_text(data, **kwargs)
 
-def Convert_to_primitive(*args, **kwargs) -> t.Any:
-    ret = Convert_to_text(*args, **kwargs)
+def Convert_to_primitive(data: t.Any, **kwargs) -> t.Any:
+    as_dict = kwargs.pop('as_dict', False) == True
+    as_list = kwargs.pop('as_list', False) == True
+
+    if as_dict and as_list:
+        raise ValueError('Cannot force to convert as dict and list at the same.')
+    
+    ret = Convert_to_text(data, **kwargs)
     if Validate_str_is_yaml(ret):
         ret = Convert_from_yaml(ret)
-        if Validate_is_mapping(ret):
+        if as_dict or Validate_is_mapping(ret):
             return dict(ret)
-        else:
+        elif as_list or Validate_is_iterable(ret):
             return list(ret)
+        else:
+            return ret
     else:
         return ret
 
-def Convert_to_bytes(*args, **kwargs):
+def Convert_to_bytes(data: t.Any, **kwargs):
     from ansible.module_utils.common.text.converters import to_bytes
-    return Convert_to_bytes(*args, **kwargs)
+    return to_bytes(data, **kwargs)
 
-def Convert_from_cli(data, *args, **kwargs):
-    data = Convert_to_string(data)
+def Convert_from_cli(data: t.Any, **kwargs) -> t.Any:
     as_iterable = kwargs.get('iterable', False)
     as_stripped = kwargs.get('stripped', False)
-    
+    data = Convert_to_string(data)
     ret = data.strip().strip('\'"')
 
     if Validate_str_is_json(data):

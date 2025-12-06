@@ -10,6 +10,7 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.support.ansible impo
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.convert import (
 	Convert_as_callable_segments, Convert_as_ip_address, Convert_from_json,
 	Convert_from_yaml, Convert_to_json, Convert_to_text,
+    Convert_to_value, 
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import (
 	Data_all_except, Data_filled, Data_get,
@@ -28,7 +29,7 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.support.validate imp
 
 def Utils_dump(*args, **kwargs):
     separator = kwargs.pop('separator', None)
-    separator = separator if isinstance(separator, Definitions_Separator) else None
+    separator = separator if isinstance(separator, Separator) else None
     
     if separator:
         new_args = []
@@ -397,9 +398,6 @@ def Utils_class_get_primary_child(self_: object, parent: type) -> bool | object:
             return mros[idx - 1]
     
     return False
-
-def Utils_value(context: t.Any, *args, **kwargs):
-    return Utils_call_raw(context, *args, **kwargs) if callable(context) else context
     
 def Utils_when(condition: t.Any, context: t.Any, default: t.Any = None):
     if callable(condition):

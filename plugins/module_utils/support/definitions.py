@@ -7,9 +7,6 @@ import dataclasses as dt
 import enum, functools, uuid, datetime, hashlib, inspect, re, uuid
 ### END: Imports
 ### BEGIN: ImportManager
-from ansible_collections.aybarsm.utils.plugins.module_utils.support.convert import (
-	Convert_as_cleaned_lines, Convert_as_lines,
-)
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.data import (
 	Data_all_except, Data_append, Data_combine,
 	Data_get, Data_only_with,
@@ -46,23 +43,81 @@ UniqueIdUuid = uuid.UUID
 UniqueAlias = str
 ### END: Generic - Types
 
+### BEGIN: Modules
+def cerberus():
+    import cerberus
+    return cerberus
+
+def pydantic():
+    import pydantic
+    return pydantic
+
+def pydash():
+    import pydash
+    return pydash
+### END: Modules
+
 ### BEGIN: Data Classes
-dataclass = dt.dataclass
-
 @functools.wraps(dt.dataclass)
-def model_class(cls=None, /, **kwargs):
-    kwargs['init']=True
-    kwargs['kw_only']=True
-    return dt.dataclass(cls, **kwargs)
+def model(
+    cls=None, /, *, 
+    init=True, repr=True, eq=True, order=False, 
+    unsafe_hash=False, frozen=False, match_args=True, 
+    kw_only=False, slots=False, weakref_slot=False, 
+    **kwargs
+):
+    params = locals()
+    del params['cls']
+    
+    if cls:
+        setattr(cls, '__metadata__', params.pop('kwargs', {}))
+    else:
+        del params['kwargs']
 
+    return dt.dataclass(cls, **params)
+   
 @functools.wraps(dt.field)
-def model_field(**kwargs):
-    options = Data_all_except(kwargs, *CONF['data_classes']['kwargs'].keys())
-    kwargs = Data_only_with(kwargs, *CONF['data_classes']['kwargs'].keys())
-    kwargs = Data_combine(kwargs, {'metadata': {'_options': options}}, recursive=True)
-    return dt.field(**kwargs)
+def field(
+    *, 
+    default=dt.MISSING, default_factory=dt.MISSING, init=True, 
+    repr=True, hash=None, compare=True, metadata=None, 
+    kw_only=dt.MISSING, 
+    **kwargs
+):
+    params = locals()
 
-def model_method(**kwargs):
+    if params['metadata'] == None:
+        params['metadata'] = {}
+
+    if Validate_filled(params.get('kwargs', {})):
+        params['metadata'] = Data_combine(params['metadata'], {'_options': params.pop('kwargs', {})}, recursive=True)
+
+    if params['metadata'].get('hidden', False) == True:
+        params['repr'] = False
+
+    return dt.field(**params)
+
+@functools.wraps(dt.make_dataclass)
+def make_model(
+    cls_name, fields, *, bases=(), namespace=None, init=True,
+    repr=True, eq=True, order=False, unsafe_hash=False,
+    frozen=False, match_args=True, kw_only=False, slots=False,
+    weakref_slot=False, module=None,
+    **kwargs
+) -> "Model":
+    params = locals()
+    del params['cls_name']
+    del params['fields']
+    
+    params['bases'] = [base for base in list(params['bases']) if base != Model]
+    params['bases'].insert(0, Model)
+    params['bases'] = tuple(params['bases'])
+
+    # metadata = params.pop('kwargs', {})
+
+    return dt.make_dataclass(cls_name, fields, **params)
+
+def method(**kwargs):
     def decorator(func):        
         setattr(func, '__metadata__', kwargs)
         return func
@@ -70,14 +125,14 @@ def model_method(**kwargs):
 ### END: Data Classes
 
 ### BEGIN: Generic - Definitions
-@dataclass(frozen=True, kw_only=True)
+@dt.dataclass(frozen=True, kw_only=True)
 class _Sentinel:
-    raw: object = model_field(init=True)
-    ts: datetime.datetime = model_field(init=True)
-    ts_str: str = model_field(init=True)
-    ts_safe: str = model_field(init=True)
-    id: str = model_field(init=True)
-    hash: str = model_field(init=True)
+    raw: object = field(init=True)
+    ts: datetime.datetime = field(init=True)
+    ts_str: str = field(init=True)
+    ts_safe: str = field(init=True)
+    id: str = field(init=True)
+    hash: str = field(init=True)
 
     @staticmethod
     def make() -> "_Sentinel":
@@ -89,10 +144,10 @@ class _Sentinel:
         hash_ = hashlib.md5(id_.encode()).hexdigest()
         return _Sentinel(raw=raw_, ts=ts_, ts_str=ts_str_, ts_safe=ts_safe_, id=id_, hash=hash_)
 
-@dataclass(frozen=True)
+@dt.dataclass(frozen=True)
 class Separator:
-    char: str = model_field(default='-', init=True)
-    times: PositiveInt = model_field(default=50, init=True)
+    char: str = field(default='-', init=True)
+    times: PositiveInt = field(default=50, init=True)
 
     def make(self) -> str:
         return self.char * self.times
@@ -162,8 +217,14 @@ class GenericStatus(enum.StrEnum):
     def cancelable(self) -> bool:
         return self.cancelable()
 
-@dataclass(kw_only=True)
-class BaseModel:
+@dt.dataclass(kw_only=True)
+class Model:
+    __metadata__: dict[str, t.Any] = field(default_factory=dict, init=False, protected=True, hidden=True)
+
+    @staticmethod
+    def make(*args, **kwargs):
+        return make_model(*args, **kwargs)
+
     def __dataclass_field(self, name: str, key: str = '', default: t.Any = None) -> t.Any:
         attr = self.__dataclass_fields__.get(name)
 
@@ -203,7 +264,6 @@ class BaseModel:
         is_hidden_field = not is_callable and self.__dataclass_field(name, 'metadata._options.hidden') == True
 
         if is_protected_method and not Validate_callable_called_within_hierarchy(self, '__getattribute__'):
-            # Utils_dump(Convert_as_callable_caller_segments(self, '__getattribute__'))
             raise RuntimeError(f'Protected method [{name}] cannot be called externally.')
         elif is_hidden_field and not Validate_callable_called_within_hierarchy(self, '__getattribute__'):
             raise RuntimeError(f'Hidden attribute [{name}] cannot be accessed externally.')
@@ -212,65 +272,65 @@ class BaseModel:
 ### END: Generic - Definitions
 
 ### BEGIN: Models
-@dataclass(init=True, frozen=True, kw_only=True)
-class CommandModel:
-    rc: t.Optional[int] = model_field(default=None, init=True)
-    out: t.Optional[str] = model_field(default=None, init=True)
-    err: t.Optional[str] = model_field(default=None, init=True)
-    command: t.Optional[str] = model_field(default=None, init=True)
+# @dt.dataclass(init=True, frozen=True, kw_only=True)
+# class CommandModel:
+#     rc: t.Optional[int] = field(default=None, init=True)
+#     out: t.Optional[str] = field(default=None, init=True)
+#     err: t.Optional[str] = field(default=None, init=True)
+#     command: t.Optional[str] = field(default=None, init=True)
 
-    @property
-    def output(self) -> t.Optional[str]:
-        return self.out
+#     @property
+#     def output(self) -> t.Optional[str]:
+#         return self.out
     
-    @property
-    def error(self) -> t.Optional[str]:
-        return self.err
+#     @property
+#     def error(self) -> t.Optional[str]:
+#         return self.err
     
-    def lines(self, cleaned: bool = False) -> list[str]:
-        return self.output_lines(cleaned) + self.error_lines(cleaned)
+#     def lines(self, cleaned: bool = False) -> list[str]:
+#         return self.output_lines(cleaned) + self.error_lines(cleaned)
     
-    def output_lines(self, cleaned: bool = False) -> list[str]:
-        return Convert_as_cleaned_lines(self.out) if cleaned else Convert_as_lines(self.out)
+#     def output_lines(self, cleaned: bool = False) -> list[str]:
+#         return Convert_as_cleaned_lines(self.out) if cleaned else Convert_as_lines(self.out)
 
-    def error_lines(self, cleaned: bool = False) -> list[str]:
-        return Convert_as_cleaned_lines(self.err) if cleaned else Convert_as_lines(self.err)
+#     def error_lines(self, cleaned: bool = False) -> list[str]:
+#         return Convert_as_cleaned_lines(self.err) if cleaned else Convert_as_lines(self.err)
     
-    @property
-    def has_rc(self) -> bool:
-        return Validate_filled(self.rc)
+#     @property
+#     def has_rc(self) -> bool:
+#         return Validate_filled(self.rc)
     
-    @property
-    def has_output(self) -> bool:
-        return Validate_filled(self.out)
+#     @property
+#     def has_output(self) -> bool:
+#         return Validate_filled(self.out)
     
-    @property
-    def has_error(self) -> bool:
-        return Validate_filled(self.err)
+#     @property
+#     def has_error(self) -> bool:
+#         return Validate_filled(self.err)
     
-    @property
-    def has_command(self) -> bool:
-        return Validate_filled(self.command)
+#     @property
+#     def has_command(self) -> bool:
+#         return Validate_filled(self.command)
 
-    @property
-    def success(self) -> bool:
-        return self.rc == 0
+#     @property
+#     def success(self) -> bool:
+#         return self.rc == 0
     
-    @property
-    def failed(self) -> bool:
-        return not self.success
+#     @property
+#     def failed(self) -> bool:
+#         return not self.success
     
-    # def is_(self, src: t.Literal['output', 'error'], of: t.Literal['json', 'yaml', 'lua', 'toml']) -> bool:
-    #     rel = self.output if src == 'output' else self.err
+#     # def is_(self, src: t.Literal['output', 'error'], of: t.Literal['json', 'yaml', 'lua', 'toml']) -> bool:
+#     #     rel = self.output if src == 'output' else self.err
         
-    #     if not rel or Validate_blank(rel):
-    #         return False
+#     #     if not rel or Validate_blank(rel):
+#     #         return False
     
 
 ### END: Models
 
 ### BEGIN: Events
-@dataclass(kw_only=True, frozen=True)
+@dt.dataclass(kw_only=True, frozen=True)
 class StatusChangedEvent:
     related: t.Any
     previous: GenericStatus
@@ -278,14 +338,14 @@ class StatusChangedEvent:
 ### END: Events
 
 ### BEGIN: Mixins
-@dataclass(kw_only=True)
+@dt.dataclass(kw_only=True)
 class IdMixin:
-    id: UniqueIdUuid = model_field(default_factory=uuid.uuid4, init=False, repr=True, frozen=True)
-    alias: t.Optional[UniqueAlias] = model_field(default=None, init=True, repr=True, frozen=True)
+    id: UniqueIdUuid = field(default_factory=uuid.uuid4, init=False, repr=True, frozen=True)
+    alias: t.Optional[UniqueAlias] = field(default=None, init=True, repr=True, frozen=True)
 
-@dataclass(kw_only=True)
+@dt.dataclass(kw_only=True)
 class CallableMixin:
-    @model_method(protected=True)
+    @method(protected=True)
     def _caller_get_config(self, *args, **kwargs):
         args = list(args or [])
         kwargs = dict(kwargs or {})
@@ -311,7 +371,7 @@ class CallableMixin:
         
         return [args, kwargs]
     
-    @model_method(protected=True)
+    @method(protected=True)
     def _caller_make_call(self, callback: t.Optional[t.Callable], *args, **kwargs) -> t.Any:
         if not callback:
             return
@@ -320,12 +380,12 @@ class CallableMixin:
         
         return Utils_call(callback, *args, **kwargs)
 
-@dataclass(kw_only=True)
+@dt.dataclass(kw_only=True)
 class StatusMixin:
-    status: GenericStatus = model_field(default=GenericStatus.READY, init=False, repr=True, protected=True)
-    on_status_change: t.Optional[EventCallback] = model_field(default=None, init=True, repr=True, frozen=True)
+    status: GenericStatus = field(default=GenericStatus.READY, init=False, repr=True, protected=True)
+    on_status_change: t.Optional[EventCallback] = field(default=None, init=True, repr=True, frozen=True)
     
-    @model_method(protected=True)
+    @method(protected=True)
     def _set_status(self, status: GenericStatus) -> te.Self:
         if self.status == status:
             return self

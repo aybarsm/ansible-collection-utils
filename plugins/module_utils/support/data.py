@@ -2,12 +2,14 @@
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.definitions import (
     t, functools, 
     T, ENUMERATABLE, Sentinel, 
+    pydash, 
 )
 ### END: Imports
 ### BEGIN: ImportManager
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.convert import (
 	Convert_as_copied, Convert_as_hash, Convert_from_mapping_to_callable,
 	Convert_to_iterable, Convert_to_pydash, Convert_to_safe_json, 
+    Convert_to_default, 
 )
 from ansible_collections.aybarsm.utils.plugins.module_utils.support.str import (
 	Str_after_last, Str_before_last, Str_wrap,
@@ -24,60 +26,88 @@ from ansible_collections.aybarsm.utils.plugins.module_utils.support.validate imp
 )
 ### END: ImportManager
 
-def Data_pydash():
-    import pydash
-    return pydash
-
-def Data_arrays():
-    return Data_pydash().arrays
-
-def Data_collections():
-    return Data_pydash().collections
-
 ### BEGIN: Arrays
-@functools.wraps(Data_pydash().chunk)
+@functools.wraps(pydash().chunk)
 def Data_chunk(data, size: int = 1) -> t.List[t.Sequence[t.Any]]:
-    return Data_pydash().chunk(data, size)
+    return pydash().chunk(data, size)
 
-@functools.wraps(Data_pydash().compact)
+@functools.wraps(pydash().compact)
 def Data_compact(data) -> t.List[t.Any]:
-    return Data_pydash().compact(data)
+    return pydash().compact(data)
 
-@functools.wraps(Data_pydash().concat)
+@functools.wraps(pydash().concat)
 def Data_concat(*data) -> t.List[t.Any]:
-    return Data_pydash().concat(*data)
+    return pydash().concat(*data)
 ### END: Arrays
 
 ### BEGIN: Locate
-@functools.wraps(Data_pydash().find)
-def Data_find(data, predicate) -> t.Any:
-    return Data_pydash().find(data, predicate)
+@functools.wraps(pydash().find)
+def Data_find(data, predicate, default: t.Any = None) -> t.Any:
+    return Convert_to_default(pydash().find(data, predicate), None, default)
 
-@functools.wraps(Data_pydash().find_last)
-def Data_find_last(data, predicate) -> t.Any:
-    return Data_pydash().find_last(data, predicate)
+@functools.wraps(pydash().find_last)
+def Data_find_last(data, predicate, default: t.Any = None) -> t.Any:
+    return Convert_to_default(pydash().find_last(data, predicate), None, default)
 
-@functools.wraps(Data_pydash().find_key)
-def Data_find_key(data, predicate) -> t.Any:
-    return Data_pydash().find_key(data, predicate)
+@functools.wraps(pydash().find_key)
+def Data_find_key(data, predicate, default: t.Any = None) -> t.Any:
+    return Convert_to_default(pydash().find_key(data, predicate), None, default)
 
-@functools.wraps(Data_pydash().find_last_key)
-def Data_find_last_key(data, predicate) -> t.Any:
-    return Data_pydash().find_last_key(data, predicate)
+@functools.wraps(pydash().find_last_key)
+def Data_find_last_key(data, predicate, default: t.Any = None) -> t.Any:
+    return Convert_to_default(pydash().find_last_key(data, predicate), None, default)
 
-@functools.wraps(Data_pydash().find_index)
-def Data_find_index(data, predicate) -> t.Any:
-    return Data_pydash().find_index(data, predicate)
+@functools.wraps(pydash().find_index)
+def Data_find_index(data, predicate, default: t.Any = None) -> t.Any:
+    return Convert_to_default(pydash().find_index(data, predicate), -1, default)
 
-@functools.wraps(Data_pydash().find_last_index)
-def Data_find_last_index(data, predicate) -> t.Any:
-    return Data_pydash().find_last_index(data, predicate)
+@functools.wraps(pydash().find_last_index)
+def Data_find_last_index(data, predicate, default: t.Any = None) -> t.Any:
+    return Convert_to_default(pydash().find_last_index(data, predicate), -1, default)
+
+@functools.wraps(pydash().filter_)
+def Data_filter(data, predicate, default: t.Any = [], **kwargs) -> t.Any:
+    is_key = kwargs.pop('key', False) == True
+    is_no_dot = kwargs.pop('no_dot', False) == True
+    is_negate = kwargs.pop('negate', False) == True
+    is_meta = kwargs.pop('meta', False) == True
+
+    is_first = kwargs.pop('first', False) == True
+    is_last = kwargs.pop('last', False) == True
+    only_with = kwargs.pop('only_with', False) == True
+    all_except = kwargs.pop('all_except', False) == True
+    is_filled = kwargs.pop('filled', False) == True
+    is_blank = kwargs.pop('blank', False) == True
+
+    default_missing = kwargs.pop('default_missing', Sentinel.hash)
+    default_blank = kwargs.pop('default_blank', Sentinel.hash)
+
+    if is_first and is_last:
+        raise ValueError('First and last cannot be filtered at the same time.')
+    elif only_with and all_except:
+        raise ValueError('Only_with and all_except cannot be filtered at the same time.')
+    elif (only_with or all_except) and not is_meta and Validate_blank(predicate):
+        raise ValueError('No keys provided to be filtered.')
+    elif is_filled and is_blank:
+        raise ValueError('Filled and blank cannot be filtered at the same time.')
+
+    if Validate_is_mapping(predicate):
+        predicate = Convert_from_mapping_to_callable(predicate, **kwargs)
+    
+    if is_negate:
+        return Convert_to_default(pydash().reject(data, predicate), [], default)
+    else:
+        return Convert_to_default(pydash().filter_(data, predicate), [], default)
+
+@functools.wraps(pydash().duplicates)
+def Data_duplicates(data, iteratee = None, default: t.Any = []) -> t.Any:
+    return Convert_to_default(pydash().duplicates(data, iteratee), [], default)
 ### END: Locate
 
-@functools.wraps(Data_pydash().get)
+@functools.wraps(pydash().get)
 def Data_get(data, key, default = None) -> t.Any:
     if not str(key) == '*' and not Validate_str_contains(str(key), '.*', '*.'):
-        return Data_pydash().get(data, key, default)
+        return pydash().get(data, key, default)
     
     skip_ = []
     ret = Convert_as_copied(data)
@@ -98,7 +128,7 @@ def Data_get(data, key, default = None) -> t.Any:
         elif segment != '*' and Validate_is_iterable_of_mappings(ret):
             ret = Data_pluck(ret, segment)
         elif segment != '*' and Validate_is_mapping(ret):
-            ret = Convert_as_copied(Data_pydash().get(ret, segment))       
+            ret = Convert_as_copied(pydash().get(ret, segment))       
         elif segment == '*':
             ret = Data_flatten(ret, levels=1)
         
@@ -108,28 +138,28 @@ def Data_get(data, key, default = None) -> t.Any:
 
     return ret
 
-@functools.wraps(Data_pydash().set_)
+@functools.wraps(pydash().set_)
 def Data_set(data, key, value: t.Any) -> t.Any:
-    return Data_pydash().set_(data, key, value)
+    return pydash().set_(data, key, value)
 
-@functools.wraps(Data_pydash().has)
+@functools.wraps(pydash().has)
 def Data_has(data, key) -> bool:
-    return Data_pydash().has(data, key)
+    return pydash().has(data, key)
 
-@functools.wraps(Data_pydash().unset)
+@functools.wraps(pydash().unset)
 def Data_unset(data, *args) -> t.Any:
     for key_ in args:
-        Data_pydash().unset(data, key_)
+        pydash().unset(data, key_)
     
     return data
 
-@functools.wraps(Data_pydash().pluck)
+@functools.wraps(pydash().pluck)
 def Data_pluck(data, key, **kwargs) -> t.List[t.Any]:
     ph = Sentinel.hash
     is_filled = kwargs.pop('filled', ph) != ph
     is_unique = kwargs.pop('unique', ph)
 
-    ret = Data_pydash().pluck(data, key)
+    ret = pydash().pluck(data, key)
     if is_filled:
         ret = [item for item in ret if Validate_filled(item)]
     
@@ -138,7 +168,7 @@ def Data_pluck(data, key, **kwargs) -> t.List[t.Any]:
     
     return ret  
     
-@functools.wraps(Data_pydash().uniq)
+@functools.wraps(pydash().uniq)
 def Data_uniq(
     data: ENUMERATABLE[T],
     by: t.Optional[t.Union[t.Literal[True], str, ENUMERATABLE[str], t.Callable]] = None,
@@ -154,77 +184,74 @@ def Data_uniq(
     
     return ret
 
-@functools.wraps(Data_pydash().invert)
+@functools.wraps(pydash().invert)
 def Data_invert(data) -> t.Any:
-    return Data_pydash().invert(data)
+    return pydash().invert(data)
 
-@functools.wraps(Data_pydash().map_)
+@functools.wraps(pydash().map_)
 def Data_walk(data, iteratee):
-    return Data_pydash().collections.map_(data, iteratee)
+    return pydash().collections.map_(data, iteratee)
 
-@functools.wraps(Data_pydash().map_values_deep)
+@functools.wraps(pydash().map_values_deep)
 def Data_walk_values_deep(data, iteratee):
-    return Data_pydash().map_values_deep(data, iteratee)
+    return pydash().map_values_deep(data, iteratee)
 
-@functools.wraps(Data_pydash().difference)
+@functools.wraps(pydash().difference)
 def Data_difference(data, *others, **kwargs)-> t.List[t.Any]:
     if Validate_blank(kwargs):
-        return Data_pydash().difference_with(data, *others)
+        return pydash().difference_with(data, *others)
     else:
-        return Data_pydash().difference_by(data, *others, **kwargs)
+        return pydash().difference_by(data, *others, **kwargs)
 
-@functools.wraps(Data_pydash().intersection)
+@functools.wraps(pydash().intersection)
 def Data_intersection(data, *others, **kwargs)-> t.List[t.Any]:
     if Validate_blank(kwargs):
-        return Data_pydash().intersection_with(data, *others)
+        return pydash().intersection_with(data, *others)
     else:
-        return Data_pydash().intersection_by(data, *others, **kwargs)
+        return pydash().intersection_by(data, *others, **kwargs)
 
 def _append_or_prepend(
     data, 
     key: int | str, 
-    value: t.Any,    
+    *args: t.Any,
     **kwargs, 
 ) -> t.Any:
     is_prepend = kwargs.pop('_prepend') == True
-    is_extend = kwargs.pop('extend', False)
     is_unique = kwargs.pop('unique', False)
-    is_sorted = kwargs.pop('sort', False)
-    
-    if Validate_is_mapping(data) or Validate_filled(key):
-        current = Convert_as_copied(list(Data_get(data, key, [])))
-    else:
-        current = Convert_as_copied(list(data))
-    
-    for item in Convert_to_iterable(value):
-        if is_prepend:
-            current.insert(0, item)
-        else:
-            current.append(item)
+    is_sorted = kwargs.pop('sort')
 
-        if not is_extend:
-            break
+    if Validate_filled(key):
+        current = Data_get(data, key, [])
+    else:
+        current = data
+    
+    for value in args:
+        if is_prepend:
+            current = pydash().unshift(current, value)
+        else:
+            current = pydash().push(current, value)
     
     if is_unique:
-        current = list(set(current))
+        current = pydash().uniq(current)
     
-    if is_sorted:
-        current = list(sorted(current))
+    if is_sorted in [True, 'reverse']:
+        is_sort_reverse = is_sorted == 'reverse'
+        current = pydash().sort(array=current, reverse=is_sort_reverse)
         
-    if Validate_is_mapping(data) or Validate_filled(key):
+    if Validate_filled(key):
         Data_set(data, key, current)
     else:
         data = current
     
     return data
 
-def Data_append(data, key: int | str, value: t.Any, **kwargs) -> t.Any:
+def Data_append(data, key: int | str, *args: t.Any, **kwargs) -> t.Any:
     kwargs['_prepend'] = False
-    return _append_or_prepend(data, key, value, **kwargs)
+    return _append_or_prepend(data, key, *args, **kwargs)
 
-def Data_prepend(data, key: int | str, value: t.Any, **kwargs) -> t.Any:
+def Data_prepend(data, key: int | str, *args: t.Any, **kwargs) -> t.Any:
     kwargs['_prepend'] = True
-    return _append_or_prepend(data, key, value, **kwargs)
+    return _append_or_prepend(data, key, *args, **kwargs)
 
 def Data_dot(data: t.Union[t.Sequence[t.Any], t.Mapping[t.Any, t.Any]], prepend='', **kwargs)-> dict:
     is_main = Validate_blank(prepend)
@@ -334,9 +361,10 @@ def Data_where(
     **kwargs: t.Mapping[str, bool],
 ) -> t.Any:
     is_negate = kwargs.pop('negate', False)
+    is_key = kwargs.pop('key', False)
+
     is_first = kwargs.pop('first', False)
     is_last = kwargs.pop('last', False)
-    is_key = kwargs.pop('key', False)
     is_no_dot = kwargs.pop('no_dot', False)
     is_filled = kwargs.pop('filled', False)
     is_blank = kwargs.pop('blank', False)
@@ -351,7 +379,7 @@ def Data_where(
         return default
     
     is_mapping = Validate_is_mapping(data)
-    data = Convert_to_iterable(data)    
+    data = Convert_to_iterable(data)
     
     if Validate_is_mapping(callback):
         callback = Convert_from_mapping_to_callable(dict(callback), **kwargs) #type: ignore
